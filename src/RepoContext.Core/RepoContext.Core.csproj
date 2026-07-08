@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Common settings (TFM, Nullable, warnings-as-errors, banned-API analyzer)
+       come from Directory.Build.props and src/Directory.Build.props. -->
+  <PropertyGroup>
+    <RootNamespace>RepoContext.Core</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Data.Sqlite" Version="10.0.9" />
+    <!-- Microsoft.Data.Sqlite 10.0.9 transitively pulls the native SQLite bundle
+         2.1.11, which carries a known advisory (GHSA-2m69-gcr7-jv3q). Pin the
+         patched 3.x bundle explicitly so the audit stays clean. See ADR 0002. -->
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="3.0.3" />
+  </ItemGroup>
+
+</Project>

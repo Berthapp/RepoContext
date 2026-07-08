@@ -1,0 +1,26 @@
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+
+[*.{cs,csx}]
+indent_size = 4
+# Banned network APIs must fail the build, not just warn.
+dotnet_diagnostic.RS0030.severity = error
+# File-scoped namespaces and modern C# idioms.
+csharp_style_namespace_declarations = file_scoped:warning
+
+[*.{csproj,props,targets,json,yml,yaml}]
+indent_size = 2
+
+[*.md]
+trim_trailing_whitespace = false
+
+[tests/fixtures/**]
+# Fixtures are inputs under test; do not enforce formatting on them.
+insert_final_newline = false
+trim_trailing_whitespace = false

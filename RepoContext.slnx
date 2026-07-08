@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/RepoContext.Cli/RepoContext.Cli.csproj" />
+    <Project Path="src/RepoContext.Core/RepoContext.Core.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/RepoContext.Core.Tests/RepoContext.Core.Tests.csproj" />
+    <Project Path="tests/RepoContext.Integration.Tests/RepoContext.Integration.Tests.csproj" />
+  </Folder>
+</Solution>

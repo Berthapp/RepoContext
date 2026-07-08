@@ -1,0 +1,19 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!-- Common settings come from Directory.Build.props and src/Directory.Build.props. -->
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>RepoContext.Cli</RootNamespace>
+    <!-- The installed command / produced binary is `repoctx`. -->
+    <AssemblyName>repoctx</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="System.CommandLine" Version="2.0.9" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\RepoContext.Core\RepoContext.Core.csproj" />
+  </ItemGroup>
+
+</Project>
