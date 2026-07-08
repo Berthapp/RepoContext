@@ -96,6 +96,9 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
 - [x] **M2** — symbol extraction (tree-sitter TS/TSX/JS/C#) + `search --symbols`;
   symbols table, JSDoc/XML docs, route heuristic, camel/snake split indexing
   (ADR 0005, schema v2). *Awaiting approval before M3.*
-- [ ] **M3** — graph, `related`, `context` pipeline.
+- [x] **M3** — file graph (edges, schema v3), `related` (F4), `context` pipeline
+  (query analysis DE/EN + synonyms, fts/symbol/path candidates, bounded 2-hop
+  graph, weighted scoring, vendor penalty, diversity, token budget, reasons).
+  ADR 0006. *Awaiting approval before M4.*
 - [ ] **M4** — `architecture`, formats, docs, release.
 - [ ] **M5** — MCP server (only on explicit instruction).

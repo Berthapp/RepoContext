@@ -37,7 +37,8 @@ public static class IndexCommand
             Console.WriteLine($"Indexed {layout.Root} ({mode})");
             Console.WriteLine(
                 $"  files: {stats.TotalFiles} (+{stats.Added} ~{stats.Changed} -{stats.Deleted} ={stats.Unchanged})");
-            Console.WriteLine($"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}");
+            Console.WriteLine(
+                $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  edges: {stats.TotalEdges}");
             return ExitCode.Success;
         });
 

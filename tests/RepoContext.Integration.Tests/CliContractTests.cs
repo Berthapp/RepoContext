@@ -28,8 +28,6 @@ public class CliContractTests
     }
 
     [Theory]
-    [InlineData("related")]
-    [InlineData("context")]
     [InlineData("architecture")]
     public void Subcommand_Stub_ReportsNotImplemented(string command)
     {

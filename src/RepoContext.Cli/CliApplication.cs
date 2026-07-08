@@ -39,10 +39,8 @@ public static class CliApplication
         root.Subcommands.Add(InitCommand.Build());
         root.Subcommands.Add(IndexCommand.Build());
         root.Subcommands.Add(SearchCommand.Build());
-        root.Subcommands.Add(NotImplemented("related",
-            "Show files related to a given file (imports, tests, dependents)."));
-        root.Subcommands.Add(NotImplemented("context",
-            "Return a compact, explained context bundle for a natural-language task."));
+        root.Subcommands.Add(RelatedCommand.Build());
+        root.Subcommands.Add(ContextCommand.Build());
         root.Subcommands.Add(NotImplemented("architecture",
             "Summarize the repository structure, languages and central files."));
 
