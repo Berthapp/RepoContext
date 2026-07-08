@@ -1,0 +1,72 @@
+name: CI
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  DOTNET_CLI_TELEMETRY_OPTOUT: "1"
+  DOTNET_NOLOGO: "1"
+  DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
+
+jobs:
+  build-and-test:
+    name: Build & test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore RepoContext.slnx
+
+      - name: Build (warnings-as-errors + banned-API analyzer)
+        run: dotnet build RepoContext.slnx -c Release --no-restore
+
+      - name: Test
+        run: dotnet test RepoContext.slnx -c Release --no-build --logger "console;verbosity=normal"
+
+  no-network-integration:
+    name: Integration tests (--network none)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Restore
+        run: dotnet restore RepoContext.slnx
+
+      - name: Build
+        run: dotnet build RepoContext.slnx -c Release --no-restore
+
+      # Pre-pull the SDK image while the network is still available.
+      - name: Pull .NET SDK image
+        run: docker pull mcr.microsoft.com/dotnet/sdk:10.0
+
+      # Prove the tool needs no network at runtime: run the end-to-end
+      # integration tests with the network fully disabled. The already-restored
+      # NuGet cache is mounted read-only so only *network* access is removed,
+      # not the packages themselves.
+      - name: Integration tests with no network
+        run: |
+          docker run --rm --network none \
+            -e DOTNET_CLI_TELEMETRY_OPTOUT=1 \
+            -e DOTNET_NOLOGO=1 \
+            -v "${{ github.workspace }}:/work" \
+            -v "${HOME}/.nuget/packages:/root/.nuget/packages:ro" \
+            -w /work \
+            mcr.microsoft.com/dotnet/sdk:10.0 \
+            dotnet test tests/RepoContext.Integration.Tests/RepoContext.Integration.Tests.csproj \
+              -c Release --no-build --no-restore --logger "console;verbosity=normal"

@@ -1,0 +1,23 @@
+<Project>
+
+  <!-- Inherit the solution-wide settings. -->
+  <Import Project="$([MSBuild]::GetPathOfFileAbove('Directory.Build.props', '$(MSBuildThisFileDirectory)../'))" />
+
+  <!--
+    Enforce the "no network access at runtime" constraint at compile time for
+    every production project under src/. Banned symbols are listed in
+    BannedSymbols.txt at the repository root. RS0030 (use of a banned symbol) is
+    raised as an error via .editorconfig.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.BannedApiAnalyzers" Version="5.6.0">
+      <PrivateAssets>all</PrivateAssets>
+      <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
+    </PackageReference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <AdditionalFiles Include="$([MSBuild]::GetPathOfFileAbove('BannedSymbols.txt', '$(MSBuildThisFileDirectory)'))" />
+  </ItemGroup>
+
+</Project>

@@ -427,3 +427,17 @@ FodyWeavers.xsd
 *.msix
 *.msm
 *.msp
+
+# ---------------------------------------------------------------------------
+# RepoContext
+# ---------------------------------------------------------------------------
+
+# The generated index is a sensitive, machine-local artifact.
+.repoctx/
+
+# Test fixtures must be committed verbatim, including the negative-case files
+# that the default rules above would normally ignore (.env, node_modules, ...).
+# The indexer's ignore/sensitive handling is exercised against them in CI.
+!tests/fixtures/**/.env
+!tests/fixtures/sample-ts/node_modules/
+!tests/fixtures/sample-ts/node_modules/**

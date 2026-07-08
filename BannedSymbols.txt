@@ -1,0 +1,9 @@
+N:System.Net.Http;RepoContext must not access the network at runtime.
+N:System.Net.Sockets;RepoContext must not access the network at runtime.
+N:System.Net.WebSockets;RepoContext must not access the network at runtime.
+N:System.Net.Mail;RepoContext must not access the network at runtime.
+N:System.Net.NetworkInformation;RepoContext must not access the network at runtime.
+T:System.Net.WebClient;RepoContext must not access the network at runtime.
+T:System.Net.WebRequest;RepoContext must not access the network at runtime.
+T:System.Net.HttpWebRequest;RepoContext must not access the network at runtime.
+T:System.Net.Dns;RepoContext must not resolve hostnames at runtime.

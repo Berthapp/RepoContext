@@ -1,0 +1,13 @@
+{
+  "name": "sample-ts",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "build": "next build",
+    "test": "jest"
+  },
+  "dependencies": {
+    "next": "0.0.0",
+    "react": "0.0.0"
+  }
+}
