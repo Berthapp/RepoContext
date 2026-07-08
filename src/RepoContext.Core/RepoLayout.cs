@@ -33,6 +33,20 @@ public sealed class RepoLayout
     public static RepoLayout For(string root) => new(Path.GetFullPath(root));
 
     /// <summary>
+    /// Converts a user-supplied path (absolute, or relative to
+    /// <paramref name="currentDirectory"/>) into a repo-relative path with
+    /// <c>/</c> separators. Returns null if it falls outside the repository.
+    /// </summary>
+    public string? ToRelativePath(string input, string currentDirectory)
+    {
+        string full = Path.GetFullPath(Path.Combine(currentDirectory, input));
+        string relative = Path.GetRelativePath(Root, full).Replace('\\', '/');
+        return relative.StartsWith("../", StringComparison.Ordinal) || relative == ".."
+            ? null
+            : relative;
+    }
+
+    /// <summary>
     /// Walks up from <paramref name="startDirectory"/> to find the nearest
     /// initialized repository (one containing <c>repoctx.config.json</c>).
     /// Returns <c>null</c> if none is found.

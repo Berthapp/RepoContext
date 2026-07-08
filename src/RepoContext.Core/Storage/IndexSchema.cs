@@ -8,7 +8,7 @@ internal static class IndexSchema
     /// Distinct from <see cref="Core.RepoContextInfo.SchemaVersion"/> (the JSON
     /// output contract version).
     /// </summary>
-    public const int Version = 2;
+    public const int Version = 3;
 
     public const string Ddl = """
         PRAGMA journal_mode = WAL;
@@ -54,6 +54,16 @@ internal static class IndexSchema
 
         CREATE INDEX IF NOT EXISTS idx_symbols_file ON symbols(file_id);
         CREATE INDEX IF NOT EXISTS idx_symbols_name ON symbols(name);
+
+        CREATE TABLE IF NOT EXISTS edges (
+            src_file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            dst_file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            kind        TEXT NOT NULL,
+            PRIMARY KEY (src_file_id, dst_file_id, kind)
+        ) WITHOUT ROWID;
+
+        CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_file_id);
+        CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_file_id);
 
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
             content,

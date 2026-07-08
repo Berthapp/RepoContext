@@ -14,6 +14,7 @@ public static class MetaKeys
     public const string FileCount = "file_count";
     public const string ChunkCount = "chunk_count";
     public const string SymbolCount = "symbol_count";
+    public const string EdgeCount = "edge_count";
 }
 
 /// <summary>Existing file identity used for incremental diffing.</summary>
@@ -237,6 +238,110 @@ public sealed class IndexStore : IDisposable
             .ToList();
     }
 
+    /// <summary>Removes all graph edges (the graph is fully recomputed each index).</summary>
+    public void ClearEdges() => Execute("DELETE FROM edges;");
+
+    public void InsertEdge(long srcFileId, long dstFileId, string kind, SqliteTransaction transaction)
+    {
+        if (srcFileId == dstFileId)
+        {
+            return;
+        }
+
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText =
+            "INSERT OR IGNORE INTO edges(src_file_id, dst_file_id, kind) VALUES($s, $d, $k)";
+        cmd.Parameters.AddWithValue("$s", srcFileId);
+        cmd.Parameters.AddWithValue("$d", dstFileId);
+        cmd.Parameters.AddWithValue("$k", kind);
+        cmd.ExecuteNonQuery();
+    }
+
+    public int CountEdges()
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT count(*) FROM edges";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    /// <summary>All indexed files with id, path, language and kind.</summary>
+    public IReadOnlyList<FileRow> GetFiles()
+    {
+        var rows = new List<FileRow>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT id, path, language, kind, size_bytes FROM files ORDER BY path";
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new FileRow(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Top-level type definitions (class/interface/struct/record/enum) for C# resolution.</summary>
+    public IReadOnlyList<TypeDef> GetTypeDefiners()
+    {
+        var defs = new List<TypeDef>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT s.name, s.file_id, f.path FROM symbols s JOIN files f ON f.id = s.file_id " +
+            "WHERE s.kind IN ('class','interface','struct','record','enum')";
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            defs.Add(new TypeDef(reader.GetString(0), reader.GetInt64(1), reader.GetString(2)));
+        }
+
+        return defs;
+    }
+
+    /// <summary>Finds a file by its repo-relative path.</summary>
+    public FileRow? FindFile(string relativePath)
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT id, path, language, kind, size_bytes FROM files WHERE path = $p";
+        cmd.Parameters.AddWithValue("$p", relativePath);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        return reader.Read()
+            ? new FileRow(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4))
+            : null;
+    }
+
+    /// <summary>Neighbour paths of a file along an edge kind and direction.</summary>
+    public IReadOnlyList<string> GetNeighbors(long fileId, string kind, bool outgoing)
+    {
+        var paths = new List<string>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = outgoing
+            ? "SELECT f.path FROM edges e JOIN files f ON f.id = e.dst_file_id " +
+              "WHERE e.src_file_id = $id AND e.kind = $k ORDER BY f.path"
+            : "SELECT f.path FROM edges e JOIN files f ON f.id = e.src_file_id " +
+              "WHERE e.dst_file_id = $id AND e.kind = $k ORDER BY f.path";
+        cmd.Parameters.AddWithValue("$id", fileId);
+        cmd.Parameters.AddWithValue("$k", kind);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
+    /// <summary>Returns the content of a chunk identified by file and start line.</summary>
+    public string? GetChunkText(string path, int startLine)
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT c.content FROM chunks c JOIN files f ON f.id = c.file_id " +
+            "WHERE f.path = $p AND c.start_line = $s LIMIT 1";
+        cmd.Parameters.AddWithValue("$p", path);
+        cmd.Parameters.AddWithValue("$s", startLine);
+        return cmd.ExecuteScalar() as string;
+    }
+
     /// <summary>Returns the total number of chunks in the index.</summary>
     public int CountChunks()
     {
@@ -260,3 +365,9 @@ public sealed class IndexStore : IDisposable
 
 /// <summary>String labels for a file's kind and language as stored in the DB.</summary>
 public readonly record struct FileKindLabel(string Kind, string Language);
+
+/// <summary>A file row: id, path, language, kind and size.</summary>
+public readonly record struct FileRow(long Id, string Path, string Language, string Kind, long SizeBytes);
+
+/// <summary>A top-level type definition used for C# name-based edge resolution.</summary>
+public readonly record struct TypeDef(string Name, long FileId, string Path);

@@ -82,6 +82,33 @@ public sealed class TreeSitterParser : ILanguageParser
         return symbols;
     }
 
+    public IReadOnlyList<string> ExtractImportSpecifiers(SourceLanguage language, string content)
+    {
+        if (language is not (SourceLanguage.TypeScript or SourceLanguage.Tsx or SourceLanguage.JavaScript))
+        {
+            return [];
+        }
+
+        LanguageContext ctx = GetContext(language);
+        using Tree? tree = ctx.Parser.Parse(content);
+        if (tree is null)
+        {
+            return [];
+        }
+
+        var specifiers = new List<string>();
+        foreach (QueryCapture capture in ctx.ImportQuery!.Execute(tree.RootNode).Captures)
+        {
+            string text = capture.Node.Text;
+            if (text.Length >= 2)
+            {
+                specifiers.Add(text[1..^1]); // strip surrounding quotes
+            }
+        }
+
+        return specifiers;
+    }
+
     private LanguageContext GetContext(SourceLanguage language)
     {
         if (_contexts.TryGetValue(language, out LanguageContext? ctx))
@@ -92,7 +119,10 @@ public sealed class TreeSitterParser : ILanguageParser
         var tsLang = new Language(GrammarName(language));
         var parser = new Parser(tsLang);
         var query = new TsQuery(tsLang, QueryFor(language));
-        ctx = new LanguageContext(tsLang, parser, query);
+        TsQuery? importQuery = language is SourceLanguage.CSharp
+            ? null
+            : new TsQuery(tsLang, ImportQueryText);
+        ctx = new LanguageContext(tsLang, parser, query, importQuery);
         _contexts[language] = ctx;
         return ctx;
     }
@@ -204,7 +234,8 @@ public sealed class TreeSitterParser : ILanguageParser
         _contexts.Clear();
     }
 
-    private sealed class LanguageContext(Language language, Parser parser, TsQuery query) : IDisposable
+    private sealed class LanguageContext(Language language, Parser parser, TsQuery query, TsQuery? importQuery)
+        : IDisposable
     {
         public Language Language { get; } = language;
 
@@ -212,13 +243,21 @@ public sealed class TreeSitterParser : ILanguageParser
 
         public TsQuery Query { get; } = query;
 
+        public TsQuery? ImportQuery { get; } = importQuery;
+
         public void Dispose()
         {
+            ImportQuery?.Dispose();
             Query.Dispose();
             Parser.Dispose();
             Language.Dispose();
         }
     }
+
+    private const string ImportQueryText = """
+        (import_statement source: (string) @src)
+        (export_statement source: (string) @src)
+        """;
 
     private const string TypeScriptQuery = """
         (function_declaration name: (identifier) @function) @def

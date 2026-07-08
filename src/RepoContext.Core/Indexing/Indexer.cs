@@ -24,6 +24,8 @@ public sealed record IndexStats
 
     public int TotalSymbols { get; init; }
 
+    public int TotalEdges { get; init; }
+
     public bool FullRebuild { get; init; }
 }
 
@@ -118,6 +120,8 @@ public sealed class Indexer
             tx.Commit();
         }
 
+        int totalEdges = new Graph.GraphBuilder(store, _layout.Root, parser).Rebuild();
+
         int totalChunks = store.CountChunks();
         int totalSymbols = store.CountSymbols();
         store.SetMeta(MetaKeys.SchemaVersion, IndexSchema.Version.ToString());
@@ -127,6 +131,7 @@ public sealed class Indexer
         store.SetMeta(MetaKeys.FileCount, scanned.Count.ToString());
         store.SetMeta(MetaKeys.ChunkCount, totalChunks.ToString());
         store.SetMeta(MetaKeys.SymbolCount, totalSymbols.ToString());
+        store.SetMeta(MetaKeys.EdgeCount, totalEdges.ToString());
 
         return new IndexStats
         {
@@ -137,6 +142,7 @@ public sealed class Indexer
             TotalFiles = scanned.Count,
             TotalChunks = totalChunks,
             TotalSymbols = totalSymbols,
+            TotalEdges = totalEdges,
             FullRebuild = rebuild,
         };
     }
