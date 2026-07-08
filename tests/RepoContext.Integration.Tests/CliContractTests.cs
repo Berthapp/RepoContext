@@ -28,9 +28,6 @@ public class CliContractTests
     }
 
     [Theory]
-    [InlineData("init")]
-    [InlineData("index")]
-    [InlineData("search")]
     [InlineData("related")]
     [InlineData("context")]
     [InlineData("architecture")]

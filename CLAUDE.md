@@ -89,7 +89,10 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
 - [x] **M0** — parser spike → **GO: tree-sitter via `TreeSitter.DotNet` 1.3.0**
   for TS/TSX/JS/C# (ADR 0001; overall 0.34 ms/file, all 3 RIDs covered).
   *Hard stop — awaiting approval before M1.*
-- [ ] **M1** — init, incremental index, FTS search.
+- [x] **M1** — `init`, incremental `index` (hash diff), FTS `search` (BM25,
+  text/json). Scanner (ignore/sensitive/binary/size/kind), chunker, SQLite store
+  (WAL + FTS5), determinism. Data model & contracts in ADR 0004.
+  *Awaiting approval before M2.*
 - [ ] **M2** — symbol extraction + symbol search.
 - [ ] **M3** — graph, `related`, `context` pipeline.
 - [ ] **M4** — `architecture`, formats, docs, release.
