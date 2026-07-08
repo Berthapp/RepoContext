@@ -26,12 +26,17 @@ public static class SearchCommand
             DefaultValueFactory = _ => "text",
         };
         format.Aliases.Add("-f");
+        var symbolsOnly = new Option<bool>("--symbols")
+        {
+            Description = "Restrict the search to symbols (classes, functions, ...).",
+        };
 
         var command = new Command("search", "Full-text search across the indexed repository.")
         {
             query,
             top,
             format,
+            symbolsOnly,
         };
 
         command.SetAction(parseResult =>
@@ -65,7 +70,7 @@ public static class SearchCommand
             }
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            IReadOnlyList<SearchHit> hits = store.Search(match, topN);
+            IReadOnlyList<SearchHit> hits = store.Search(match, topN, parseResult.GetValue(symbolsOnly));
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
             Console.Out.Write(rendered);
             if (!rendered.EndsWith('\n'))

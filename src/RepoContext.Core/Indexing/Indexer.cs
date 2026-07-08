@@ -1,6 +1,7 @@
 using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Parsing;
 using RepoContext.Core.Scanning;
 using RepoContext.Core.Storage;
 
@@ -20,6 +21,8 @@ public sealed record IndexStats
     public int TotalFiles { get; init; }
 
     public int TotalChunks { get; init; }
+
+    public int TotalSymbols { get; init; }
 
     public bool FullRebuild { get; init; }
 }
@@ -66,6 +69,7 @@ public sealed class Indexer
 
         int added = 0, changed = 0, unchanged = 0, deleted = 0;
 
+        using ILanguageParser parser = new TreeSitterParser();
         using (SqliteTransaction tx = store.BeginTransaction())
         {
             foreach (ScannedFile file in scanned)
@@ -93,10 +97,13 @@ public sealed class Indexer
 
                 string content = DecodeUtf8(bytes);
                 IReadOnlyList<Chunk> chunks = Chunker.Chunk(file.Language, content);
+                IReadOnlyList<Symbol> symbols = parser.Supports(file.Language)
+                    ? parser.Parse(file.Language, file.RelativePath, content)
+                    : [];
                 int lineCount = CountLines(content);
                 var labels = new FileKindLabel(Label(file.Kind), Label(file.Language));
                 store.InsertFile(
-                    file.RelativePath, labels, file.SizeBytes, lineCount, hash, chunks, tx);
+                    file.RelativePath, labels, file.SizeBytes, lineCount, hash, chunks, symbols, tx);
             }
 
             foreach ((string path, FileRecord record) in existing)
@@ -112,12 +119,14 @@ public sealed class Indexer
         }
 
         int totalChunks = store.CountChunks();
+        int totalSymbols = store.CountSymbols();
         store.SetMeta(MetaKeys.SchemaVersion, IndexSchema.Version.ToString());
         store.SetMeta(MetaKeys.ToolVersion, _toolVersion);
         store.SetMeta(MetaKeys.ConfigHash, configHash);
         store.SetMeta(MetaKeys.IndexedAtUtc, DateTimeOffset.UtcNow.ToString("O"));
         store.SetMeta(MetaKeys.FileCount, scanned.Count.ToString());
         store.SetMeta(MetaKeys.ChunkCount, totalChunks.ToString());
+        store.SetMeta(MetaKeys.SymbolCount, totalSymbols.ToString());
 
         return new IndexStats
         {
@@ -127,6 +136,7 @@ public sealed class Indexer
             Unchanged = unchanged,
             TotalFiles = scanned.Count,
             TotalChunks = totalChunks,
+            TotalSymbols = totalSymbols,
             FullRebuild = rebuild,
         };
     }

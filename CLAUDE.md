@@ -93,7 +93,9 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
   text/json). Scanner (ignore/sensitive/binary/size/kind), chunker, SQLite store
   (WAL + FTS5), determinism. Data model & contracts in ADR 0004.
   *Awaiting approval before M2.*
-- [ ] **M2** — symbol extraction + symbol search.
+- [x] **M2** — symbol extraction (tree-sitter TS/TSX/JS/C#) + `search --symbols`;
+  symbols table, JSDoc/XML docs, route heuristic, camel/snake split indexing
+  (ADR 0005, schema v2). *Awaiting approval before M3.*
 - [ ] **M3** — graph, `related`, `context` pipeline.
 - [ ] **M4** — `architecture`, formats, docs, release.
 - [ ] **M5** — MCP server (only on explicit instruction).

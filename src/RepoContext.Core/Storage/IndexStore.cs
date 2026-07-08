@@ -1,5 +1,6 @@
 using Microsoft.Data.Sqlite;
 using RepoContext.Core.Indexing;
+using RepoContext.Core.Parsing;
 
 namespace RepoContext.Core.Storage;
 
@@ -12,6 +13,7 @@ public static class MetaKeys
     public const string IndexedAtUtc = "indexed_at_utc";
     public const string FileCount = "file_count";
     public const string ChunkCount = "chunk_count";
+    public const string SymbolCount = "symbol_count";
 }
 
 /// <summary>Existing file identity used for incremental diffing.</summary>
@@ -84,7 +86,7 @@ public sealed class IndexStore : IDisposable
     /// <summary>Removes all files and chunks (used by <c>--full</c> / config change).</summary>
     public void Clear()
     {
-        Execute("DELETE FROM chunks_fts; DELETE FROM chunks; DELETE FROM files;");
+        Execute("DELETE FROM chunks_fts; DELETE FROM chunks; DELETE FROM symbols; DELETE FROM files;");
     }
 
     public SqliteTransaction BeginTransaction() => _connection.BeginTransaction();
@@ -101,10 +103,11 @@ public sealed class IndexStore : IDisposable
         cmd.ExecuteNonQuery();
     }
 
-    /// <summary>Inserts a file and its chunks; returns the number of chunks written.</summary>
-    public int InsertFile(
+    /// <summary>Inserts a file, its chunks and its symbols (with symbol chunks).</summary>
+    public void InsertFile(
         string path, FileKindLabel labels, long sizeBytes, int lineCount,
-        string contentHash, IReadOnlyList<Chunk> chunks, SqliteTransaction transaction)
+        string contentHash, IReadOnlyList<Chunk> chunks, IReadOnlyList<Symbol> symbols,
+        SqliteTransaction transaction)
     {
         long fileId;
         using (SqliteCommand cmd = _connection.CreateCommand())
@@ -127,7 +130,36 @@ public sealed class IndexStore : IDisposable
             InsertChunk(fileId, chunk, transaction);
         }
 
-        return chunks.Count;
+        foreach (Symbol symbol in symbols)
+        {
+            InsertSymbol(fileId, symbol, transaction);
+            InsertChunk(fileId, SymbolChunk.From(symbol), transaction);
+        }
+    }
+
+    private void InsertSymbol(long fileId, Symbol symbol, SqliteTransaction transaction)
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText =
+            "INSERT INTO symbols(file_id, name, kind, start_line, end_line, signature, doc) " +
+            "VALUES($f, $n, $k, $s, $e, $sig, $doc)";
+        cmd.Parameters.AddWithValue("$f", fileId);
+        cmd.Parameters.AddWithValue("$n", symbol.Name);
+        cmd.Parameters.AddWithValue("$k", symbol.Kind.ToString().ToLowerInvariant());
+        cmd.Parameters.AddWithValue("$s", symbol.StartLine);
+        cmd.Parameters.AddWithValue("$e", symbol.EndLine);
+        cmd.Parameters.AddWithValue("$sig", symbol.Signature);
+        cmd.Parameters.AddWithValue("$doc", (object?)symbol.Doc ?? DBNull.Value);
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>Returns the total number of symbols in the index.</summary>
+    public int CountSymbols()
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT count(*) FROM symbols";
+        return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
     private void InsertChunk(long fileId, Chunk chunk, SqliteTransaction transaction)
@@ -157,7 +189,8 @@ public sealed class IndexStore : IDisposable
     }
 
     /// <summary>Runs a BM25 full-text search and returns the best chunk per file.</summary>
-    public IReadOnlyList<SearchHit> Search(string matchExpression, int top)
+    /// <param name="symbolsOnly">When true, only symbol chunks are considered.</param>
+    public IReadOnlyList<SearchHit> Search(string matchExpression, int top, bool symbolsOnly = false)
     {
         var best = new Dictionary<string, SearchHit>(StringComparer.Ordinal);
         using (SqliteCommand cmd = _connection.CreateCommand())
@@ -169,6 +202,7 @@ public sealed class IndexStore : IDisposable
                 "JOIN chunks c ON c.id = chunks_fts.rowid " +
                 "JOIN files f ON f.id = c.file_id " +
                 "WHERE chunks_fts MATCH $q " +
+                (symbolsOnly ? "AND c.kind = 'symbol' " : string.Empty) +
                 "ORDER BY score ASC LIMIT $cap";
             cmd.Parameters.AddWithValue("$q", matchExpression);
             cmd.Parameters.AddWithValue("$cap", Math.Max(top * 20, 200));

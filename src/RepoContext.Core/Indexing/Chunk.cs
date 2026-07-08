@@ -6,6 +6,7 @@ public enum ChunkKind
     Preamble,
     MarkdownHeading,
     Block,
+    Symbol,
 }
 
 /// <summary>A unit of indexed, searchable content within a file.</summary>
