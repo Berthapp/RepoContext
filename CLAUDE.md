@@ -86,7 +86,9 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
 - [x] **M-Skeleton** — solution, projects, `Directory.Build.props`, banned-API
   analyzer, System.CommandLine stubs (init/index/search/related/context/
   architecture) with F7 exit codes, xUnit + integration harness, fixtures, CI.
-- [ ] **M0** — parser spike (tree-sitter vs. fallback) → ADR 0001. *Hard stop.*
+- [x] **M0** — parser spike → **GO: tree-sitter via `TreeSitter.DotNet` 1.3.0**
+  for TS/TSX/JS/C# (ADR 0001; overall 0.34 ms/file, all 3 RIDs covered).
+  *Hard stop — awaiting approval before M1.*
 - [ ] **M1** — init, incremental index, FTS search.
 - [ ] **M2** — symbol extraction + symbol search.
 - [ ] **M3** — graph, `related`, `context` pipeline.
