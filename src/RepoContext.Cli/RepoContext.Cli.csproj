@@ -20,6 +20,10 @@
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.9" />
+    <!-- Official MCP C# SDK (M5). The `.Core` package hosts the stdio server
+         without the generic host / DI container, keeping the footprint minimal
+         (product doc §11/§13). stdio uses stdin/stdout only - no network. -->
+    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.1" />
   </ItemGroup>
 
   <ItemGroup>

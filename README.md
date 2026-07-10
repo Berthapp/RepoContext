@@ -78,6 +78,7 @@ Budget: 4 file(s) · ~578 estimated tokens
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
 | `context <task>` | Ranked, explained, budgeted context bundle for a task. | `--top`, `--budget-tokens`, `--snippets`, `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--format` |
+| `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
 Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
 
@@ -99,6 +100,40 @@ Before reading files, ask RepoContext for the relevant ones:
 Prefer these over reading the whole repository. Re-run `repoctx index` if the
 working tree changed.
 ```
+
+## MCP server
+
+Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
+can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
+server over stdio and exposes three read-only tools:
+
+| Tool | Wraps | Arguments |
+| --- | --- | --- |
+| `repoctx.search` | `search` | `query`, `top`, `symbols` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `snippets` |
+| `repoctx.get_related_files` | `related` | `file` |
+
+Each tool returns the same JSON as the corresponding `--format json` command
+(carrying `schema_version` and per-result `reasons`). The server runs the index
+from the working directory, communicates over stdin/stdout only (no network),
+and never mutates the index.
+
+Register it with an MCP-capable client, for example:
+
+```json
+{
+  "mcpServers": {
+    "repoctx": {
+      "command": "repoctx",
+      "args": ["mcp"],
+      "cwd": "/path/to/your/repo"
+    }
+  }
+}
+```
+
+Build the index first (`repoctx init && repoctx index`); tools return an error
+until an index exists.
 
 ## Configuration
 

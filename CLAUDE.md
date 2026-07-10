@@ -59,7 +59,7 @@ output.
 
 ```
 src/RepoContext.Core/   # scanner, parser adapters, store, query/ranking (library)
-src/RepoContext.Cli/    # System.CommandLine commands + formatter (produces `repoctx`)
+src/RepoContext.Cli/    # System.CommandLine commands + formatter + MCP server (produces `repoctx`)
 tests/RepoContext.Core.Tests/          # unit tests
 tests/RepoContext.Integration.Tests/   # end-to-end tests through the CLI
 tests/fixtures/sample-ts/   # Next-style TS/JS fixture (incl. negative cases)
@@ -104,4 +104,8 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
   `--format md` for all commands, full README + `docs/benchmark.md`, perf smoke
   test, release pipeline (global tool + self-contained RIDs, grammar trim).
   ADR 0007. **MVP complete.**
-- [ ] **M5** — MCP server (only on explicit instruction).
+- [x] **M5** — MCP server (`repoctx mcp`, stdio) via the official SDK
+  (`ModelContextProtocol.Core`, low-level, no DI host). Three read-only tools
+  (`repoctx.search`, `repoctx.get_context`, `repoctx.get_related_files`) reuse
+  the deterministic engines and return the same JSON contract as
+  `--format json`. ADR 0008.

@@ -24,6 +24,9 @@ public static class CliHarness
 {
     private static readonly string CliDll = LocateCliDll();
 
+    /// <summary>Absolute path to the built <c>repoctx.dll</c> (e.g. to spawn <c>repoctx mcp</c>).</summary>
+    public static string CliDllPath => CliDll;
+
     public static CliResult Run(params string[] args) =>
         RunIn(Environment.CurrentDirectory, args);
 

@@ -16,6 +16,8 @@
 
   <ItemGroup>
     <PackageReference Include="coverlet.collector" Version="6.0.4" />
+    <!-- MCP client, to drive `repoctx mcp` end-to-end over stdio (M5). -->
+    <PackageReference Include="ModelContextProtocol.Core" Version="1.4.1" />
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.4" />
