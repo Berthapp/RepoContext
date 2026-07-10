@@ -29,6 +29,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/configure-pages@v5
+        with:
+          # Create/enable the Pages site if it doesn't exist yet, so the first
+          # deploy doesn't depend on Pages being enabled in Settings first.
+          enablement: true
       - name: Upload site
         uses: actions/upload-pages-artifact@v3
         with:
