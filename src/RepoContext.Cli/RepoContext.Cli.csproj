@@ -51,11 +51,19 @@
   <Target Name="TrimTreeSitterGrammars" AfterTargets="Publish"
           Condition="'$(TrimTreeSitterGrammars)' == 'true'">
     <ItemGroup>
-      <_AllGrammars Include="$(PublishDir)**/libtree-sitter-*.*" />
+      <!-- Unix RIDs name grammars libtree-sitter-*, Windows RIDs tree-sitter-*
+           (no lib prefix). Neither pattern matches the core runtime library
+           (libtree-sitter.so / tree-sitter.dll) - the trailing dash excludes it. -->
+      <_AllGrammars Include="$(PublishDir)**/libtree-sitter-*.*;
+                             $(PublishDir)**/tree-sitter-*.*" />
       <_KeepGrammars Include="$(PublishDir)**/libtree-sitter-typescript.*;
                               $(PublishDir)**/libtree-sitter-tsx.*;
                               $(PublishDir)**/libtree-sitter-javascript.*;
-                              $(PublishDir)**/libtree-sitter-c-sharp.*" />
+                              $(PublishDir)**/libtree-sitter-c-sharp.*;
+                              $(PublishDir)**/tree-sitter-typescript.*;
+                              $(PublishDir)**/tree-sitter-tsx.*;
+                              $(PublishDir)**/tree-sitter-javascript.*;
+                              $(PublishDir)**/tree-sitter-c-sharp.*" />
       <_DropGrammars Include="@(_AllGrammars)" Exclude="@(_KeepGrammars)" />
     </ItemGroup>
     <Delete Files="@(_DropGrammars)" />
