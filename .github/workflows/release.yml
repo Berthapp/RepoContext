@@ -27,6 +27,17 @@ jobs:
         with:
           name: repoctx-tool-nupkg
           path: artifacts/nupkg/*.nupkg
+      # Publish to NuGet.org only for tag builds, and only when the API key
+      # secret is configured. --skip-duplicate makes re-runs idempotent.
+      - name: Push to NuGet.org
+        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != ''
+        env:
+          NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+        run: >
+          dotnet nuget push "artifacts/nupkg/*.nupkg"
+          --api-key "$NUGET_API_KEY"
+          --source https://api.nuget.org/v3/index.json
+          --skip-duplicate
 
   self-contained:
     name: Self-contained (${{ matrix.rid }})
@@ -52,7 +63,47 @@ jobs:
           -c Release -r ${{ matrix.rid }} --self-contained true
           -p:TrimTreeSitterGrammars=true
           -o artifacts/${{ matrix.rid }}
+      # Package each RID as a single downloadable archive for the release:
+      # .zip for Windows, .tar.gz elsewhere.
+      - name: Archive (tar.gz)
+        if: runner.os != 'Windows'
+        run: tar -czf repoctx-${{ matrix.rid }}.tar.gz -C artifacts/${{ matrix.rid }} .
+      - name: Archive (zip)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: Compress-Archive -Path artifacts/${{ matrix.rid }}/* -DestinationPath repoctx-${{ matrix.rid }}.zip
       - uses: actions/upload-artifact@v4
         with:
           name: repoctx-${{ matrix.rid }}
-          path: artifacts/${{ matrix.rid }}
+          path: |
+            repoctx-${{ matrix.rid }}.tar.gz
+            repoctx-${{ matrix.rid }}.zip
+          if-no-files-found: error
+
+  github-release:
+    name: GitHub Release
+    needs: [pack-tool, self-contained]
+    runs-on: ubuntu-latest
+    # Only cut a release for pushed version tags.
+    if: startsWith(github.ref, 'refs/tags/v')
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # Draft so the release notes and attached binaries can be reviewed
+        # before it is made public. Attaches the self-contained archives and
+        # the NuGet package for direct download.
+        run: >
+          gh release create "${{ github.ref_name }}"
+          dist/repoctx-*.tar.gz dist/repoctx-*.zip dist/*.nupkg
+          --repo "${{ github.repository }}"
+          --title "RepoContext ${{ github.ref_name }}"
+          --draft
+          --generate-notes

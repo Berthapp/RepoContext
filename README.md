@@ -20,22 +20,32 @@ Supported languages: **TypeScript, TSX, JavaScript, C#**.
 
 ## Installation
 
-From source (until packages are published):
+As a .NET global tool (needs the .NET 10 runtime):
+
+```bash
+dotnet tool install --global RepoContext.Tool
+repoctx --version
+```
+
+Or download a self-contained binary for `linux-x64`, `win-x64` or `osx-arm64`
+(no .NET runtime required) from the [latest release][releases], unpack it and
+put `repoctx` on your `PATH`:
+
+```bash
+tar -xzf repoctx-linux-x64.tar.gz     # or unzip repoctx-win-x64.zip
+./repoctx --version
+```
+
+From source instead:
 
 ```bash
 dotnet pack src/RepoContext.Cli -c Release
 dotnet tool install --global --add-source src/RepoContext.Cli/bin/Release RepoContext.Tool
-```
-
-Or run directly:
-
-```bash
+# or run directly:
 dotnet run --project src/RepoContext.Cli -- <command> [options]
 ```
 
-Tagged releases also build self-contained binaries for `linux-x64`, `win-x64`
-and `osx-arm64` (no .NET runtime required) — download the artifact for your
-platform and put `repoctx` on your `PATH`.
+[releases]: https://github.com/Berthapp/RepoContext/releases
 
 ## Quickstart
 
