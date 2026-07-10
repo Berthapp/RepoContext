@@ -121,7 +121,7 @@ $ repoctx search "login" --top 2 --format json
 
 | Command | Purpose | Key options |
 | --- | --- | --- |
-| `init` | Create `.repoctx/` and `repoctx.config.json`; add `.repoctx/` to `.gitignore`. | `--force` |
+| `init` | Create `.repoctx/` and `repoctx.config.json`; add `.repoctx/` to `.gitignore`. Optionally add usage instructions to `CLAUDE.md` / `AGENTS.md`. | `--force`, `--agents`, `--no-agents` |
 | `index` | Build or incrementally update the index. | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
@@ -133,8 +133,22 @@ Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
 
 ## Agent integration
 
-RepoContext is agent-agnostic — any agent with shell access can use it. Add a
-snippet like this to your agent instructions (e.g. `CLAUDE.md`):
+RepoContext is agent-agnostic — any agent with shell access can use it. The
+fastest way to wire it in is to let `init` write the instructions for you:
+
+```bash
+repoctx init --agents     # also create/update CLAUDE.md and AGENTS.md
+```
+
+On an interactive terminal, plain `repoctx init` asks whether to do this; pass
+`--agents` to opt in without the prompt (e.g. in scripts) or `--no-agents` to
+skip it. The managed block is delimited by `<!-- BEGIN/END RepoContext -->`
+markers, so re-running `init` updates it in place without touching the rest of
+the file or duplicating the block. Any file that already exists is appended to,
+never overwritten.
+
+To add it by hand instead, drop a snippet like this into your agent
+instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 
 ```markdown
 ## Getting context

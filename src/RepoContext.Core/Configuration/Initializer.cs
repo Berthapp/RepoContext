@@ -10,6 +10,12 @@ public sealed record InitResult
     public required bool GitignoreUpdated { get; init; }
 
     public required string ConfigPath { get; init; }
+
+    /// <summary>
+    /// Per-file outcome for the agent-instruction files (empty when they were
+    /// not requested).
+    /// </summary>
+    public IReadOnlyList<AgentFileResult> AgentFiles { get; init; } = [];
 }
 
 /// <summary>Initializes a repository for RepoContext (spec F1).</summary>
@@ -19,10 +25,14 @@ public static class Initializer
     /// Creates <c>.repoctx/</c>, writes the default <c>repoctx.config.json</c>,
     /// and ensures <c>.gitignore</c> excludes the index directory.
     /// </summary>
+    /// <param name="writeAgentInstructions">
+    /// When true, also create/update the agent-instruction files
+    /// (<c>CLAUDE.md</c>, <c>AGENTS.md</c>) with the RepoContext usage block.
+    /// </param>
     /// <exception cref="InvalidOperationException">
     /// Thrown when already initialized and <paramref name="force"/> is false.
     /// </exception>
-    public static InitResult Initialize(RepoLayout layout, bool force)
+    public static InitResult Initialize(RepoLayout layout, bool force, bool writeAgentInstructions = false)
     {
         bool alreadyInitialized = File.Exists(layout.ConfigPath);
         if (alreadyInitialized && !force)
@@ -36,12 +46,22 @@ public static class Initializer
 
         bool gitignoreUpdated = EnsureGitignore(layout.Root);
 
+        var agentFiles = new List<AgentFileResult>();
+        if (writeAgentInstructions)
+        {
+            foreach (string fileName in AgentInstructions.DefaultFileNames)
+            {
+                agentFiles.Add(AgentInstructions.Ensure(layout.Root, fileName));
+            }
+        }
+
         return new InitResult
         {
             ConfigCreated = !alreadyInitialized,
             ConfigOverwritten = alreadyInitialized,
             GitignoreUpdated = gitignoreUpdated,
             ConfigPath = layout.ConfigPath,
+            AgentFiles = agentFiles,
         };
     }
 
