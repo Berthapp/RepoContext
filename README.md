@@ -291,4 +291,4 @@ benchmark protocol.
 
 ## License
 
-Apache-2.0 (planned; see the product documentation).
+[Apache-2.0](LICENSE) — see also [NOTICE](NOTICE).
