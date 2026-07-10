@@ -100,5 +100,8 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
   (query analysis DE/EN + synonyms, fts/symbol/path candidates, bounded 2-hop
   graph, weighted scoring, vendor penalty, diversity, token budget, reasons).
   ADR 0006. *Awaiting approval before M4.*
-- [ ] **M4** — `architecture`, formats, docs, release.
+- [x] **M4** — `architecture` (F6: LOC tree, languages, centrality, entrypoints),
+  `--format md` for all commands, full README + `docs/benchmark.md`, perf smoke
+  test, release pipeline (global tool + self-contained RIDs, grammar trim).
+  ADR 0007. **MVP complete.**
 - [ ] **M5** — MCP server (only on explicit instruction).

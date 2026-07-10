@@ -17,8 +17,34 @@ public static class ContextOutput
         NewLine = "\n",
     };
 
-    public static string Render(ContextResult result, OutputFormat format) =>
-        format == OutputFormat.Json ? RenderJson(result) : RenderText(result);
+    public static string Render(ContextResult result, OutputFormat format) => format switch
+    {
+        OutputFormat.Json => RenderJson(result),
+        OutputFormat.Md => RenderMarkdown(result),
+        _ => RenderText(result),
+    };
+
+    private static string RenderMarkdown(ContextResult result)
+    {
+        var sb = new StringBuilder();
+        sb.Append("# Context: ").Append(result.Query).Append("\n\n");
+        sb.Append("_Terms: ").Append(string.Join(", ", result.Terms)).Append("_\n\n");
+        foreach (ContextItem item in result.Items)
+        {
+            sb.Append("### `").Append(item.Path).Append("`  (").Append(item.Kind).Append(")\n");
+            sb.Append($"- score: {item.Score:F4} · lines L{item.StartLine}-{item.EndLine} · ~{item.EstimatedTokens} tokens\n");
+            sb.Append("- reasons: ").Append(string.Join(", ", item.Reasons)).Append('\n');
+            if (item.Snippet is { Length: > 0 } snippet)
+            {
+                sb.Append("\n```\n").Append(snippet).Append("\n```\n");
+            }
+
+            sb.Append('\n');
+        }
+
+        sb.Append($"_Budget: {result.Items.Count} file(s) · ~{result.EstimatedTokens} estimated tokens._\n");
+        return sb.ToString();
+    }
 
     private static string RenderText(ContextResult result)
     {

@@ -1,10 +1,11 @@
 namespace RepoContext.Cli.Output;
 
-/// <summary>Supported output formats. <c>md</c> is added in M4.</summary>
+/// <summary>Supported output formats.</summary>
 public enum OutputFormat
 {
     Text,
     Json,
+    Md,
 }
 
 /// <summary>Parses the <c>--format</c> option value.</summary>
@@ -19,6 +20,9 @@ public static class OutputFormatParser
                 return true;
             case "json":
                 format = OutputFormat.Json;
+                return true;
+            case "md" or "markdown":
+                format = OutputFormat.Md;
                 return true;
             default:
                 format = OutputFormat.Text;

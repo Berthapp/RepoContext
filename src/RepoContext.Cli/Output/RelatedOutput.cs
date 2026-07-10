@@ -16,8 +16,38 @@ public static class RelatedOutput
         NewLine = "\n",
     };
 
-    public static string Render(RelatedResult result, OutputFormat format) =>
-        format == OutputFormat.Json ? RenderJson(result) : RenderText(result);
+    public static string Render(RelatedResult result, OutputFormat format) => format switch
+    {
+        OutputFormat.Json => RenderJson(result),
+        OutputFormat.Md => RenderMarkdown(result),
+        _ => RenderText(result),
+    };
+
+    private static string RenderMarkdown(RelatedResult result)
+    {
+        var sb = new StringBuilder();
+        sb.Append("# Related: `").Append(result.Path).Append("` (").Append(result.Kind).Append(")\n\n");
+        if (result.Entries.Count == 0)
+        {
+            sb.Append("_No related files._\n");
+            return sb.ToString();
+        }
+
+        foreach (IGrouping<Relation, RelatedEntry> group in result.Entries
+            .GroupBy(e => e.Relation)
+            .OrderBy(g => g.Key))
+        {
+            sb.Append("## ").Append(Label(group.Key)).Append("\n\n");
+            foreach (RelatedEntry entry in group.OrderBy(e => e.Path, StringComparer.Ordinal))
+            {
+                sb.Append("- `").Append(entry.Path).Append("`\n");
+            }
+
+            sb.Append('\n');
+        }
+
+        return sb.ToString();
+    }
 
     private static string RenderText(RelatedResult result)
     {

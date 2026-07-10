@@ -41,20 +41,8 @@ public static class CliApplication
         root.Subcommands.Add(SearchCommand.Build());
         root.Subcommands.Add(RelatedCommand.Build());
         root.Subcommands.Add(ContextCommand.Build());
-        root.Subcommands.Add(NotImplemented("architecture",
-            "Summarize the repository structure, languages and central files."));
+        root.Subcommands.Add(ArchitectureCommand.Build());
 
         return root;
-    }
-
-    private static Command NotImplemented(string name, string description)
-    {
-        var command = new Command(name, description);
-        command.SetAction(_ =>
-        {
-            Console.Error.WriteLine($"repoctx {name}: not implemented");
-            return ExitCode.Error;
-        });
-        return command;
     }
 }

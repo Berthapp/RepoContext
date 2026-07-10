@@ -17,8 +17,29 @@ public static class SearchOutput
         NewLine = "\n",
     };
 
-    public static string Render(string query, IReadOnlyList<SearchHit> hits, OutputFormat format) =>
-        format == OutputFormat.Json ? RenderJson(query, hits) : RenderText(query, hits);
+    public static string Render(string query, IReadOnlyList<SearchHit> hits, OutputFormat format) => format switch
+    {
+        OutputFormat.Json => RenderJson(query, hits),
+        OutputFormat.Md => RenderMarkdown(query, hits),
+        _ => RenderText(query, hits),
+    };
+
+    private static string RenderMarkdown(string query, IReadOnlyList<SearchHit> hits)
+    {
+        var sb = new StringBuilder();
+        sb.Append("# Search: ").Append(query).Append("\n\n");
+        sb.Append($"{hits.Count} result(s).\n\n");
+        sb.Append("| # | File | Score | Kind | Lines | Reasons |\n| ---: | --- | ---: | --- | --- | --- |\n");
+        int i = 1;
+        foreach (SearchHit hit in hits)
+        {
+            sb.Append($"| {i} | `{hit.Path}` | {Round(hit.Score):F4} | {hit.Kind} | " +
+                      $"L{hit.StartLine}-{hit.EndLine} | {string.Join(", ", hit.Reasons)} |\n");
+            i++;
+        }
+
+        return sb.ToString();
+    }
 
     private static string RenderText(string query, IReadOnlyList<SearchHit> hits)
     {
