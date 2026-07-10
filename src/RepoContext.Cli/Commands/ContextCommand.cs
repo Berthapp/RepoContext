@@ -31,7 +31,7 @@ public static class ContextCommand
         };
         var format = new Option<string>("--format")
         {
-            Description = "Output format: text or json.",
+            Description = "Output format: text, json or md.",
             DefaultValueFactory = _ => "text",
         };
         format.Aliases.Add("-f");
@@ -50,7 +50,7 @@ public static class ContextCommand
         {
             if (!OutputFormatParser.TryParse(parseResult.GetValue(format), out OutputFormat outputFormat))
             {
-                Console.Error.WriteLine("Invalid --format. Use 'text' or 'json'.");
+                Console.Error.WriteLine("Invalid --format. Use 'text', 'json' or 'md'.");
                 return ExitCode.InvalidArguments;
             }
 
@@ -58,6 +58,13 @@ public static class ContextCommand
             if (topN <= 0)
             {
                 Console.Error.WriteLine("--top must be greater than zero.");
+                return ExitCode.InvalidArguments;
+            }
+
+            int? budgetTokens = parseResult.GetValue(budget);
+            if (budgetTokens is <= 0)
+            {
+                Console.Error.WriteLine("--budget-tokens must be greater than zero.");
                 return ExitCode.InvalidArguments;
             }
 
@@ -76,7 +83,7 @@ public static class ContextCommand
             ContextResult result = engine.Run(query, new ContextOptions
             {
                 Top = topN,
-                BudgetTokens = parseResult.GetValue(budget),
+                BudgetTokens = budgetTokens,
                 Snippets = parseResult.GetValue(snippets),
             });
 

@@ -147,8 +147,18 @@ public sealed class Indexer
         };
     }
 
-    private static string DecodeUtf8(byte[] bytes) =>
-        new System.Text.UTF8Encoding(false, false).GetString(bytes);
+    private static string DecodeUtf8(byte[] bytes)
+    {
+        // Strip a UTF-8 BOM so chunk content and heading detection see the
+        // file exactly as an editor shows it. The content hash keeps the BOM.
+        ReadOnlySpan<byte> span = bytes.AsSpan();
+        if (span.StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF]))
+        {
+            span = span[3..];
+        }
+
+        return new System.Text.UTF8Encoding(false, false).GetString(span);
+    }
 
     private static int CountLines(string content)
     {

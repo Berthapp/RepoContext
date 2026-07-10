@@ -227,6 +227,10 @@ public sealed partial class GraphBuilder
         {
             return string.Empty;
         }
+        catch (UnauthorizedAccessException)
+        {
+            return string.Empty;
+        }
     }
 
     private static string DirName(string path)

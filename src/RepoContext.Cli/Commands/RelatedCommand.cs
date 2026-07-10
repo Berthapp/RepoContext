@@ -17,7 +17,7 @@ public static class RelatedCommand
         };
         var format = new Option<string>("--format")
         {
-            Description = "Output format: text or json.",
+            Description = "Output format: text, json or md.",
             DefaultValueFactory = _ => "text",
         };
         format.Aliases.Add("-f");
@@ -33,7 +33,7 @@ public static class RelatedCommand
         {
             if (!OutputFormatParser.TryParse(parseResult.GetValue(format), out OutputFormat outputFormat))
             {
-                Console.Error.WriteLine("Invalid --format. Use 'text' or 'json'.");
+                Console.Error.WriteLine("Invalid --format. Use 'text', 'json' or 'md'.");
                 return ExitCode.InvalidArguments;
             }
 

@@ -74,6 +74,23 @@ public class ContextEngineTests
     }
 
     [Fact]
+    public void VendorPenalty_HitsVendorDirectory_NotSimilarlyNamedFiles()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        repo.Write("src/vendorPricing.ts", "export function vendorPricing() { return 1; }\n");
+        repo.Write("vendor/pricing.ts", "export function vendorPricing() { return 2; }\n");
+        using IndexStore store = IndexHelper.BuildIndex(repo);
+
+        ContextResult result = Run(store, "vendorPricing");
+
+        ContextItem source = result.Items.Single(i => i.Path == "src/vendorPricing.ts");
+        Assert.DoesNotContain("penalty:vendor-or-generated", source.Reasons);
+
+        ContextItem vendored = result.Items.Single(i => i.Path == "vendor/pricing.ts");
+        Assert.Contains("penalty:vendor-or-generated", vendored.Reasons);
+    }
+
+    [Fact]
     public void Snippets_AreIncludedWhenRequested()
     {
         using var repo = new FixtureRepo("sample-ts");

@@ -88,7 +88,9 @@ public sealed class FileScanner
                     continue;
                 }
 
-                if (IsIgnored(rel, isDirectory: true))
+                // Sensitive directories are pruned entirely - neither the
+                // contents nor the paths inside are ever indexed.
+                if (_sensitive.IsIgnored(rel, isDirectory: true) || IsIgnored(rel, isDirectory: true))
                 {
                     continue;
                 }

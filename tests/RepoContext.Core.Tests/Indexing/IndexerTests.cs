@@ -23,7 +23,9 @@ public class IndexerTests
     {
         RepoLayout layout = RepoLayout.For(repo.Root);
         var paths = new List<string>();
-        using var conn = new SqliteConnection($"Data Source={layout.DatabasePath}");
+        // Pooling would keep a handle on the DB file after dispose, which makes
+        // the byte-level marker assertion fail on Windows.
+        using var conn = new SqliteConnection($"Data Source={layout.DatabasePath};Pooling=False");
         conn.Open();
         using SqliteCommand cmd = conn.CreateCommand();
         cmd.CommandText = "SELECT path FROM files ORDER BY path";
@@ -112,6 +114,21 @@ public class IndexerTests
         IndexStats rebuilt = Index(repo, ScanAll());
         Assert.True(rebuilt.FullRebuild);
         Assert.NotEqual(defaultCount, IndexedPaths(repo).Count);
+    }
+
+    [Fact]
+    public void Index_StripsUtf8Bom_FromChunkContent()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        byte[] content = [0xEF, 0xBB, 0xBF, .. "# Bom Heading\n\nSome text.\n"u8];
+        File.WriteAllBytes(repo.PathOf("docs-bom.md"), content);
+        Index(repo, ScanAll(), full: true);
+
+        // With the BOM stripped, the first line is recognised as a markdown
+        // heading and surfaces as the chunk heading.
+        using var store = IndexStore.Open(RepoLayout.For(repo.Root).DatabasePath);
+        IReadOnlyList<SearchHit> hits = store.Search("\"bom\"", 10);
+        Assert.Contains(hits, h => h.Path == "docs-bom.md" && h.Heading == "Bom Heading");
     }
 
     private static bool ContainsSequence(ReadOnlySpan<byte> haystack, ReadOnlySpan<byte> needle) =>

@@ -305,7 +305,7 @@ public sealed class ContextEngine
             || p.Contains(".generated.", StringComparison.Ordinal)
             || p.Contains("/vendor/", StringComparison.Ordinal)
             || p.Contains("/dist/", StringComparison.Ordinal)
-            || p.StartsWith("vendor", StringComparison.Ordinal);
+            || p.StartsWith("vendor/", StringComparison.Ordinal);
     }
 
     private static string Directory(string path)

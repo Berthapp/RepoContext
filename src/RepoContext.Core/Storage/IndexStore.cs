@@ -204,7 +204,9 @@ public sealed class IndexStore : IDisposable
                 "JOIN files f ON f.id = c.file_id " +
                 "WHERE chunks_fts MATCH $q " +
                 (symbolsOnly ? "AND c.kind = 'symbol' " : string.Empty) +
-                "ORDER BY score ASC LIMIT $cap";
+                // c.id breaks BM25 ties so the cap cutoff and the best chunk
+                // per file stay stable across SQLite versions (determinism).
+                "ORDER BY score ASC, c.id ASC LIMIT $cap";
             cmd.Parameters.AddWithValue("$q", matchExpression);
             cmd.Parameters.AddWithValue("$cap", Math.Max(top * 20, 200));
             using SqliteDataReader reader = cmd.ExecuteReader();
@@ -334,9 +336,12 @@ public sealed class IndexStore : IDisposable
     public string? GetChunkText(string path, int startLine)
     {
         using SqliteCommand cmd = _connection.CreateCommand();
+        // Symbol chunks can share a start line with code chunks; prefer the
+        // code chunk so snippets show source, and order for determinism.
         cmd.CommandText =
             "SELECT c.content FROM chunks c JOIN files f ON f.id = c.file_id " +
-            "WHERE f.path = $p AND c.start_line = $s LIMIT 1";
+            "WHERE f.path = $p AND c.start_line = $s " +
+            "ORDER BY (c.kind = 'symbol') ASC, c.id ASC LIMIT 1";
         cmd.Parameters.AddWithValue("$p", path);
         cmd.Parameters.AddWithValue("$s", startLine);
         return cmd.ExecuteScalar() as string;
