@@ -16,10 +16,16 @@ jobs:
   pack-tool:
     name: Pack global tool
     runs-on: ubuntu-latest
-    # Job-level so the push step's `if:` can see it (step-level env is not
-    # visible to the same step's condition).
+    permissions:
+      contents: read
+      # Allow GitHub to issue an OIDC token for NuGet Trusted Publishing
+      # (keyless publish; the matching policy lives on nuget.org).
+      id-token: write
+    # Job-level so the steps' `if:` can see it (step-level env is not
+    # visible to the same step's condition). NUGET_USER is the nuget.org
+    # profile name that owns the trusted publishing policy.
     env:
-      NUGET_API_KEY: ${{ secrets.NUGET_API_KEY }}
+      NUGET_USER: ${{ secrets.NUGET_USER }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -36,13 +42,22 @@ jobs:
         with:
           name: repoctx-tool-nupkg
           path: artifacts/nupkg/*.nupkg
-      # Publish to NuGet.org only for tag builds, and only when the API key
-      # secret is configured. --skip-duplicate makes re-runs idempotent.
+      # Publish to NuGet.org only for tag builds, and only when the NUGET_USER
+      # secret is configured. Trusted Publishing: exchange the GitHub OIDC
+      # token for a 1-hour API key against the policy registered on nuget.org
+      # (repo Berthapp/RepoContext, workflow release.yml). No long-lived key.
+      - name: NuGet login (OIDC -> temp API key)
+        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_USER != ''
+        uses: NuGet/login@v1
+        id: nuget-login
+        with:
+          user: ${{ secrets.NUGET_USER }}
+      # --skip-duplicate makes re-runs idempotent.
       - name: Push to NuGet.org
-        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_API_KEY != ''
+        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_USER != ''
         run: >
           dotnet nuget push "artifacts/nupkg/*.nupkg"
-          --api-key "$NUGET_API_KEY"
+          --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
