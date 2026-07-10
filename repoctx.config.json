@@ -1,0 +1,36 @@
+{
+  "include": [
+    "src",
+    "app",
+    "lib",
+    "docs"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "bin",
+    "obj",
+    ".next",
+    ".git"
+  ],
+  "respectGitignore": true,
+  "sensitiveFiles": [
+    ".env*",
+    "*.secret.*",
+    "appsettings.Production.json"
+  ],
+  "indexing": {
+    "maxFileSizeKb": 512,
+    "includeTests": true,
+    "includeDocs": true
+  },
+  "ranking": {
+    "weights": {
+      "fts": 0.4,
+      "symbol": 0.3,
+      "graph": 0.2,
+      "path": 0.1
+    },
+    "synonyms": {}
+  }
+}
