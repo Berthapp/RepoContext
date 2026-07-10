@@ -27,21 +27,6 @@ public class CliContractTests
         }
     }
 
-    [Theory]
-    [InlineData("init")]
-    [InlineData("index")]
-    [InlineData("search")]
-    [InlineData("related")]
-    [InlineData("context")]
-    [InlineData("architecture")]
-    public void Subcommand_Stub_ReportsNotImplemented(string command)
-    {
-        CliResult result = CliHarness.Run(command);
-
-        Assert.Equal(1, result.ExitCode);
-        Assert.Contains("not implemented", result.Output);
-    }
-
     [Fact]
     public void UnknownCommand_ReturnsInvalidArguments()
     {

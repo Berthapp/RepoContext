@@ -89,8 +89,19 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
 - [x] **M0** — parser spike → **GO: tree-sitter via `TreeSitter.DotNet` 1.3.0**
   for TS/TSX/JS/C# (ADR 0001; overall 0.34 ms/file, all 3 RIDs covered).
   *Hard stop — awaiting approval before M1.*
-- [ ] **M1** — init, incremental index, FTS search.
-- [ ] **M2** — symbol extraction + symbol search.
-- [ ] **M3** — graph, `related`, `context` pipeline.
-- [ ] **M4** — `architecture`, formats, docs, release.
+- [x] **M1** — `init`, incremental `index` (hash diff), FTS `search` (BM25,
+  text/json). Scanner (ignore/sensitive/binary/size/kind), chunker, SQLite store
+  (WAL + FTS5), determinism. Data model & contracts in ADR 0004.
+  *Awaiting approval before M2.*
+- [x] **M2** — symbol extraction (tree-sitter TS/TSX/JS/C#) + `search --symbols`;
+  symbols table, JSDoc/XML docs, route heuristic, camel/snake split indexing
+  (ADR 0005, schema v2). *Awaiting approval before M3.*
+- [x] **M3** — file graph (edges, schema v3), `related` (F4), `context` pipeline
+  (query analysis DE/EN + synonyms, fts/symbol/path candidates, bounded 2-hop
+  graph, weighted scoring, vendor penalty, diversity, token budget, reasons).
+  ADR 0006. *Awaiting approval before M4.*
+- [x] **M4** — `architecture` (F6: LOC tree, languages, centrality, entrypoints),
+  `--format md` for all commands, full README + `docs/benchmark.md`, perf smoke
+  test, release pipeline (global tool + self-contained RIDs, grammar trim).
+  ADR 0007. **MVP complete.**
 - [ ] **M5** — MCP server (only on explicit instruction).

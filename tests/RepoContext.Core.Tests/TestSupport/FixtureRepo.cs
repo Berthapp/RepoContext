@@ -1,0 +1,65 @@
+namespace RepoContext.Core.Tests.TestSupport;
+
+/// <summary>Copies a test fixture into a temporary directory for mutation-safe tests.</summary>
+public sealed class FixtureRepo : IDisposable
+{
+    public FixtureRepo(string fixtureName)
+    {
+        string source = Path.Combine(RepoRoot(), "tests", "fixtures", fixtureName);
+        Root = Path.Combine(Path.GetTempPath(), "repoctx-tests", Guid.NewGuid().ToString("N"));
+        CopyDirectory(source, Root);
+    }
+
+    /// <summary>The temporary copy's root directory.</summary>
+    public string Root { get; }
+
+    public string PathOf(string relative) => System.IO.Path.Combine(Root, relative);
+
+    public void Write(string relative, string content)
+    {
+        string path = PathOf(relative);
+        Directory.CreateDirectory(System.IO.Path.GetDirectoryName(path)!);
+        File.WriteAllText(path, content);
+    }
+
+    public void Delete(string relative) => File.Delete(PathOf(relative));
+
+    public void Dispose()
+    {
+        try
+        {
+            Directory.Delete(Root, recursive: true);
+        }
+        catch (IOException)
+        {
+            // Best-effort cleanup.
+        }
+    }
+
+    private static string RepoRoot()
+    {
+        for (DirectoryInfo? d = new(AppContext.BaseDirectory); d is not null; d = d.Parent)
+        {
+            if (File.Exists(System.IO.Path.Combine(d.FullName, "RepoContext.slnx")))
+            {
+                return d.FullName;
+            }
+        }
+
+        throw new InvalidOperationException("Could not locate the repository root.");
+    }
+
+    private static void CopyDirectory(string source, string destination)
+    {
+        Directory.CreateDirectory(destination);
+        foreach (string dir in Directory.GetDirectories(source, "*", SearchOption.AllDirectories))
+        {
+            Directory.CreateDirectory(dir.Replace(source, destination));
+        }
+
+        foreach (string file in Directory.GetFiles(source, "*", SearchOption.AllDirectories))
+        {
+            File.Copy(file, file.Replace(source, destination), overwrite: true);
+        }
+    }
+}

@@ -8,6 +8,16 @@
     <AssemblyName>repoctx</AssemblyName>
   </PropertyGroup>
 
+  <!-- Packaging as a .NET global tool: `dotnet tool install RepoContext.Tool`. -->
+  <PropertyGroup>
+    <PackAsTool>true</PackAsTool>
+    <ToolCommandName>repoctx</ToolCommandName>
+    <PackageId>RepoContext.Tool</PackageId>
+    <Description>Local-first, explainable project memory for AI coding agents.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageTags>ai;agent;context;code-search;tree-sitter;cli</PackageTags>
+  </PropertyGroup>
+
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.9" />
   </ItemGroup>
@@ -15,5 +25,25 @@
   <ItemGroup>
     <ProjectReference Include="..\RepoContext.Core\RepoContext.Core.csproj" />
   </ItemGroup>
+
+  <!--
+    RepoContext only uses the TypeScript/TSX/JavaScript/C# grammars, but
+    TreeSitter.DotNet ships ~28. For self-contained release binaries, drop the
+    unused native grammar libraries after publish to keep the artifact small.
+    Enable with -p:TrimTreeSitterGrammars=true (the release workflow does this).
+  -->
+  <Target Name="TrimTreeSitterGrammars" AfterTargets="Publish"
+          Condition="'$(TrimTreeSitterGrammars)' == 'true'">
+    <ItemGroup>
+      <_AllGrammars Include="$(PublishDir)**/libtree-sitter-*.*" />
+      <_KeepGrammars Include="$(PublishDir)**/libtree-sitter-typescript.*;
+                              $(PublishDir)**/libtree-sitter-tsx.*;
+                              $(PublishDir)**/libtree-sitter-javascript.*;
+                              $(PublishDir)**/libtree-sitter-c-sharp.*" />
+      <_DropGrammars Include="@(_AllGrammars)" Exclude="@(_KeepGrammars)" />
+    </ItemGroup>
+    <Delete Files="@(_DropGrammars)" />
+    <Message Importance="high" Text="Trimmed unused tree-sitter grammars from $(PublishDir)." />
+  </Target>
 
 </Project>
