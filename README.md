@@ -157,6 +157,11 @@ markers, so re-running `init` updates it in place without touching the rest of
 the file or duplicating the block. Any file that already exists is appended to,
 never overwritten.
 
+Claude Code reads `CLAUDE.md`; GitHub Copilot (agent mode), Cursor and most
+other agents read `AGENTS.md` — so a repository that ran `repoctx init --agents`
+works with all of them out of the box. (Copilot's inline completions and
+classic chat don't run tools, so RepoContext applies to agent mode only.)
+
 To add it by hand instead, drop a snippet like this into your agent
 instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 
@@ -209,6 +214,20 @@ With Claude Code, run this inside the repository:
 
 ```bash
 claude mcp add repoctx -- repoctx mcp
+```
+
+With GitHub Copilot agent mode in VS Code, commit a `.vscode/mcp.json`:
+
+```json
+{
+  "servers": {
+    "repoctx": {
+      "type": "stdio",
+      "command": "repoctx",
+      "args": ["mcp"]
+    }
+  }
+}
 ```
 
 Build the index first (`repoctx init && repoctx index`); tools return an error

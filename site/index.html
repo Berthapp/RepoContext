@@ -537,7 +537,7 @@ tar -xzf repoctx-linux-x64.tar.gz
       </div>
       <div class="mcp-grid">
         <div>
-          <p style="color: var(--ink-soft);">Agents that speak MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a read-only server over stdio and exposes three tools — each returning the same deterministic JSON as the CLI.</p>
+          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a read-only server over stdio and exposes three tools — each returning the same deterministic JSON as the CLI.</p>
           <ul>
             <li><b>repoctx.search</b> — full-text and symbol search</li>
             <li><b>repoctx.get_context</b> — the ranked, budgeted bundle</li>
@@ -545,9 +545,13 @@ tar -xzf repoctx-linux-x64.tar.gz
           </ul>
         </div>
         <div class="panel">
-          <div class="panel-head"><h3>Register with Claude Code</h3></div>
-          <div class="code"><pre><span class="comment"># run inside your repository</span>
-claude mcp add repoctx <span class="p">--</span> repoctx mcp</pre></div>
+          <div class="panel-head"><h3>Register it</h3></div>
+          <div class="code"><pre><span class="comment"># Claude Code — run inside your repo</span>
+claude mcp add repoctx <span class="p">--</span> repoctx mcp
+
+<span class="comment"># GitHub Copilot (VS Code) — .vscode/mcp.json</span>
+{ "servers": { "repoctx": {
+    "type": "stdio", "command": "repoctx", "args": ["mcp"] } } }</pre></div>
         </div>
       </div>
     </div>
