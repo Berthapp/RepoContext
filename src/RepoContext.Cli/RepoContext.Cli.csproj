@@ -16,7 +16,19 @@
     <Description>Local-first, explainable project memory for AI coding agents.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageTags>ai;agent;context;code-search;tree-sitter;cli</PackageTags>
+    <!-- Shown on the NuGet.org listing page. -->
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://github.com/Berthapp/RepoContext</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Berthapp/RepoContext</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
   </PropertyGroup>
+
+  <!-- Ship the README (for the NuGet page) and the Apache NOTICE inside the
+       package so attribution travels with it. -->
+  <ItemGroup>
+    <None Include="..\..\README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\NOTICE" Pack="true" PackagePath="" />
+  </ItemGroup>
 
   <ItemGroup>
     <PackageReference Include="System.CommandLine" Version="2.0.9" />
