@@ -18,7 +18,7 @@
     <PackageTags>ai;agent;context;code-search;tree-sitter;cli</PackageTags>
     <!-- Shown on the NuGet.org listing page. -->
     <PackageReadmeFile>README.md</PackageReadmeFile>
-    <PackageProjectUrl>https://github.com/Berthapp/RepoContext</PackageProjectUrl>
+    <PackageProjectUrl>https://berthapp.github.io/RepoContext/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/Berthapp/RepoContext</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
   </PropertyGroup>
