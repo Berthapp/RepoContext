@@ -342,6 +342,86 @@ public sealed class IndexStore : IDisposable
         return cmd.ExecuteScalar() as string;
     }
 
+    /// <summary>File metrics for the architecture summary.</summary>
+    public IReadOnlyList<FileMetric> GetFileMetrics()
+    {
+        var rows = new List<FileMetric>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT path, language, kind, line_count FROM files ORDER BY path";
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new FileMetric(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Most-imported files (centrality): dependents desc, then path asc.</summary>
+    public IReadOnlyList<Centrality> GetMostImported(int top)
+    {
+        var rows = new List<Centrality>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT f.path, count(*) AS n FROM edges e JOIN files f ON f.id = e.dst_file_id " +
+            "WHERE e.kind = 'import' GROUP BY e.dst_file_id ORDER BY n DESC, f.path ASC LIMIT $t";
+        cmd.Parameters.AddWithValue("$t", top);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new Centrality(reader.GetString(0), reader.GetInt32(1)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Paths that have no incoming import edges (candidate entrypoints/roots).</summary>
+    public HashSet<string> GetPathsWithoutDependents()
+    {
+        var all = new HashSet<string>(StringComparer.Ordinal);
+        var hasIncoming = new HashSet<string>(StringComparer.Ordinal);
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText = "SELECT path FROM files";
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                all.Add(reader.GetString(0));
+            }
+        }
+
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "SELECT DISTINCT f.path FROM edges e JOIN files f ON f.id = e.dst_file_id WHERE e.kind = 'import'";
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                hasIncoming.Add(reader.GetString(0));
+            }
+        }
+
+        all.ExceptWith(hasIncoming);
+        return all;
+    }
+
+    /// <summary>Paths that have at least one outgoing import edge.</summary>
+    public HashSet<string> GetPathsWithOutgoing()
+    {
+        var paths = new HashSet<string>(StringComparer.Ordinal);
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT DISTINCT f.path FROM edges e JOIN files f ON f.id = e.src_file_id WHERE e.kind = 'import'";
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            paths.Add(reader.GetString(0));
+        }
+
+        return paths;
+    }
+
     /// <summary>Returns the total number of chunks in the index.</summary>
     public int CountChunks()
     {
@@ -371,3 +451,9 @@ public readonly record struct FileRow(long Id, string Path, string Language, str
 
 /// <summary>A top-level type definition used for C# name-based edge resolution.</summary>
 public readonly record struct TypeDef(string Name, long FileId, string Path);
+
+/// <summary>Per-file metric for the architecture summary.</summary>
+public readonly record struct FileMetric(string Path, string Language, string Kind, int LineCount);
+
+/// <summary>A file and how many other files import it.</summary>
+public readonly record struct Centrality(string Path, int Dependents);

@@ -9,3 +9,4 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
 - `0004-data-model-and-contracts.md` — M1 SQLite schema, config, JSON contract.
 - `0005-symbols.md` — M2 symbol table, route heuristic, split indexing.
 - `0006-graph-and-context.md` — M3 edges, related, context pipeline.
+- `0007-architecture-formats-release.md` — M4 architecture, --format md, release.
