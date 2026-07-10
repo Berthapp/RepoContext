@@ -33,6 +33,10 @@ Or run directly:
 dotnet run --project src/RepoContext.Cli -- <command> [options]
 ```
 
+Tagged releases also build self-contained binaries for `linux-x64`, `win-x64`
+and `osx-arm64` (no .NET runtime required) — download the artifact for your
+platform and put `repoctx` on your `PATH`.
+
 ## Quickstart
 
 ```bash
@@ -44,6 +48,7 @@ repoctx search "authentication"                 # BM25 full-text search
 repoctx search "login" --symbols                # search symbols only
 repoctx related src/auth/login.ts               # imports, dependents, tests
 repoctx context "change the login logic"        # explained, budgeted bundle
+repoctx context "add logout" --top 4 --budget-tokens 2000 --snippets
 repoctx architecture                            # structure, languages, centrality
 ```
 
@@ -67,6 +72,50 @@ Context for "change the login logic" (3 term(s)):
 
 Budget: 4 file(s) · ~578 estimated tokens
 ```
+
+### JSON output
+
+Every command supports `--format json` for machine consumption. The contract is
+stable and deterministic (snake_case keys, always `schema_version`, same input ⇒
+byte-identical output). For example:
+
+```
+$ repoctx search "login" --top 2 --format json
+```
+
+```json
+{
+  "schema_version": 1,
+  "command": "search",
+  "query": "login",
+  "count": 2,
+  "results": [
+    {
+      "path": "src/components/LoginForm.tsx",
+      "kind": "source",
+      "score": 2.0843,
+      "start_line": 8,
+      "end_line": 24,
+      "chunk_kind": "symbol",
+      "heading": "LoginForm",
+      "reasons": ["fts"]
+    },
+    {
+      "path": "src/auth/permissions.ts",
+      "kind": "source",
+      "score": 1.9299,
+      "start_line": 1,
+      "end_line": 1,
+      "chunk_kind": "symbol",
+      "heading": "Action",
+      "reasons": ["fts"]
+    }
+  ]
+}
+```
+
+`reasons` is machine-readable and explains every hit (e.g. `fts`,
+`symbol:loginUser`, `imported-by:<file>`, `test-of:<file>`, `path-name-match`).
 
 ## Commands
 
@@ -132,6 +181,12 @@ Register it with an MCP-capable client, for example:
 }
 ```
 
+With Claude Code, run this inside the repository:
+
+```bash
+claude mcp add repoctx -- repoctx mcp
+```
+
 Build the index first (`repoctx init && repoctx index`); tools return an error
 until an index exists.
 
@@ -174,6 +229,15 @@ RepoContext never sends repository data anywhere and contains no telemetry. It
 cannot stop a downstream agent from forwarding the excerpts it returns to an LLM
 provider — for maximum privacy use a local/self-hosted agent and model, and list
 sensitive files in `sensitiveFiles` / `.repoctxignore`.
+
+## Troubleshooting
+
+| Symptom | Fix |
+| --- | --- |
+| `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
+| `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
+| Results look stale | Re-run `repoctx index`; it is incremental and only re-reads changed files. |
+| Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 
 ## Development
 
