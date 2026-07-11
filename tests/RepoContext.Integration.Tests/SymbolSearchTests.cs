@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace RepoContext.Integration.Tests;
 
 /// <summary>End-to-end tests for M2 symbol extraction and symbol search.</summary>
@@ -36,9 +38,12 @@ public class SymbolSearchTests
 
         CliResult result = ws.Run("search", "session", "--symbols", "--format", "json");
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("src/auth/session.ts", result.StdOut);
-        Assert.Contains("\"chunk_kind\": \"symbol\"", result.StdOut);
+
+        using JsonDocument doc = JsonDocument.Parse(result.StdOut);
+        JsonElement sessionHit = doc.RootElement.GetProperty("results").EnumerateArray()
+            .Single(r => r.GetProperty("path").GetString() == "src/auth/session.ts");
+        Assert.Equal("symbol", sessionHit.GetProperty("chunk_kind").GetString());
         // The heading carries a symbol name (best symbol per file).
-        Assert.Contains("\"heading\": \"Session\"", result.StdOut);
+        Assert.Equal("Session", sessionHit.GetProperty("heading").GetString());
     }
 }

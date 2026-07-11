@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using RepoContext.Core;
 using RepoContext.Core.Context;
 
@@ -9,13 +8,6 @@ namespace RepoContext.Cli.Output;
 /// <summary>Renders a context bundle as text or JSON. Reasons are always included.</summary>
 public static class ContextOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
-        WriteIndented = true,
-        NewLine = "\n",
-    };
 
     public static string Render(ContextResult result, OutputFormat format) => format switch
     {
@@ -96,7 +88,7 @@ public static class ContextOutput
             }).ToList(),
         };
 
-        return JsonSerializer.Serialize(doc, JsonOptions);
+        return JsonSerializer.Serialize(doc, OutputJson.Options);
     }
 
     private sealed record ContextDocument

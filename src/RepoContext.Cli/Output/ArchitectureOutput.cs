@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using RepoContext.Core;
 using RepoContext.Core.Architecture;
 
@@ -9,12 +8,6 @@ namespace RepoContext.Cli.Output;
 /// <summary>Renders the architecture summary as text, JSON or Markdown.</summary>
 public static class ArchitectureOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        WriteIndented = true,
-        NewLine = "\n",
-    };
 
     public static string Render(ArchitectureResult result, OutputFormat format) => format switch
     {
@@ -116,7 +109,7 @@ public static class ArchitectureOutput
             Entrypoints = r.Entrypoints,
         };
 
-        return JsonSerializer.Serialize(doc, JsonOptions);
+        return JsonSerializer.Serialize(doc, OutputJson.Options);
     }
 
     private static TreeDto ToDto(TreeNode node) => new()
