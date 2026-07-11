@@ -22,9 +22,15 @@ public static class McpServerRunner
             ServerInfo = new Implementation { Name = "repoctx", Version = CliInfo.Version },
             ServerInstructions =
                 "RepoContext serves compact, explainable, deterministic context from a local "
-                + "repository index. Every result carries machine-readable reasons and the same "
-                + "schema_version as the CLI's JSON output. Run 'repoctx index' to build or update "
-                + "the index. All tools are read-only and never leave the machine.",
+                + "repository index; every token figure is a real BPE count. The economical loop: "
+                + "(1) repoctx.get_context with a budgetTokens and detail='slices' for working "
+                + "context, or detail='outline' to survey; (2) repoctx.get_outline before reading "
+                + "any file - a skeleton costs a fraction of the file; (3) repoctx.get_related_files "
+                + "instead of searching for dependencies; (4) after editing, repoctx.get_changes - "
+                + "when stale, run 'repoctx index' (fast, incremental) and re-query; (5) never pay "
+                + "twice: echo each result's hash back via known=['path@hash'] and unchanged files "
+                + "return as zero-cost markers. Results are deterministic and carry machine-readable "
+                + "reasons. All tools are read-only and never leave the machine.",
             ToolCollection = McpTools.Build(),
         };
 

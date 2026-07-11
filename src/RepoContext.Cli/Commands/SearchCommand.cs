@@ -70,6 +70,11 @@ public static class SearchCommand
             }
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
+            if (!CommandSupport.EnsureSchemaCurrent(store))
+            {
+                return ExitCode.NoIndex;
+            }
+
             IReadOnlyList<SearchHit> hits = store.Search(match, topN, parseResult.GetValue(symbolsOnly));
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
             Console.Out.Write(rendered);

@@ -1,5 +1,7 @@
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Graph;
+using RepoContext.Core.Indexing;
+using RepoContext.Core.Outline;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Core.Context;
@@ -16,7 +18,11 @@ public sealed class ContextEngine
     private const double VendorPenalty = 0.3;
     private const double DiversityFactor = 0.9;
     private const int MaxHops = 2;
-    private const int MaxGraphReasons = 2;
+    private const int MaxOutlineSymbols = 12;
+    private const int MaxSliceLines = 80;
+    private const int PreambleFallbackLines = 20;
+    private const int ItemEnvelopeOverhead = 40;
+    private const int SymbolFramingTokens = 26;
 
     private readonly IndexStore _store;
     private readonly RepoctxConfig _config;
@@ -40,13 +46,17 @@ public sealed class ContextEngine
 
         List<Candidate> ordered = ApplyDiversity(candidates.Values);
         List<ContextItem> items = Budget(ordered, options, fileByPath);
+        int scored = ordered.Count(c => c.Score > 0);
 
         return new ContextResult
         {
             Query = query,
             Terms = analyzed.Terms,
+            State = Hashes.Short(_store.GetMeta(MetaKeys.StateHash) ?? string.Empty),
+            Detail = options.Detail,
             Items = items,
             TotalCandidates = candidates.Count,
+            Omitted = scored - items.Count,
             EstimatedTokens = items.Sum(i => i.EstimatedTokens),
         };
     }
@@ -68,7 +78,13 @@ public sealed class ContextEngine
             foreach (SearchHit hit in _store.Search(analyzed.FtsMatch, 500, symbolsOnly: true))
             {
                 Candidate c = GetOrAdd(candidates, hit.Path);
-                c.Symbol = Math.Max(c.Symbol, hit.Score);
+                if (hit.Score > c.Symbol)
+                {
+                    c.Symbol = hit.Score;
+                    c.BestSymbolStart = hit.StartLine;
+                    c.BestSymbolEnd = hit.EndLine;
+                }
+
                 if (hit.Heading is { Length: > 0 } name)
                 {
                     c.Reasons.Add($"symbol:{name}");
@@ -209,6 +225,16 @@ public sealed class ContextEngine
             .ToList();
     }
 
+    /// <summary>
+    /// Packs ranked candidates into the bundle. The charge per item is what
+    /// the agent will actually spend consuming it at the chosen detail level:
+    /// the real full-file token count for <see cref="ContextDetail.Paths"/>,
+    /// the included outline or slice otherwise, and zero for a file the
+    /// caller already has (<see cref="ContextOptions.Known"/>). A candidate
+    /// that does not fit the remaining budget is skipped, not a stop signal —
+    /// smaller files further down may still fit. The first item is always
+    /// admitted so a tight budget never yields an empty bundle.
+    /// </summary>
     private List<ContextItem> Budget(
         List<Candidate> ordered, ContextOptions options, Dictionary<string, FileRow> fileByPath)
     {
@@ -222,40 +248,123 @@ public sealed class ContextEngine
                 break;
             }
 
-            if (c.Score <= 0)
-            {
-                continue;
-            }
-
-            int start = c.BestChunkStart > 0 ? c.BestChunkStart : 1;
-            int end = c.BestChunkEnd > 0 ? c.BestChunkEnd : start;
-            long size = fileByPath.TryGetValue(c.Path, out FileRow row) ? row.SizeBytes : 0;
-            int tokens = Math.Max(1, (int)Math.Ceiling(size / 4.0));
-
-            if (options.BudgetTokens is { } budget && items.Count > 0 && usedTokens + tokens > budget)
+            if (options.BudgetTokens is { } spent && usedTokens >= spent)
             {
                 break;
             }
 
-            string? snippet = options.Snippets ? _store.GetChunkText(c.Path, start) : null;
-            string kind = fileByPath.TryGetValue(c.Path, out FileRow fr) ? fr.Kind : "other";
-
-            items.Add(new ContextItem
+            if (c.Score <= 0 || !fileByPath.TryGetValue(c.Path, out FileRow row))
             {
-                Path = c.Path,
-                Kind = kind,
-                Score = Math.Round(c.AdjustedScore, 4, MidpointRounding.AwayFromZero),
-                StartLine = start,
-                EndLine = end,
-                Reasons = CompressReasons(c.Reasons),
-                EstimatedTokens = tokens,
-                Snippet = snippet,
-            });
-            usedTokens += tokens;
+                continue;
+            }
+
+            ContextItem item = BuildItem(c, row, options);
+            if (options.BudgetTokens is { } budget && items.Count > 0
+                && usedTokens + item.EstimatedTokens > budget)
+            {
+                continue;
+            }
+
+            items.Add(item);
+            usedTokens += item.EstimatedTokens;
         }
 
         return items;
     }
+
+    private ContextItem BuildItem(Candidate c, FileRow row, ContextOptions options)
+    {
+        // Symbol hits give the most precise range; fall back to the best FTS
+        // chunk, then to the file preamble.
+        int start = c.BestSymbolStart > 0 ? c.BestSymbolStart
+            : c.BestChunkStart > 0 ? c.BestChunkStart : 1;
+        int end = c.BestSymbolStart > 0 ? c.BestSymbolEnd
+            : c.BestChunkEnd > 0 ? c.BestChunkEnd
+            : Math.Min(PreambleFallbackLines, Math.Max(row.LineCount, 1));
+
+        var item = new ContextItem
+        {
+            Path = c.Path,
+            Kind = row.Kind,
+            Score = Math.Round(c.AdjustedScore, 4, MidpointRounding.AwayFromZero),
+            StartLine = start,
+            EndLine = end,
+            Reasons = ReasonCompression.Compress(c.Reasons),
+            Hash = Hashes.Short(row.ContentHash),
+            EstimatedTokens = row.TokenCount,
+        };
+
+        bool unchanged = options.Known is { } known
+            && known.TryGetValue(c.Path, out string? givenHash)
+            && Hashes.Matches(row.ContentHash, givenHash);
+        if (unchanged)
+        {
+            // The caller already has this file; the pointer costs (almost) nothing.
+            return item with { Unchanged = true, EstimatedTokens = 0 };
+        }
+
+        switch (options.Detail)
+        {
+            case ContextDetail.Outline:
+                (IReadOnlyList<OutlineSymbol> symbols, int cut) =
+                    Core.Outline.Outline.Symbols(_store, row.Id, MaxOutlineSymbols);
+                return item with
+                {
+                    Symbols = symbols,
+                    SymbolsOmitted = cut > 0 ? cut : null,
+                    EstimatedTokens = OutlineTokens(symbols) + symbols.Count * SymbolFramingTokens
+                        + EnvelopeTokens(item),
+                    FileTokens = row.TokenCount,
+                };
+
+            case ContextDetail.Slices:
+                int cappedEnd = Math.Min(end, start + MaxSliceLines - 1);
+                if (_store.GetSourceSlice(c.Path, start, cappedEnd) is { } slice)
+                {
+                    return item with
+                    {
+                        StartLine = slice.StartLine,
+                        EndLine = slice.EndLine,
+                        Snippet = slice.Text,
+                        EstimatedTokens = JsonTextTokens(slice.Text) + EnvelopeTokens(item),
+                        FileTokens = row.TokenCount,
+                    };
+                }
+
+                return item;
+
+            default:
+                return item;
+        }
+    }
+
+    /// <summary>The response cost of an outline: its signatures and doc lines.</summary>
+    private static int OutlineTokens(IReadOnlyList<OutlineSymbol> symbols) =>
+        symbols.Count == 0
+            ? 0
+            : Tokens.Count(string.Join('\n',
+                symbols.Select(s => s.Doc is null ? s.Signature : s.Signature + " " + s.Doc)));
+
+    /// <summary>
+    /// Embedded content is billed in its serialized form: JSON escaping (\n,
+    /// \", \\) is part of what the agent's context window receives, and on
+    /// source code it adds a solid 10-20 % over the raw text.
+    /// </summary>
+    private static int JsonTextTokens(string text) =>
+        Tokens.Count(System.Text.Json.JsonEncodedText.Encode(text).Value);
+
+    /// <summary>
+    /// The per-item JSON framing an agent also pays for when content is
+    /// embedded: path, reasons and a flat allowance for field names, numbers
+    /// and the hash. Charged so a slices/outline budget tracks the real
+    /// response size instead of only the content inside it. Paths detail
+    /// deliberately charges the full-read cost alone — there the follow-up
+    /// read dominates, not the response.
+    /// </summary>
+    private static int EnvelopeTokens(ContextItem item) =>
+        ItemEnvelopeOverhead
+        + Tokens.Count(item.Path)
+        + Tokens.Count(string.Join(',', item.Reasons));
 
     private static Candidate GetOrAdd(Dictionary<string, Candidate> candidates, string path)
     {
@@ -267,60 +376,6 @@ public sealed class ContextEngine
 
         return c;
     }
-
-    /// <summary>
-    /// Dedupes reasons and caps the only unbounded class, graph reasons
-    /// (ADR 0009). Each graph reason carries a full neighbor path, and a hub
-    /// file can collect one per importer — dozens on real repositories — while
-    /// the consumer is an AI agent paying tokens for every one. The first
-    /// <see cref="MaxGraphReasons"/> (insertion order: earlier hops from
-    /// stronger seeds first) are kept; the rest fold into a single
-    /// <c>graph:+N</c> summary right after them, so the evidence type and its
-    /// extent stay visible. The full edge list remains available via
-    /// <c>repoctx related</c>. All other reason kinds occur at most once per
-    /// item and pass through unchanged.
-    /// </summary>
-    private static IReadOnlyList<string> CompressReasons(List<string> reasons)
-    {
-        var seen = new HashSet<string>(StringComparer.Ordinal);
-        var result = new List<string>();
-        int graphKept = 0, graphDropped = 0, lastGraph = -1;
-
-        foreach (string r in reasons)
-        {
-            if (!seen.Add(r))
-            {
-                continue;
-            }
-
-            if (IsGraphReason(r))
-            {
-                if (graphKept == MaxGraphReasons)
-                {
-                    graphDropped++;
-                    continue;
-                }
-
-                graphKept++;
-                lastGraph = result.Count;
-            }
-
-            result.Add(r);
-        }
-
-        if (graphDropped > 0)
-        {
-            result.Insert(lastGraph + 1, $"graph:+{graphDropped}");
-        }
-
-        return result;
-    }
-
-    private static bool IsGraphReason(string reason) =>
-        reason.StartsWith("imports:", StringComparison.Ordinal)
-        || reason.StartsWith("imported-by:", StringComparison.Ordinal)
-        || reason.StartsWith("tested-by:", StringComparison.Ordinal)
-        || reason.StartsWith("test-of:", StringComparison.Ordinal);
 
     private static double Normalize(double value, double max) => max > 0 ? value / max : 0;
 
@@ -373,6 +428,10 @@ public sealed class ContextEngine
         public int BestChunkStart { get; set; }
 
         public int BestChunkEnd { get; set; }
+
+        public int BestSymbolStart { get; set; }
+
+        public int BestSymbolEnd { get; set; }
 
         public List<string> Reasons { get; } = [];
     }

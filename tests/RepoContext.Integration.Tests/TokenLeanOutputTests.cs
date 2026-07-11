@@ -35,7 +35,7 @@ public class TokenLeanOutputTests
 
         // Still a well-formed document of the same shape.
         using JsonDocument doc = JsonDocument.Parse(json);
-        Assert.Equal(1, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(Core.RepoContextInfo.SchemaVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
     }
 
     [Fact]

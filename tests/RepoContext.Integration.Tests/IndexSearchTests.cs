@@ -60,7 +60,7 @@ public class IndexSearchTests
         Assert.Equal(a.StdOut, b.StdOut); // byte-identical determinism
 
         using JsonDocument doc = JsonDocument.Parse(a.StdOut);
-        Assert.Equal(1, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(Core.RepoContextInfo.SchemaVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
         Assert.Equal("search", doc.RootElement.GetProperty("command").GetString());
         Assert.True(doc.RootElement.GetProperty("results").GetArrayLength() > 0);
     }

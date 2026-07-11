@@ -145,14 +145,19 @@ public class ContextEngineTests
         || reason.StartsWith("test-of:", StringComparison.Ordinal);
 
     [Fact]
-    public void Snippets_AreIncludedWhenRequested()
+    public void Slices_AreIncludedWhenRequested()
     {
         using var repo = new FixtureRepo("sample-ts");
         using IndexStore store = IndexHelper.BuildIndex(repo);
 
         ContextResult result = Run(store, "login",
-            new ContextOptions { Top = 3, Snippets = true });
+            new ContextOptions { Top = 3, Detail = ContextDetail.Slices });
 
-        Assert.Contains(result.Items, i => !string.IsNullOrEmpty(i.Snippet));
+        ContextItem sliced = result.Items.First(i => !string.IsNullOrEmpty(i.Snippet));
+
+        // The slice covers exactly the advertised lines, and the full-read
+        // cost is reported alongside for contrast.
+        Assert.Equal(sliced.EndLine - sliced.StartLine + 1, sliced.Snippet!.Split('\n').Length);
+        Assert.True(sliced.FileTokens > 0);
     }
 }

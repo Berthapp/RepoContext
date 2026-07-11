@@ -21,7 +21,7 @@ public static class ArchitectureOutput
         var sb = new StringBuilder();
         sb.Append($"Architecture: {r.TotalFiles} files, {r.TotalLoc} LOC\n\n");
 
-        sb.Append("Structure (depth 3, LOC):\n");
+        sb.Append($"Structure (depth {r.Depth}, LOC):\n");
         WriteTree(sb, r.Tree, 0, "  ");
 
         sb.Append("\nLanguages:\n");
@@ -99,6 +99,7 @@ public static class ArchitectureOutput
             Command = "architecture",
             TotalFiles = r.TotalFiles,
             TotalLoc = r.TotalLoc,
+            Depth = r.Depth,
             Tree = ToDto(r.Tree),
             Languages = r.Languages
                 .Select(l => new LanguageDto { Language = l.Language, Files = l.Files, Loc = l.Loc })
@@ -130,6 +131,8 @@ public static class ArchitectureOutput
         public int TotalFiles { get; init; }
 
         public int TotalLoc { get; init; }
+
+        public int Depth { get; init; }
 
         public required TreeDto Tree { get; init; }
 

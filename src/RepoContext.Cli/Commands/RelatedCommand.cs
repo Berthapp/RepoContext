@@ -53,6 +53,11 @@ public static class RelatedCommand
             }
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
+            if (!CommandSupport.EnsureSchemaCurrent(store))
+            {
+                return ExitCode.NoIndex;
+            }
+
             RelatedResult? result = Related.Query(store, relative);
             if (result is null)
             {

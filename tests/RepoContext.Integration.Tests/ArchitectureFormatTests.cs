@@ -29,7 +29,7 @@ public class ArchitectureFormatTests
         Assert.Equal(0, result.ExitCode);
 
         using JsonDocument doc = JsonDocument.Parse(result.StdOut);
-        Assert.Equal(1, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(Core.RepoContextInfo.SchemaVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
         Assert.True(doc.RootElement.GetProperty("total_files").GetInt32() > 0);
         Assert.Equal("src/auth/session.ts",
             doc.RootElement.GetProperty("most_imported")[0].GetProperty("path").GetString());
