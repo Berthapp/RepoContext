@@ -99,7 +99,7 @@ $ repoctx search "login" --top 2 --format json
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "command": "search",
   "query": "login",
   "count": 2,
@@ -139,14 +139,33 @@ via `repoctx related`).
 | Command | Purpose | Key options |
 | --- | --- | --- |
 | `init` | Create `.repoctx/` and `repoctx.config.json`; add `.repoctx/` to `.gitignore`. Optionally add usage instructions to `CLAUDE.md` / `AGENTS.md`. | `--force`, `--agents`, `--no-agents` |
-| `index` | Build or incrementally update the index. | `--full` |
+| `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained, budgeted context bundle for a task. | `--top`, `--budget-tokens`, `--snippets`, `--format` |
-| `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--detail paths\|outline\|slices`, `--known <path>@<hash>`, `--format` |
+| `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
+| `changed` | Working-tree diff against the index, with impacted dependents. | `--format` |
+| `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
 Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
+
+### The token-frugal loop
+
+All token figures are real BPE counts (`o200k_base`, computed offline at index
+time), so budgets can be trusted. The intended agent workflow:
+
+1. `architecture --depth 1` — orientation for a handful of tokens.
+2. `context "<task>" --detail slices --budget-tokens 2000` — working context
+   with source slices packed into the budget (`--detail outline` surveys more
+   files for fewer tokens; the default `paths` returns pointers plus exact
+   full-read costs).
+3. `outline <file>` before any full read.
+4. After editing: `changed` — and `repoctx index` when it reports `stale`.
+5. Echo the `hash` of files you already hold via `--known <path>@<hash>`:
+   unchanged files return as zero-cost markers instead of repeated content.
+   Every `context` response also carries a `state` hash that moves whenever
+   the index content changes.
 
 ## Agent integration
 
@@ -175,28 +194,32 @@ instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 ```markdown
 ## Getting context
 
-Before reading files, ask RepoContext for the relevant ones:
+This repository is indexed by RepoContext (`repoctx`); token figures are real
+BPE counts. The economical loop:
 
-- `repoctx context "<what you are about to do>" --format json` — ranked files
-  with reasons and a token budget.
-- `repoctx related <file> --format json` — a file's imports, dependents and tests.
-- `repoctx search "<term>" --symbols --format json` — find a symbol.
-
-Prefer these over reading the whole repository. Re-run `repoctx index` if the
-working tree changed.
+1. Orient once: `repoctx architecture --depth 1 --format md`.
+2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format json`.
+3. Before reading any file: `repoctx outline <file> --format json`.
+4. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
+5. Find a symbol: `repoctx search "<term>" --symbols --format json`.
+6. After editing: `repoctx changed --format json`; when `stale`, run `repoctx index`.
+7. Never pay twice: `--known <path>@<hash>` returns unchanged files as
+   zero-cost markers.
 ```
 
 ## MCP server
 
 Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
-server over stdio and exposes three read-only tools:
+server over stdio and exposes five read-only tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `snippets` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known` |
 | `repoctx.get_related_files` | `related` | `file` |
+| `repoctx.get_outline` | `outline` | `file` |
+| `repoctx.get_changes` | `changed` | — |
 
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
@@ -293,8 +316,9 @@ sensitive files in `sensitiveFiles` / `.repoctxignore`.
 
 See `CLAUDE.md` for build/test commands, repository structure and conventions,
 `docs/build-prompt.md` for the milestone plan, and `docs/decisions/` for the
-architecture decision records. `docs/benchmark.md` holds the token-savings
-benchmark protocol.
+architecture decision records. `docs/benchmark.md` holds the performance
+benchmark protocol; `docs/token-savings.md` documents the measured end-to-end
+token savings of the M6 context protocol.
 
 ## License
 

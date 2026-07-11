@@ -12,3 +12,5 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
 - `0007-architecture-formats-release.md` — M4 architecture, --format md, release.
 - `0008-mcp-server.md` — M5 MCP server (`repoctx mcp`, stdio, official SDK).
 - `0009-token-lean-output.md` — compact JSON, null omission, graph-reason cap.
+- `0010-token-frugal-context-protocol.md` — M6: real token counts, outline,
+  detail levels, budget packing, known-state dedupe, changed.
