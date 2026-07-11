@@ -11,3 +11,4 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
 - `0006-graph-and-context.md` — M3 edges, related, context pipeline.
 - `0007-architecture-formats-release.md` — M4 architecture, --format md, release.
 - `0008-mcp-server.md` — M5 MCP server (`repoctx mcp`, stdio, official SDK).
+- `0009-token-lean-output.md` — compact JSON, null omission, graph-reason cap.

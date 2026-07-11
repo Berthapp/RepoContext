@@ -87,7 +87,11 @@ Budget: 4 file(s) · ~578 estimated tokens
 
 Every command supports `--format json` for machine consumption. The contract is
 stable and deterministic (snake_case keys, always `schema_version`, same input ⇒
-byte-identical output). For example:
+byte-identical output). Because the JSON consumers are AI agents that pay per
+token, documents are emitted **compact** — a single line, no indentation, and
+null-valued optional fields (such as `heading`) omitted (ADR 0009). Pipe
+through `jq` when reading as a human, or use the `text`/`md` formats. For
+example (pretty-printed here for readability only):
 
 ```
 $ repoctx search "login" --top 2 --format json
@@ -126,6 +130,9 @@ $ repoctx search "login" --top 2 --format json
 
 `reasons` is machine-readable and explains every hit (e.g. `fts`,
 `symbol:loginUser`, `imported-by:<file>`, `test-of:<file>`, `path-name-match`).
+In `context` results, at most two full-path graph reasons are listed per file;
+further links fold into a `graph:+N` summary (the full edge list is available
+via `repoctx related`).
 
 ## Commands
 

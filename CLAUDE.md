@@ -109,6 +109,11 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
   (`repoctx.search`, `repoctx.get_context`, `repoctx.get_related_files`) reuse
   the deterministic engines and return the same JSON contract as
   `--format json`. ADR 0008.
+- [x] **M5.1** — token-lean output (ADR 0009): all `--format json`/MCP
+  responses are compact single-line JSON (null-valued optional fields omitted);
+  `context` caps full-path graph reasons at 2 per file with a `graph:+N`
+  summary. Measured 30–62 % fewer response tokens; CLI ↔ MCP byte parity and
+  determinism unchanged.
 
 <!-- BEGIN RepoContext (managed by `repoctx init`) -->
 ## Getting repository context with RepoContext
