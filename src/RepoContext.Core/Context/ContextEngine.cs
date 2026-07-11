@@ -16,6 +16,7 @@ public sealed class ContextEngine
     private const double VendorPenalty = 0.3;
     private const double DiversityFactor = 0.9;
     private const int MaxHops = 2;
+    private const int MaxGraphReasons = 2;
 
     private readonly IndexStore _store;
     private readonly RepoctxConfig _config;
@@ -246,7 +247,7 @@ public sealed class ContextEngine
                 Score = Math.Round(c.AdjustedScore, 4, MidpointRounding.AwayFromZero),
                 StartLine = start,
                 EndLine = end,
-                Reasons = DedupeReasons(c.Reasons),
+                Reasons = CompressReasons(c.Reasons),
                 EstimatedTokens = tokens,
                 Snippet = snippet,
             });
@@ -267,20 +268,59 @@ public sealed class ContextEngine
         return c;
     }
 
-    private static IReadOnlyList<string> DedupeReasons(List<string> reasons)
+    /// <summary>
+    /// Dedupes reasons and caps the only unbounded class, graph reasons
+    /// (ADR 0009). Each graph reason carries a full neighbor path, and a hub
+    /// file can collect one per importer — dozens on real repositories — while
+    /// the consumer is an AI agent paying tokens for every one. The first
+    /// <see cref="MaxGraphReasons"/> (insertion order: earlier hops from
+    /// stronger seeds first) are kept; the rest fold into a single
+    /// <c>graph:+N</c> summary right after them, so the evidence type and its
+    /// extent stay visible. The full edge list remains available via
+    /// <c>repoctx related</c>. All other reason kinds occur at most once per
+    /// item and pass through unchanged.
+    /// </summary>
+    private static IReadOnlyList<string> CompressReasons(List<string> reasons)
     {
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var result = new List<string>();
+        int graphKept = 0, graphDropped = 0, lastGraph = -1;
+
         foreach (string r in reasons)
         {
-            if (seen.Add(r))
+            if (!seen.Add(r))
             {
-                result.Add(r);
+                continue;
             }
+
+            if (IsGraphReason(r))
+            {
+                if (graphKept == MaxGraphReasons)
+                {
+                    graphDropped++;
+                    continue;
+                }
+
+                graphKept++;
+                lastGraph = result.Count;
+            }
+
+            result.Add(r);
+        }
+
+        if (graphDropped > 0)
+        {
+            result.Insert(lastGraph + 1, $"graph:+{graphDropped}");
         }
 
         return result;
     }
+
+    private static bool IsGraphReason(string reason) =>
+        reason.StartsWith("imports:", StringComparison.Ordinal)
+        || reason.StartsWith("imported-by:", StringComparison.Ordinal)
+        || reason.StartsWith("tested-by:", StringComparison.Ordinal)
+        || reason.StartsWith("test-of:", StringComparison.Ordinal);
 
     private static double Normalize(double value, double max) => max > 0 ? value / max : 0;
 

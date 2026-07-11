@@ -91,6 +91,60 @@ public class ContextEngineTests
     }
 
     [Fact]
+    public void GraphReasons_AreCappedWithASummary()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        for (int i = 1; i <= 5; i++)
+        {
+            repo.Write($"src/gadget/feature{i}.ts",
+                $"import {{ shared }} from \"./shared\";\nexport function gadgetFeature{i}() {{ return shared(); }}\n");
+        }
+
+        repo.Write("src/gadget/shared.ts", "export function shared() { return 1; }\n");
+        using IndexStore store = IndexHelper.BuildIndex(repo);
+
+        ContextResult result = Run(store, "gadget feature");
+        ContextItem hub = result.Items.Single(i => i.Path == "src/gadget/shared.ts");
+
+        // Five importers link to the hub; only two full-path graph reasons
+        // survive, the rest fold into one "graph:+N" summary placed right
+        // after them.
+        var reasons = hub.Reasons.ToList();
+        Assert.Equal(2, reasons.Count(IsGraphReason));
+        Assert.Equal("graph:+3", Assert.Single(reasons, r => r.StartsWith("graph:+", StringComparison.Ordinal)));
+        Assert.Equal(reasons.FindLastIndex(IsGraphReason) + 1, reasons.IndexOf("graph:+3"));
+    }
+
+    [Fact]
+    public void GraphReasonCap_NeverDropsThePenaltyReason()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        for (int i = 1; i <= 4; i++)
+        {
+            repo.Write($"vendor/widget/plugin{i}.ts",
+                $"import {{ widgetCore }} from \"./core\";\nexport function widgetPlugin{i}() {{ return widgetCore(); }}\n");
+        }
+
+        repo.Write("vendor/widget/core.ts", "export function widgetCore() { return 1; }\n");
+        using IndexStore store = IndexHelper.BuildIndex(repo);
+
+        ContextResult result = Run(store, "widget plugin");
+        ContextItem hub = result.Items.Single(i => i.Path == "vendor/widget/core.ts");
+
+        // The penalty explains the low score; the cap must only ever fold
+        // graph reasons, never evidence of a different kind.
+        Assert.Contains("penalty:vendor-or-generated", hub.Reasons);
+        Assert.Contains("graph:+2", hub.Reasons);
+        Assert.Equal(2, hub.Reasons.Count(IsGraphReason));
+    }
+
+    private static bool IsGraphReason(string reason) =>
+        reason.StartsWith("imports:", StringComparison.Ordinal)
+        || reason.StartsWith("imported-by:", StringComparison.Ordinal)
+        || reason.StartsWith("tested-by:", StringComparison.Ordinal)
+        || reason.StartsWith("test-of:", StringComparison.Ordinal);
+
+    [Fact]
     public void Snippets_AreIncludedWhenRequested()
     {
         using var repo = new FixtureRepo("sample-ts");
