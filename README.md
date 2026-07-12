@@ -13,6 +13,22 @@ same index always produces byte-identical output.
 
 Supported languages: **TypeScript, TSX, JavaScript, C#**.
 
+## Why: tokens are the bill
+
+Every token figure repoctx reports is a real BPE count, and budgets are charged
+at what the agent actually receives — so `--budget-tokens 2000` really means
+about 2,000 tokens. Measured end-to-end on this repository
+([methodology & full numbers](docs/token-savings.md)):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/token-savings-dark.svg">
+  <img alt="Measured: getting working context for the same task costs 6,222 tokens with pointer-plus-full-read workflows, 2,151 with a budgeted outline bundle and 2,110 with a budgeted slices bundle - 66 percent less." src="docs/assets/token-savings.svg" width="880">
+</picture>
+
+The loop an agent runs, on this repository:
+
+<img alt="Animated terminal demo: repoctx context with a token budget returning ranked source slices with reasons and hashes; repoctx outline showing a file skeleton for a third of the read cost; repoctx changed reporting a modified file and its impacted dependents; and a repeated context call with --known returning a zero-cost unchanged marker." src="docs/assets/demo.svg" width="880">
+
 ## Requirements
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/) (LTS) to build; the released

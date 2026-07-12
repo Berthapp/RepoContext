@@ -1,0 +1,27 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="880" height="380" viewBox="0 0 880 380" role="img"
+  aria-label="Bar chart: tokens needed to get working context for the same task. Full-read workflows cost 6,222 and 5,336 tokens; repoctx budgeted bundles cost 2,151 (outline) and 2,110 (slices) - 66 percent less.">
+  <rect width="880" height="380" rx="10" fill="#1a1a19" stroke="rgba(255,255,255,0.10)"/>
+  <g font-family="system-ui, -apple-system, 'Segoe UI', sans-serif">
+    <text x="32" y="38" fill="#ffffff" font-size="17" font-weight="650">Tokens to get working context — same task, measured</text>
+    <text x="32" y="58" fill="#c3c2b7" font-size="12.5">o200k BPE counts of everything the agent receives · this repository (75 files) · see docs/token-savings.md</text>
+    <rect x="32" y="70" width="10" height="10" rx="2" fill="#565550"/>
+    <text x="48" y="79" fill="#c3c2b7" font-size="12">full-file workflow</text>
+    <rect x="162" y="70" width="10" height="10" rx="2" fill="#3987e5"/>
+    <text x="178" y="79" fill="#c3c2b7" font-size="12">repoctx budgeted bundle</text>
+    <text x="32" y="114" fill="#c3c2b7" font-size="13">repoctx context (pointers), then read the top-3 files</text>
+<path d="M32,122 h724 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-724 Z" fill="#565550"/>
+<text x="770" y="137.5" fill="#ffffff" font-size="13.5" font-weight="600">6,222</text>
+<text x="32" y="172" fill="#c3c2b7" font-size="13">read the 3 relevant files directly (grep workflow)</text>
+<path d="M32,180 h620.3 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-620.3 Z" fill="#565550"/>
+<text x="666.3" y="195.5" fill="#ffffff" font-size="13.5" font-weight="600">5,336</text>
+<text x="32" y="230" fill="#c3c2b7" font-size="13">repoctx context --detail outline --budget-tokens 2000 · 7 files surveyed</text>
+<path d="M32,238 h247.7 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-247.7 Z" fill="#3987e5"/>
+<text x="293.7" y="253.5" fill="#ffffff" font-size="13.5" font-weight="600">2,151</text>
+<text x="32" y="288" fill="#c3c2b7" font-size="13">repoctx context --detail slices --budget-tokens 2000 · content included</text>
+<path d="M32,296 h242.9 a4,4 0 0 1 4,4 v14 a4,4 0 0 1 -4,4 h-242.9 Z" fill="#3987e5"/>
+<text x="288.9" y="311.5" fill="#ffffff" font-size="13.5" font-weight="600">2,110</text>
+<text x="336.9" y="311.5" fill="#0ca30c" font-size="12.5" font-weight="600">−66 %</text>
+
+    <line x1="32" y1="116" x2="32" y2="326" stroke="#383835" stroke-width="1.5"/>
+  </g>
+</svg>
