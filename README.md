@@ -336,6 +336,22 @@ architecture decision records. `docs/benchmark.md` holds the performance
 benchmark protocol; `docs/token-savings.md` documents the measured end-to-end
 token savings of the M6 context protocol.
 
+### Releasing
+
+Releases are cut by merging, not by hand:
+
+1. Bump `<VersionPrefix>` in `Directory.Build.props` inside the feature PR
+   (contract changes bump the minor version while pre-1.0).
+2. Merge to `main`. The `Tag on version change` workflow notices the new
+   version, pushes `v<version>`, and `release.yml` publishes to NuGet, builds
+   the self-contained binaries and drafts the GitHub release.
+3. Review and publish the draft release.
+
+A merge that leaves `VersionPrefix` untouched releases nothing. One-time
+setup: an Actions secret `RELEASE_PAT` (fine-grained PAT, this repository
+only, Contents: Read and write) — required because tags pushed with the
+default workflow token do not trigger `release.yml`.
+
 ## License
 
 [Apache-2.0](LICENSE) — see also [NOTICE](NOTICE).

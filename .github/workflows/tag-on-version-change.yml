@@ -1,0 +1,70 @@
+# Automates the release trigger: whenever main carries a VersionPrefix that
+# has no tag yet, this workflow creates and pushes `v<version>` — which fires
+# release.yml (NuGet publish, self-contained binaries, draft GitHub release)
+# exactly as a manual tag would.
+#
+# The release flow therefore is:
+#   1. Bump <VersionPrefix> in Directory.Build.props inside the feature PR.
+#   2. Merge the PR into main (branch protection keeps main green).
+#   3. This workflow tags vX.Y.Z; release.yml builds and drafts the release.
+#   4. Review and publish the draft release on GitHub.
+# A merge that does not change VersionPrefix releases nothing.
+#
+# Why a PAT: tags pushed with the default GITHUB_TOKEN do not trigger other
+# workflows (GitHub suppresses workflow-triggered workflows), so release.yml
+# would never run. RELEASE_PAT must be a fine-grained personal access token
+# scoped to this repository with "Contents: Read and write" permission,
+# stored as an Actions secret named RELEASE_PAT.
+name: Tag on version change
+
+on:
+  push:
+    branches: ["main"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tag-on-version-change
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    name: Tag new version
+    runs-on: ubuntu-latest
+    # Forks inherit workflows; never auto-tag from a fork.
+    if: github.repository == 'Berthapp/RepoContext'
+    steps:
+      - name: Require the RELEASE_PAT secret
+        env:
+          RELEASE_PAT: ${{ secrets.RELEASE_PAT }}
+        run: |
+          if [ -z "$RELEASE_PAT" ]; then
+            echo "::error::Secret RELEASE_PAT is not configured. Create a fine-grained PAT (this repo only, Contents: Read and write) and add it under Settings → Secrets and variables → Actions."
+            exit 1
+          fi
+
+      - uses: actions/checkout@v7
+        with:
+          # The push below must run as the PAT so the tag event triggers release.yml.
+          token: ${{ secrets.RELEASE_PAT }}
+
+      - name: Tag when VersionPrefix has no tag yet
+        run: |
+          version=$(grep -oPm1 '(?<=<VersionPrefix>)[^<]+' Directory.Build.props)
+          if [ -z "$version" ]; then
+            echo "::error::Could not read VersionPrefix from Directory.Build.props."
+            exit 1
+          fi
+
+          if git ls-remote --exit-code origin "refs/tags/v$version" > /dev/null 2>&1; then
+            echo "Tag v$version already exists — nothing to do."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag -a "v$version" -m "RepoContext v$version"
+          git push origin "v$version"
+          echo "Pushed tag v$version — release.yml takes it from here."
