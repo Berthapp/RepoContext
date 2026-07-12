@@ -10,7 +10,8 @@ namespace RepoContext.Cli;
 /// The command surface is fixed by the specification (F1-F6): <c>init</c>,
 /// <c>index</c>, <c>search</c>, <c>related</c>, <c>context</c> and
 /// <c>architecture</c>, plus <c>mcp</c> (M5) which serves the same query
-/// engine to AI agents over the Model Context Protocol.
+/// engine to AI agents over the Model Context Protocol, and the token-lean
+/// M6 additions <c>outline</c> and <c>changed</c> (ADR 0010).
 /// </remarks>
 public static class CliApplication
 {
@@ -42,6 +43,8 @@ public static class CliApplication
         root.Subcommands.Add(SearchCommand.Build());
         root.Subcommands.Add(RelatedCommand.Build());
         root.Subcommands.Add(ContextCommand.Build());
+        root.Subcommands.Add(OutlineCommand.Build());
+        root.Subcommands.Add(ChangedCommand.Build());
         root.Subcommands.Add(ArchitectureCommand.Build());
         root.Subcommands.Add(McpCommand.Build());
 

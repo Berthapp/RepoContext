@@ -1,13 +1,17 @@
 using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
-using RepoContext.Core.Architecture;
+using RepoContext.Core.Configuration;
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
 
-/// <summary>The <c>repoctx architecture</c> command (spec F6).</summary>
-public static class ArchitectureCommand
+/// <summary>
+/// The <c>repoctx changed</c> command (M6, ADR 0010): diff the working tree
+/// against the index so an agent re-reads only what its edits touched.
+/// </summary>
+public static class ChangedCommand
 {
     public static Command Build()
     {
@@ -17,17 +21,11 @@ public static class ArchitectureCommand
             DefaultValueFactory = _ => "text",
         };
         format.Aliases.Add("-f");
-        var depth = new Option<int>("--depth")
-        {
-            Description = "Directory-tree depth (1 gives a minimal orientation summary).",
-            DefaultValueFactory = _ => ArchitectureEngine.DefaultDepth,
-        };
 
-        var command = new Command("architecture",
-            "Summarize the repository structure, languages and central files.")
+        var command = new Command("changed",
+            "Show working-tree changes since the last index and the files they impact.")
         {
             format,
-            depth,
         };
 
         command.SetAction(parseResult =>
@@ -38,13 +36,6 @@ public static class ArchitectureCommand
                 return ExitCode.InvalidArguments;
             }
 
-            int treeDepth = parseResult.GetValue(depth);
-            if (treeDepth <= 0)
-            {
-                Console.Error.WriteLine("--depth must be greater than zero.");
-                return ExitCode.InvalidArguments;
-            }
-
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
             if (layout is null || !layout.HasIndex)
             {
@@ -52,14 +43,15 @@ public static class ArchitectureCommand
                 return ExitCode.NoIndex;
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
             if (!CommandSupport.EnsureSchemaCurrent(store))
             {
                 return ExitCode.NoIndex;
             }
 
-            ArchitectureResult result = new ArchitectureEngine(store).Build(treeDepth);
-            CommandSupport.WriteRendered(ArchitectureOutput.Render(result, outputFormat));
+            ChangedResult result = ChangeDetector.Run(layout, config, store);
+            CommandSupport.WriteRendered(ChangedOutput.Render(result, outputFormat));
             return ExitCode.Success;
         });
 

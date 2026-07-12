@@ -37,7 +37,7 @@ public class RelatedContextTests
         using FixtureWorkspace ws = Indexed();
         CliResult result = ws.Run("related", "src/auth/session.ts", "--format", "json");
         using JsonDocument doc = JsonDocument.Parse(result.StdOut);
-        Assert.Equal(1, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(Core.RepoContextInfo.SchemaVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
         JsonElement first = doc.RootElement.GetProperty("results")[0];
         Assert.True(first.GetProperty("reasons").GetArrayLength() > 0);
     }
@@ -58,7 +58,7 @@ public class RelatedContextTests
         Assert.Equal(0, result.ExitCode);
 
         using JsonDocument doc = JsonDocument.Parse(result.StdOut);
-        Assert.Equal(1, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(Core.RepoContextInfo.SchemaVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
         JsonElement results = doc.RootElement.GetProperty("results");
         Assert.Equal("src/auth/login.ts", results[0].GetProperty("path").GetString());
         Assert.True(results[0].GetProperty("reasons").GetArrayLength() > 0);

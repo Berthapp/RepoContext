@@ -12,7 +12,7 @@ public class CliContractTests
         CliResult result = CliHarness.Run("--version");
 
         Assert.Equal(0, result.ExitCode);
-        Assert.Contains("0.1.0", result.StdOut);
+        Assert.Contains(Cli.CliInfo.Version, result.StdOut);
     }
 
     [Fact]

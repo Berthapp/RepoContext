@@ -24,6 +24,9 @@ public sealed record ArchitectureResult
 
     public required int TotalLoc { get; init; }
 
+    /// <summary>The directory-tree depth this summary was built with.</summary>
+    public required int Depth { get; init; }
+
     public required TreeNode Tree { get; init; }
 
     public required IReadOnlyList<LanguageStat> Languages { get; init; }

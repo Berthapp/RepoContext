@@ -15,6 +15,11 @@
     <!-- tree-sitter parsing for symbol extraction (M2). See ADR 0001. Bundles
          native libtree-sitter + grammars for all target RIDs. -->
     <PackageReference Include="TreeSitter.DotNet" Version="1.3.0" />
+    <!-- Real BPE token counting (M6, ADR 0010). The Data package embeds the
+         o200k_base vocabulary so counting works offline - no download at
+         runtime, keeping the no-network constraint intact. -->
+    <PackageReference Include="Microsoft.ML.Tokenizers" Version="1.0.2" />
+    <PackageReference Include="Microsoft.ML.Tokenizers.Data.O200kBase" Version="1.0.2" />
   </ItemGroup>
 
 </Project>

@@ -109,18 +109,39 @@ docs/decisions/         # ADRs (0001-parser.md, ...)
   (`repoctx.search`, `repoctx.get_context`, `repoctx.get_related_files`) reuse
   the deterministic engines and return the same JSON contract as
   `--format json`. ADR 0008.
+- [x] **M5.1** — token-lean output (ADR 0009): all `--format json`/MCP
+  responses are compact single-line JSON (null-valued optional fields omitted);
+  `context` caps full-path graph reasons at 2 per file with a `graph:+N`
+  summary. Measured 30–62 % fewer response tokens; CLI ↔ MCP byte parity and
+  determinism unchanged.
+- [x] **M6** — token-frugal context protocol (ADR 0010, JSON `schema_version` 2,
+  index schema v4): real BPE token counts (`o200k_base`, offline) stored per
+  file; `outline` command + `repoctx.get_outline` (file skeletons); `context
+  --detail paths|outline|slices` with budget packing charged at what the agent
+  actually consumes; `--known path@hash` → zero-cost `unchanged` markers +
+  `state` hash; `changed` command + `repoctx.get_changes` (tree↔index diff with
+  impacted dependents); `architecture --depth`; agent instructions teach the
+  economical loop. `docs/token-savings.md` documents measured end-to-end
+  savings.
 
 <!-- BEGIN RepoContext (managed by `repoctx init`) -->
 ## Getting repository context with RepoContext
 
 This repository is indexed by RepoContext (`repoctx`), a local-first, offline
-context engine. Before reading files broadly, ask it for the relevant ones — it
-returns ranked files with a machine-readable reason for every hit and a token budget.
+context engine built to save you tokens. Prefer it over reading files broadly;
+all token figures it reports are real BPE counts. The economical loop:
 
-- `repoctx context "<what you are about to do>" --format json` — ranked files, reasons, budget.
-- `repoctx related <file> --format json` — a file's imports, dependents and tests.
-- `repoctx search "<term>" --symbols --format json` — find a symbol.
-
-Prefer these over reading the whole repository. Re-run `repoctx index` if the
-working tree changed.
+1. Orient once: `repoctx architecture --depth 1 --format md`.
+2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format json`
+   — ranked source slices packed into the budget, each with reasons and a `hash`.
+   Use `--detail outline` to survey more files for fewer tokens.
+3. Before reading any file: `repoctx outline <file> --format json` — symbols,
+   signatures and the exact full-read token cost, at a fraction of that cost.
+4. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
+5. Find a symbol: `repoctx search "<term>" --symbols --format json`.
+6. After editing: `repoctx changed --format json`; when it reports `stale`,
+   run `repoctx index` (fast, incremental) and re-query.
+7. Never pay twice: echo hashes you already hold, e.g.
+   `repoctx context "<task>" --known <path>@<hash>` — unchanged files come
+   back as zero-cost markers.
 <!-- END RepoContext -->

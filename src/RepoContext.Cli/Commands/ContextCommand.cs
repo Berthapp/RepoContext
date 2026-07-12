@@ -23,11 +23,21 @@ public static class ContextCommand
         };
         var budget = new Option<int?>("--budget-tokens")
         {
-            Description = "Approximate token budget for the returned files.",
+            Description = "Token budget the bundle is packed into (real BPE counts).",
+        };
+        var detail = new Option<string>("--detail")
+        {
+            Description = "Per-file detail: paths (pointers), outline (symbol skeletons) or slices (source content).",
+            DefaultValueFactory = _ => "paths",
         };
         var snippets = new Option<bool>("--snippets")
         {
-            Description = "Include a code snippet for each file.",
+            Description = "Alias for --detail slices.",
+        };
+        var known = new Option<string[]>("--known")
+        {
+            Description = "A file you already have, as <path>@<hash> (repeatable). " +
+                          "Unchanged files come back as zero-cost markers.",
         };
         var format = new Option<string>("--format")
         {
@@ -42,7 +52,9 @@ public static class ContextCommand
             task,
             top,
             budget,
+            detail,
             snippets,
+            known,
             format,
         };
 
@@ -68,6 +80,25 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
+            if (!TryParseDetail(parseResult.GetValue(detail), out ContextDetail detailLevel))
+            {
+                Console.Error.WriteLine("Invalid --detail. Use 'paths', 'outline' or 'slices'.");
+                return ExitCode.InvalidArguments;
+            }
+
+            // --snippets is the pre-M6 spelling of slice detail; an explicit
+            // --detail wins.
+            if (parseResult.GetValue(snippets) && parseResult.GetResult(detail) is null or { Implicit: true })
+            {
+                detailLevel = ContextDetail.Slices;
+            }
+
+            if (!TryParseKnown(parseResult.GetValue(known), out Dictionary<string, string>? knownMap))
+            {
+                Console.Error.WriteLine("Invalid --known. Use <path>@<hash> (hash as printed by context/outline).");
+                return ExitCode.InvalidArguments;
+            }
+
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
             if (layout is null || !layout.HasIndex)
             {
@@ -79,24 +110,68 @@ public static class ContextCommand
             RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
+            if (!CommandSupport.EnsureSchemaCurrent(store))
+            {
+                return ExitCode.NoIndex;
+            }
+
             var engine = new ContextEngine(store, config);
             ContextResult result = engine.Run(query, new ContextOptions
             {
                 Top = topN,
                 BudgetTokens = budgetTokens,
-                Snippets = parseResult.GetValue(snippets),
+                Detail = detailLevel,
+                Known = knownMap,
             });
 
-            string rendered = ContextOutput.Render(result, outputFormat);
-            Console.Out.Write(rendered);
-            if (!rendered.EndsWith('\n'))
-            {
-                Console.Out.Write('\n');
-            }
-
+            CommandSupport.WriteRendered(ContextOutput.Render(result, outputFormat));
             return ExitCode.Success;
         });
 
         return command;
+    }
+
+    private static bool TryParseDetail(string? value, out ContextDetail detail)
+    {
+        switch (value?.ToLowerInvariant())
+        {
+            case null or "" or "paths":
+                detail = ContextDetail.Paths;
+                return true;
+            case "outline":
+                detail = ContextDetail.Outline;
+                return true;
+            case "slices":
+                detail = ContextDetail.Slices;
+                return true;
+            default:
+                detail = ContextDetail.Paths;
+                return false;
+        }
+    }
+
+    /// <summary>Parses repeated <c>path@hash</c> entries; the last '@' separates.</summary>
+    private static bool TryParseKnown(string[]? entries, out Dictionary<string, string>? known)
+    {
+        known = null;
+        if (entries is not { Length: > 0 })
+        {
+            return true;
+        }
+
+        var map = new Dictionary<string, string>(StringComparer.Ordinal);
+        foreach (string entry in entries)
+        {
+            int at = entry.LastIndexOf('@');
+            if (at <= 0 || at == entry.Length - 1)
+            {
+                return false;
+            }
+
+            map[entry[..at]] = entry[(at + 1)..];
+        }
+
+        known = map;
+        return true;
     }
 }

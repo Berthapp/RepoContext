@@ -15,6 +15,9 @@ public static class MetaKeys
     public const string ChunkCount = "chunk_count";
     public const string SymbolCount = "symbol_count";
     public const string EdgeCount = "edge_count";
+
+    /// <summary>SHA-256 over all (path, content_hash) pairs: identifies the index state.</summary>
+    public const string StateHash = "state_hash";
 }
 
 /// <summary>Existing file identity used for incremental diffing.</summary>
@@ -84,11 +87,24 @@ public sealed class IndexStore : IDisposable
         return map;
     }
 
-    /// <summary>Removes all files and chunks (used by <c>--full</c> / config change).</summary>
-    public void Clear()
+    /// <summary>
+    /// Drops and recreates all data tables (used by <c>--full</c>, config or
+    /// schema-version change). Recreating rather than deleting rows lets a
+    /// rebuild migrate an index across on-disk schema versions.
+    /// </summary>
+    public void Reset()
     {
-        Execute("DELETE FROM chunks_fts; DELETE FROM chunks; DELETE FROM symbols; DELETE FROM files;");
+        Execute(IndexSchema.DropDataTables);
+        Execute(IndexSchema.Ddl);
     }
+
+    /// <summary>
+    /// Whether the on-disk schema matches <see cref="IndexSchema.Version"/>.
+    /// False for an index written by an older tool version; query commands
+    /// treat that as "no usable index" and ask for a re-index.
+    /// </summary>
+    public bool IsSchemaCurrent =>
+        GetMeta(MetaKeys.SchemaVersion) == IndexSchema.Version.ToString();
 
     public SqliteTransaction BeginTransaction() => _connection.BeginTransaction();
 
@@ -106,7 +122,7 @@ public sealed class IndexStore : IDisposable
 
     /// <summary>Inserts a file, its chunks and its symbols (with symbol chunks).</summary>
     public void InsertFile(
-        string path, FileKindLabel labels, long sizeBytes, int lineCount,
+        string path, FileKindLabel labels, long sizeBytes, int lineCount, int tokenCount,
         string contentHash, IReadOnlyList<Chunk> chunks, IReadOnlyList<Symbol> symbols,
         SqliteTransaction transaction)
     {
@@ -115,14 +131,15 @@ public sealed class IndexStore : IDisposable
         {
             cmd.Transaction = transaction;
             cmd.CommandText =
-                "INSERT INTO files(path, kind, language, size_bytes, line_count, content_hash) " +
-                "VALUES($p, $k, $l, $s, $lc, $h); SELECT last_insert_rowid();";
+                "INSERT INTO files(path, kind, language, size_bytes, line_count, content_hash, token_count) " +
+                "VALUES($p, $k, $l, $s, $lc, $h, $t); SELECT last_insert_rowid();";
             cmd.Parameters.AddWithValue("$p", path);
             cmd.Parameters.AddWithValue("$k", labels.Kind);
             cmd.Parameters.AddWithValue("$l", labels.Language);
             cmd.Parameters.AddWithValue("$s", sizeBytes);
             cmd.Parameters.AddWithValue("$lc", lineCount);
             cmd.Parameters.AddWithValue("$h", contentHash);
+            cmd.Parameters.AddWithValue("$t", tokenCount);
             fileId = (long)cmd.ExecuteScalar()!;
         }
 
@@ -267,16 +284,23 @@ public sealed class IndexStore : IDisposable
         return Convert.ToInt32(cmd.ExecuteScalar());
     }
 
-    /// <summary>All indexed files with id, path, language and kind.</summary>
+    private const string FileRowColumns =
+        "id, path, language, kind, size_bytes, line_count, token_count, content_hash";
+
+    private static FileRow ReadFileRow(SqliteDataReader reader) => new(
+        reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+        reader.GetInt64(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetString(7));
+
+    /// <summary>All indexed files with id, path, language, kind and metrics.</summary>
     public IReadOnlyList<FileRow> GetFiles()
     {
         var rows = new List<FileRow>();
         using SqliteCommand cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT id, path, language, kind, size_bytes FROM files ORDER BY path";
+        cmd.CommandText = $"SELECT {FileRowColumns} FROM files ORDER BY path";
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            rows.Add(new FileRow(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4)));
+            rows.Add(ReadFileRow(reader));
         }
 
         return rows;
@@ -303,12 +327,76 @@ public sealed class IndexStore : IDisposable
     public FileRow? FindFile(string relativePath)
     {
         using SqliteCommand cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT id, path, language, kind, size_bytes FROM files WHERE path = $p";
+        cmd.CommandText = $"SELECT {FileRowColumns} FROM files WHERE path = $p";
         cmd.Parameters.AddWithValue("$p", relativePath);
         using SqliteDataReader reader = cmd.ExecuteReader();
-        return reader.Read()
-            ? new FileRow(reader.GetInt64(0), reader.GetString(1), reader.GetString(2), reader.GetString(3), reader.GetInt64(4))
-            : null;
+        return reader.Read() ? ReadFileRow(reader) : null;
+    }
+
+    /// <summary>A file's symbols ordered by position (for outlines).</summary>
+    public IReadOnlyList<SymbolRow> GetSymbols(long fileId)
+    {
+        var rows = new List<SymbolRow>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT name, kind, start_line, end_line, signature, doc FROM symbols " +
+            "WHERE file_id = $f ORDER BY start_line, id";
+        cmd.Parameters.AddWithValue("$f", fileId);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new SymbolRow(
+                reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3),
+                reader.GetString(4), reader.IsDBNull(5) ? null : reader.GetString(5)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Reconstructs the source text of a line range from the file's content
+    /// chunks (symbol chunks hold synthetic search text and are skipped).
+    /// Content chunks tile a file contiguously, so joining the overlapping
+    /// ones and trimming to the requested lines yields the exact source.
+    /// Returns null when the file has no content chunks in the range.
+    /// </summary>
+    public SourceSlice? GetSourceSlice(string path, int startLine, int endLine)
+    {
+        var pieces = new List<(int Start, string Content)>();
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "SELECT c.start_line, c.content FROM chunks c JOIN files f ON f.id = c.file_id " +
+                "WHERE f.path = $p AND c.kind != 'symbol' AND c.end_line >= $s AND c.start_line <= $e " +
+                "ORDER BY c.start_line, c.id";
+            cmd.Parameters.AddWithValue("$p", path);
+            cmd.Parameters.AddWithValue("$s", startLine);
+            cmd.Parameters.AddWithValue("$e", endLine);
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                pieces.Add((reader.GetInt32(0), reader.GetString(1)));
+            }
+        }
+
+        if (pieces.Count == 0)
+        {
+            return null;
+        }
+
+        int firstLine = pieces[0].Start;
+        string[] lines = string.Join('\n', pieces.Select(p => p.Content)).Split('\n');
+        int from = Math.Max(startLine - firstLine, 0);
+        int to = Math.Min(endLine - firstLine, lines.Length - 1);
+        if (to < from)
+        {
+            return null;
+        }
+
+        return new SourceSlice(
+            string.Join('\n', lines[from..(to + 1)]),
+            firstLine + from,
+            firstLine + to);
     }
 
     /// <summary>Neighbour paths of a file along an edge kind and direction.</summary>
@@ -451,8 +539,17 @@ public sealed class IndexStore : IDisposable
 /// <summary>String labels for a file's kind and language as stored in the DB.</summary>
 public readonly record struct FileKindLabel(string Kind, string Language);
 
-/// <summary>A file row: id, path, language, kind and size.</summary>
-public readonly record struct FileRow(long Id, string Path, string Language, string Kind, long SizeBytes);
+/// <summary>A file row: id, path, language, kind and metrics.</summary>
+public readonly record struct FileRow(
+    long Id, string Path, string Language, string Kind, long SizeBytes,
+    int LineCount, int TokenCount, string ContentHash);
+
+/// <summary>A stored symbol as served in outlines.</summary>
+public readonly record struct SymbolRow(
+    string Name, string Kind, int StartLine, int EndLine, string Signature, string? Doc);
+
+/// <summary>A reconstructed source line range (1-based inclusive).</summary>
+public readonly record struct SourceSlice(string Text, int StartLine, int EndLine);
 
 /// <summary>A top-level type definition used for C# name-based edge resolution.</summary>
 public readonly record struct TypeDef(string Name, long FileId, string Path);

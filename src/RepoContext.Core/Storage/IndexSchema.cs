@@ -6,9 +6,9 @@ internal static class IndexSchema
     /// <summary>
     /// Bumped when the on-disk schema changes in a way that requires a rebuild.
     /// Distinct from <see cref="Core.RepoContextInfo.SchemaVersion"/> (the JSON
-    /// output contract version).
+    /// output contract version). v4: <c>files.token_count</c> (M6, ADR 0010).
     /// </summary>
-    public const int Version = 3;
+    public const int Version = 4;
 
     public const string Ddl = """
         PRAGMA journal_mode = WAL;
@@ -26,7 +26,8 @@ internal static class IndexSchema
             language     TEXT NOT NULL,
             size_bytes   INTEGER NOT NULL,
             line_count   INTEGER NOT NULL,
-            content_hash TEXT NOT NULL
+            content_hash TEXT NOT NULL,
+            token_count  INTEGER NOT NULL
         );
 
         CREATE TABLE IF NOT EXISTS chunks (
@@ -69,5 +70,19 @@ internal static class IndexSchema
             content,
             tokenize = 'unicode61 remove_diacritics 2'
         );
+        """;
+
+    /// <summary>
+    /// Drops every data table so <see cref="Ddl"/> can recreate the current
+    /// shape. Needed when <see cref="Version"/> changed: the DDL is
+    /// IF-NOT-EXISTS and cannot alter existing tables. The meta table is kept
+    /// (it is version-stable and rewritten after every index run).
+    /// </summary>
+    public const string DropDataTables = """
+        DROP TABLE IF EXISTS chunks_fts;
+        DROP TABLE IF EXISTS edges;
+        DROP TABLE IF EXISTS symbols;
+        DROP TABLE IF EXISTS chunks;
+        DROP TABLE IF EXISTS files;
         """;
 }

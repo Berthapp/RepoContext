@@ -58,7 +58,7 @@ public sealed class Indexer
 
         if (rebuild)
         {
-            store.Clear();
+            store.Reset();
         }
 
         Dictionary<string, FileRecord> existing = rebuild
@@ -103,9 +103,11 @@ public sealed class Indexer
                     ? parser.Parse(file.Language, file.RelativePath, content)
                     : [];
                 int lineCount = CountLines(content);
+                int tokenCount = Tokens.Count(content);
                 var labels = new FileKindLabel(Label(file.Kind), Label(file.Language));
                 store.InsertFile(
-                    file.RelativePath, labels, file.SizeBytes, lineCount, hash, chunks, symbols, tx);
+                    file.RelativePath, labels, file.SizeBytes, lineCount, tokenCount, hash,
+                    chunks, symbols, tx);
             }
 
             foreach ((string path, FileRecord record) in existing)
@@ -124,6 +126,7 @@ public sealed class Indexer
 
         int totalChunks = store.CountChunks();
         int totalSymbols = store.CountSymbols();
+        store.SetMeta(MetaKeys.StateHash, ComputeStateHash(store));
         store.SetMeta(MetaKeys.SchemaVersion, IndexSchema.Version.ToString());
         store.SetMeta(MetaKeys.ToolVersion, _toolVersion);
         store.SetMeta(MetaKeys.ConfigHash, configHash);
@@ -145,6 +148,24 @@ public sealed class Indexer
             TotalEdges = totalEdges,
             FullRebuild = rebuild,
         };
+    }
+
+    /// <summary>
+    /// SHA-256 over the sorted (path, content_hash) pairs: a stable identifier
+    /// for "what the index knows". Agents compare it across calls to detect
+    /// staleness without re-reading anything (ADR 0010).
+    /// </summary>
+    private static string ComputeStateHash(IndexStore store)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach ((string path, FileRecord record) in store.GetExistingFiles()
+            .OrderBy(e => e.Key, StringComparer.Ordinal))
+        {
+            sb.Append(path).Append('\n').Append(record.ContentHash).Append('\n');
+        }
+
+        return Convert.ToHexStringLower(
+            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString())));
     }
 
     private static string DecodeUtf8(byte[] bytes)

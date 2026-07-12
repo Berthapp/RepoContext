@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using RepoContext.Core;
 using RepoContext.Core.Graph;
 
@@ -9,12 +8,6 @@ namespace RepoContext.Cli.Output;
 /// <summary>Renders <c>related</c> results as text or JSON.</summary>
 public static class RelatedOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        WriteIndented = true,
-        NewLine = "\n",
-    };
 
     public static string Render(RelatedResult result, OutputFormat format) => format switch
     {
@@ -94,7 +87,7 @@ public static class RelatedOutput
                 .ToList(),
         };
 
-        return JsonSerializer.Serialize(doc, JsonOptions);
+        return JsonSerializer.Serialize(doc, OutputJson.Options);
     }
 
     private static string Label(Relation relation) => relation switch

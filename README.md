@@ -13,6 +13,22 @@ same index always produces byte-identical output.
 
 Supported languages: **TypeScript, TSX, JavaScript, C#**.
 
+## Why: tokens are the bill
+
+Every token figure repoctx reports is a real BPE count, and budgets are charged
+at what the agent actually receives — so `--budget-tokens 2000` really means
+about 2,000 tokens. Measured end-to-end on this repository
+([methodology & full numbers](docs/token-savings.md)):
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/token-savings-dark.svg">
+  <img alt="Measured: getting working context for the same task costs 6,222 tokens with pointer-plus-full-read workflows, 2,151 with a budgeted outline bundle and 2,110 with a budgeted slices bundle - 66 percent less." src="docs/assets/token-savings.svg" width="880">
+</picture>
+
+The loop an agent runs, on this repository:
+
+<img alt="Animated terminal demo: repoctx context with a token budget returning ranked source slices with reasons and hashes; repoctx outline showing a file skeleton for a third of the read cost; repoctx changed reporting a modified file and its impacted dependents; and a repeated context call with --known returning a zero-cost unchanged marker." src="docs/assets/demo.svg" width="880">
+
 ## Requirements
 
 - [.NET 10 SDK](https://dotnet.microsoft.com/) (LTS) to build; the released
@@ -87,7 +103,11 @@ Budget: 4 file(s) · ~578 estimated tokens
 
 Every command supports `--format json` for machine consumption. The contract is
 stable and deterministic (snake_case keys, always `schema_version`, same input ⇒
-byte-identical output). For example:
+byte-identical output). Because the JSON consumers are AI agents that pay per
+token, documents are emitted **compact** — a single line, no indentation, and
+null-valued optional fields (such as `heading`) omitted (ADR 0009). Pipe
+through `jq` when reading as a human, or use the `text`/`md` formats. For
+example (pretty-printed here for readability only):
 
 ```
 $ repoctx search "login" --top 2 --format json
@@ -95,7 +115,7 @@ $ repoctx search "login" --top 2 --format json
 
 ```json
 {
-  "schema_version": 1,
+  "schema_version": 2,
   "command": "search",
   "query": "login",
   "count": 2,
@@ -126,20 +146,42 @@ $ repoctx search "login" --top 2 --format json
 
 `reasons` is machine-readable and explains every hit (e.g. `fts`,
 `symbol:loginUser`, `imported-by:<file>`, `test-of:<file>`, `path-name-match`).
+In `context` results, at most two full-path graph reasons are listed per file;
+further links fold into a `graph:+N` summary (the full edge list is available
+via `repoctx related`).
 
 ## Commands
 
 | Command | Purpose | Key options |
 | --- | --- | --- |
 | `init` | Create `.repoctx/` and `repoctx.config.json`; add `.repoctx/` to `.gitignore`. Optionally add usage instructions to `CLAUDE.md` / `AGENTS.md`. | `--force`, `--agents`, `--no-agents` |
-| `index` | Build or incrementally update the index. | `--full` |
+| `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained, budgeted context bundle for a task. | `--top`, `--budget-tokens`, `--snippets`, `--format` |
-| `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--detail paths\|outline\|slices`, `--known <path>@<hash>`, `--format` |
+| `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
+| `changed` | Working-tree diff against the index, with impacted dependents. | `--format` |
+| `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
 Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
+
+### The token-frugal loop
+
+All token figures are real BPE counts (`o200k_base`, computed offline at index
+time), so budgets can be trusted. The intended agent workflow:
+
+1. `architecture --depth 1` — orientation for a handful of tokens.
+2. `context "<task>" --detail slices --budget-tokens 2000` — working context
+   with source slices packed into the budget (`--detail outline` surveys more
+   files for fewer tokens; the default `paths` returns pointers plus exact
+   full-read costs).
+3. `outline <file>` before any full read.
+4. After editing: `changed` — and `repoctx index` when it reports `stale`.
+5. Echo the `hash` of files you already hold via `--known <path>@<hash>`:
+   unchanged files return as zero-cost markers instead of repeated content.
+   Every `context` response also carries a `state` hash that moves whenever
+   the index content changes.
 
 ## Agent integration
 
@@ -168,28 +210,32 @@ instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 ```markdown
 ## Getting context
 
-Before reading files, ask RepoContext for the relevant ones:
+This repository is indexed by RepoContext (`repoctx`); token figures are real
+BPE counts. The economical loop:
 
-- `repoctx context "<what you are about to do>" --format json` — ranked files
-  with reasons and a token budget.
-- `repoctx related <file> --format json` — a file's imports, dependents and tests.
-- `repoctx search "<term>" --symbols --format json` — find a symbol.
-
-Prefer these over reading the whole repository. Re-run `repoctx index` if the
-working tree changed.
+1. Orient once: `repoctx architecture --depth 1 --format md`.
+2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format json`.
+3. Before reading any file: `repoctx outline <file> --format json`.
+4. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
+5. Find a symbol: `repoctx search "<term>" --symbols --format json`.
+6. After editing: `repoctx changed --format json`; when `stale`, run `repoctx index`.
+7. Never pay twice: `--known <path>@<hash>` returns unchanged files as
+   zero-cost markers.
 ```
 
 ## MCP server
 
 Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
-server over stdio and exposes three read-only tools:
+server over stdio and exposes five read-only tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `snippets` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known` |
 | `repoctx.get_related_files` | `related` | `file` |
+| `repoctx.get_outline` | `outline` | `file` |
+| `repoctx.get_changes` | `changed` | — |
 
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
@@ -286,8 +332,25 @@ sensitive files in `sensitiveFiles` / `.repoctxignore`.
 
 See `CLAUDE.md` for build/test commands, repository structure and conventions,
 `docs/build-prompt.md` for the milestone plan, and `docs/decisions/` for the
-architecture decision records. `docs/benchmark.md` holds the token-savings
-benchmark protocol.
+architecture decision records. `docs/benchmark.md` holds the performance
+benchmark protocol; `docs/token-savings.md` documents the measured end-to-end
+token savings of the M6 context protocol.
+
+### Releasing
+
+Releases are cut by merging, not by hand:
+
+1. Bump `<VersionPrefix>` in `Directory.Build.props` inside the feature PR
+   (contract changes bump the minor version while pre-1.0).
+2. Merge to `main`. The `Tag on version change` workflow notices the new
+   version, pushes `v<version>`, and `release.yml` publishes to NuGet, builds
+   the self-contained binaries and drafts the GitHub release.
+3. Review and publish the draft release.
+
+A merge that leaves `VersionPrefix` untouched releases nothing. One-time
+setup: an Actions secret `RELEASE_PAT` (fine-grained PAT, this repository
+only, Contents: Read and write) — required because tags pushed with the
+default workflow token do not trigger `release.yml`.
 
 ## License
 

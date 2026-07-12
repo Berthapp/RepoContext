@@ -1,33 +1,35 @@
 using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
-using RepoContext.Core.Architecture;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
 
-/// <summary>The <c>repoctx architecture</c> command (spec F6).</summary>
-public static class ArchitectureCommand
+/// <summary>
+/// The <c>repoctx outline</c> command (M6, ADR 0010): a file's skeleton —
+/// symbols, signatures, doc summaries, token cost — for a fraction of the
+/// tokens a full read would spend.
+/// </summary>
+public static class OutlineCommand
 {
     public static Command Build()
     {
+        var file = new Argument<string>("file")
+        {
+            Description = "The file to outline.",
+        };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
             DefaultValueFactory = _ => "text",
         };
         format.Aliases.Add("-f");
-        var depth = new Option<int>("--depth")
-        {
-            Description = "Directory-tree depth (1 gives a minimal orientation summary).",
-            DefaultValueFactory = _ => ArchitectureEngine.DefaultDepth,
-        };
 
-        var command = new Command("architecture",
-            "Summarize the repository structure, languages and central files.")
+        var command = new Command("outline",
+            "Show a file's skeleton (symbols, signatures, docs) instead of its content.")
         {
+            file,
             format,
-            depth,
         };
 
         command.SetAction(parseResult =>
@@ -38,18 +40,19 @@ public static class ArchitectureCommand
                 return ExitCode.InvalidArguments;
             }
 
-            int treeDepth = parseResult.GetValue(depth);
-            if (treeDepth <= 0)
-            {
-                Console.Error.WriteLine("--depth must be greater than zero.");
-                return ExitCode.InvalidArguments;
-            }
-
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
             if (layout is null || !layout.HasIndex)
             {
                 Console.Error.WriteLine("No index found. Run 'repoctx index' first.");
                 return ExitCode.NoIndex;
+            }
+
+            string input = parseResult.GetValue(file) ?? string.Empty;
+            string? relative = layout.ToRelativePath(input, Directory.GetCurrentDirectory());
+            if (relative is null)
+            {
+                Console.Error.WriteLine("Path is outside the repository.");
+                return ExitCode.InvalidArguments;
             }
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
@@ -58,8 +61,14 @@ public static class ArchitectureCommand
                 return ExitCode.NoIndex;
             }
 
-            ArchitectureResult result = new ArchitectureEngine(store).Build(treeDepth);
-            CommandSupport.WriteRendered(ArchitectureOutput.Render(result, outputFormat));
+            Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative);
+            if (result is null)
+            {
+                Console.Error.WriteLine($"File not found in index: {relative}");
+                return ExitCode.Error;
+            }
+
+            CommandSupport.WriteRendered(OutlineOutput.Render(result, outputFormat));
             return ExitCode.Success;
         });
 

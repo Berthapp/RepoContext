@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using RepoContext.Core;
 using RepoContext.Core.Architecture;
 
@@ -9,12 +8,6 @@ namespace RepoContext.Cli.Output;
 /// <summary>Renders the architecture summary as text, JSON or Markdown.</summary>
 public static class ArchitectureOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        WriteIndented = true,
-        NewLine = "\n",
-    };
 
     public static string Render(ArchitectureResult result, OutputFormat format) => format switch
     {
@@ -28,7 +21,7 @@ public static class ArchitectureOutput
         var sb = new StringBuilder();
         sb.Append($"Architecture: {r.TotalFiles} files, {r.TotalLoc} LOC\n\n");
 
-        sb.Append("Structure (depth 3, LOC):\n");
+        sb.Append($"Structure (depth {r.Depth}, LOC):\n");
         WriteTree(sb, r.Tree, 0, "  ");
 
         sb.Append("\nLanguages:\n");
@@ -106,6 +99,7 @@ public static class ArchitectureOutput
             Command = "architecture",
             TotalFiles = r.TotalFiles,
             TotalLoc = r.TotalLoc,
+            Depth = r.Depth,
             Tree = ToDto(r.Tree),
             Languages = r.Languages
                 .Select(l => new LanguageDto { Language = l.Language, Files = l.Files, Loc = l.Loc })
@@ -116,7 +110,7 @@ public static class ArchitectureOutput
             Entrypoints = r.Entrypoints,
         };
 
-        return JsonSerializer.Serialize(doc, JsonOptions);
+        return JsonSerializer.Serialize(doc, OutputJson.Options);
     }
 
     private static TreeDto ToDto(TreeNode node) => new()
@@ -137,6 +131,8 @@ public static class ArchitectureOutput
         public int TotalFiles { get; init; }
 
         public int TotalLoc { get; init; }
+
+        public int Depth { get; init; }
 
         public required TreeDto Tree { get; init; }
 

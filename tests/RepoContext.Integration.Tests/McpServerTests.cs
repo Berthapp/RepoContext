@@ -33,7 +33,7 @@ public class McpServerTests
     }
 
     [Fact]
-    public async Task ListTools_ExposesTheThreeReadOnlyTools()
+    public async Task ListTools_ExposesTheFiveReadOnlyTools()
     {
         using FixtureWorkspace ws = Indexed();
         await using McpClient client = await ConnectAsync(ws);
@@ -41,10 +41,78 @@ public class McpServerTests
         IList<McpClientTool> tools = await client.ListToolsAsync();
         var names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(3, tools.Count);
+        Assert.Equal(5, tools.Count);
         Assert.Contains("repoctx.search", names);
         Assert.Contains("repoctx.get_context", names);
         Assert.Contains("repoctx.get_related_files", names);
+        Assert.Contains("repoctx.get_outline", names);
+        Assert.Contains("repoctx.get_changes", names);
+    }
+
+    [Fact]
+    public async Task GetOutline_ReturnsTheFileSkeleton()
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+
+        CallToolResult result = await client.CallToolAsync(
+            "repoctx.get_outline",
+            new Dictionary<string, object?> { ["file"] = "src/auth/login.ts" });
+
+        Assert.True(result.IsError is not true);
+        using JsonDocument doc = JsonDocument.Parse(TextOf(result));
+        Assert.Equal("outline", doc.RootElement.GetProperty("command").GetString());
+        Assert.Contains(doc.RootElement.GetProperty("symbols").EnumerateArray(),
+            s => s.GetProperty("name").GetString() == "loginUser");
+    }
+
+    [Fact]
+    public async Task GetChanges_ReportsAModifiedFile()
+    {
+        using FixtureWorkspace ws = Indexed();
+        string session = Path.Combine(ws.Root, "src/auth/session.ts");
+        File.WriteAllText(session, File.ReadAllText(session) + "\n// edited\n");
+
+        await using McpClient client = await ConnectAsync(ws);
+        CallToolResult result = await client.CallToolAsync(
+            "repoctx.get_changes", new Dictionary<string, object?>());
+
+        Assert.True(result.IsError is not true);
+        using JsonDocument doc = JsonDocument.Parse(TextOf(result));
+        Assert.True(doc.RootElement.GetProperty("stale").GetBoolean());
+        Assert.Contains(doc.RootElement.GetProperty("changed").EnumerateArray(),
+            c => c.GetProperty("path").GetString() == "src/auth/session.ts");
+    }
+
+    [Fact]
+    public async Task GetContext_WithKnownHash_ReturnsUnchangedMarker()
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+
+        CallToolResult first = await client.CallToolAsync(
+            "repoctx.get_context",
+            new Dictionary<string, object?> { ["task"] = "change the login logic" });
+        using JsonDocument firstDoc = JsonDocument.Parse(TextOf(first));
+        JsonElement login = firstDoc.RootElement.GetProperty("results").EnumerateArray()
+            .Single(r => r.GetProperty("path").GetString() == "src/auth/login.ts");
+        string hash = login.GetProperty("hash").GetString()!;
+
+        CallToolResult second = await client.CallToolAsync(
+            "repoctx.get_context",
+            new Dictionary<string, object?>
+            {
+                ["task"] = "change the login logic",
+                ["detail"] = "slices",
+                ["known"] = new[] { $"src/auth/login.ts@{hash}" },
+            });
+
+        Assert.True(second.IsError is not true);
+        using JsonDocument doc = JsonDocument.Parse(TextOf(second));
+        JsonElement marker = doc.RootElement.GetProperty("results").EnumerateArray()
+            .Single(r => r.GetProperty("path").GetString() == "src/auth/login.ts");
+        Assert.True(marker.GetProperty("unchanged").GetBoolean());
+        Assert.Equal(0, marker.GetProperty("estimated_tokens").GetInt32());
     }
 
     [Fact]
@@ -59,7 +127,7 @@ public class McpServerTests
 
         Assert.True(result.IsError is not true);
         using JsonDocument doc = JsonDocument.Parse(TextOf(result));
-        Assert.Equal(1, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(Core.RepoContextInfo.SchemaVersion, doc.RootElement.GetProperty("schema_version").GetInt32());
         Assert.Equal("search", doc.RootElement.GetProperty("command").GetString());
         JsonElement results = doc.RootElement.GetProperty("results");
         Assert.True(results.GetArrayLength() > 0);

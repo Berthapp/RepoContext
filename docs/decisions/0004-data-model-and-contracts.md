@@ -47,7 +47,10 @@ oversize files, and symlinks skipped; kind = source/test/doc/config/other.
 
 ## JSON output contract (`search --json`)
 
-snake_case, every document carries `schema_version` (= 1):
+snake_case, every document carries `schema_version` (= 1). *Serialization
+details of the example below (indentation, `"heading": null`) are superseded by
+ADR 0009: documents are emitted compact and null-valued optional fields are
+omitted.*
 
 ```json
 { "schema_version": 1, "command": "search", "query": "login", "count": 1,

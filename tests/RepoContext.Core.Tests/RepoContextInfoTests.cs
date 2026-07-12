@@ -6,9 +6,11 @@ namespace RepoContext.Core.Tests;
 public class RepoContextInfoTests
 {
     [Fact]
-    public void SchemaVersion_IsOne()
+    public void SchemaVersion_IsTwo()
     {
-        Assert.Equal(1, RepoContextInfo.SchemaVersion);
+        // v2 = the M6 token-frugal contract (ADR 0010). Bump this test
+        // deliberately when the JSON contract changes again.
+        Assert.Equal(2, RepoContextInfo.SchemaVersion);
     }
 
     [Fact]

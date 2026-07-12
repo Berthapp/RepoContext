@@ -1,6 +1,5 @@
 using System.Text;
 using System.Text.Json;
-using System.Text.Json.Serialization;
 using RepoContext.Core;
 using RepoContext.Core.Storage;
 
@@ -9,13 +8,6 @@ namespace RepoContext.Cli.Output;
 /// <summary>Renders search results as deterministic text or JSON.</summary>
 public static class SearchOutput
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower,
-        DefaultIgnoreCondition = JsonIgnoreCondition.Never,
-        WriteIndented = true,
-        NewLine = "\n",
-    };
 
     public static string Render(string query, IReadOnlyList<SearchHit> hits, OutputFormat format) => format switch
     {
@@ -78,7 +70,7 @@ public static class SearchOutput
             }).ToList(),
         };
 
-        return JsonSerializer.Serialize(doc, JsonOptions);
+        return JsonSerializer.Serialize(doc, OutputJson.Options);
     }
 
     private static double Round(double value) => Math.Round(value, 4, MidpointRounding.AwayFromZero);

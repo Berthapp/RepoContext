@@ -9,7 +9,9 @@ namespace RepoContext.Core.Architecture;
 /// </summary>
 public sealed class ArchitectureEngine
 {
-    private const int MaxDepth = 3;
+    /// <summary>Default directory-tree depth (spec F6).</summary>
+    public const int DefaultDepth = 3;
+
     private const int TopCentral = 10;
 
     private static readonly HashSet<string> EntrypointNames = new(StringComparer.OrdinalIgnoreCase)
@@ -24,7 +26,12 @@ public sealed class ArchitectureEngine
 
     public ArchitectureEngine(IndexStore store) => _store = store;
 
-    public ArchitectureResult Build()
+    /// <param name="depth">
+    /// Directory-tree depth. Lower values give a cheaper orientation summary
+    /// (<c>--depth 1</c> is a ~10-line overview an agent can afford at session
+    /// start, ADR 0010).
+    /// </param>
+    public ArchitectureResult Build(int depth = DefaultDepth)
     {
         IReadOnlyList<FileMetric> files = _store.GetFileMetrics();
 
@@ -51,7 +58,8 @@ public sealed class ArchitectureEngine
         {
             TotalFiles = files.Count,
             TotalLoc = files.Sum(f => f.LineCount),
-            Tree = BuildTree(files),
+            Depth = depth,
+            Tree = BuildTree(files, depth),
             Languages = languages,
             Central = central,
             Entrypoints = entrypoints,
@@ -73,7 +81,7 @@ public sealed class ArchitectureEngine
             && withOutgoing.Contains(file.Path);
     }
 
-    private static TreeNode BuildTree(IReadOnlyList<FileMetric> files)
+    private static TreeNode BuildTree(IReadOnlyList<FileMetric> files, int maxDepth)
     {
         // Aggregate LOC and file counts into every ancestor directory.
         var loc = new Dictionary<string, int>(StringComparer.Ordinal);
@@ -104,21 +112,21 @@ public sealed class ArchitectureEngine
             }
         }
 
-        return Node(string.Empty, ".", 0, loc, count, children);
+        return Node(string.Empty, ".", 0, maxDepth, loc, count, children);
     }
 
     private static TreeNode Node(
-        string dir, string name, int depth,
+        string dir, string name, int depth, int maxDepth,
         Dictionary<string, int> loc, Dictionary<string, int> count,
         Dictionary<string, SortedSet<string>> children)
     {
         var kids = new List<TreeNode>();
-        if (depth < MaxDepth && children.TryGetValue(dir, out SortedSet<string>? subs))
+        if (depth < maxDepth && children.TryGetValue(dir, out SortedSet<string>? subs))
         {
             foreach (string sub in subs)
             {
                 string subName = sub[(sub.LastIndexOf('/') + 1)..];
-                kids.Add(Node(sub, subName, depth + 1, loc, count, children));
+                kids.Add(Node(sub, subName, depth + 1, maxDepth, loc, count, children));
             }
         }
 
