@@ -435,6 +435,11 @@ FodyWeavers.xsd
 # The generated index is a sensitive, machine-local artifact.
 .repoctx/
 
+# Agent instruction files at the repo root stay machine-local
+# (anchored so fixtures may still commit files with these names).
+/CLAUDE.md
+/AGENTS.md
+
 # Test fixtures must be committed verbatim, including the negative-case files
 # that the default rules above would normally ignore (.env, node_modules, ...).
 # The indexer's ignore/sensitive handling is exercised against them in CI.
