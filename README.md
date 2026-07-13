@@ -43,6 +43,21 @@ dotnet tool install --global RepoContext.Tool
 repoctx --version
 ```
 
+Or pinned per repository as a local tool (the manifest is committed, so the
+whole team gets the same version):
+
+```bash
+dotnet new tool-manifest        # once per repo, creates .config/dotnet-tools.json
+dotnet tool install RepoContext.Tool
+dotnet repoctx --version
+```
+
+> **Note:** `RepoContext.Tool` is a .NET *tool* — a standalone `repoctx`
+> executable, not a library. Adding it to a project as a `PackageReference`
+> (Visual Studio NuGet Package Manager or `dotnet add package`) fails with
+> `NU1212`/`NU1213` by design. Install it with `dotnet tool install` as shown
+> above instead.
+
 Or download a self-contained binary for `linux-x64`, `win-x64` or `osx-arm64`
 (no .NET runtime required) from the [latest release][releases], unpack it and
 put `repoctx` on your `PATH`:
