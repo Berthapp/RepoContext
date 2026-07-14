@@ -17,6 +17,10 @@ public sealed class FixtureWorkspace : IDisposable
     /// <summary>Runs the CLI with this workspace as the working directory.</summary>
     public CliResult Run(params string[] args) => CliHarness.RunIn(Root, args);
 
+    /// <summary>Runs the CLI with additional environment variables set.</summary>
+    public CliResult RunWithEnv(IReadOnlyDictionary<string, string> environment, params string[] args) =>
+        CliHarness.RunIn(Root, environment, args);
+
     public void Dispose()
     {
         try

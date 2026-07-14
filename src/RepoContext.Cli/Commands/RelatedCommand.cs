@@ -2,6 +2,7 @@ using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Graph;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
@@ -66,12 +67,8 @@ public static class RelatedCommand
             }
 
             string rendered = RelatedOutput.Render(result, outputFormat);
-            Console.Out.Write(rendered);
-            if (!rendered.EndsWith('\n'))
-            {
-                Console.Out.Write('\n');
-            }
-
+            CommandSupport.WriteRendered(rendered);
+            UsageRecorder.Record(layout, "related", UsageSources.Cli, rendered);
             return ExitCode.Success;
         });
 

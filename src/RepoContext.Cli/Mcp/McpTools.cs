@@ -8,6 +8,7 @@ using RepoContext.Core.Context;
 using RepoContext.Core.Graph;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Query;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Mcp;
@@ -97,7 +98,9 @@ public static class McpTools
         }
 
         IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols);
-        return Ok(SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json));
+        string rendered = SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json);
+        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered);
+        return Ok(rendered);
     }
 
     private static CallToolResult GetContext(
@@ -167,7 +170,12 @@ public static class McpTools
             Known = knownMap,
         });
 
-        return Ok(ContextOutput.Render(result, OutputFormat.Json));
+        string rendered = ContextOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
+            UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+            files: result.Items.Count,
+            unchanged: result.Items.Count(i => i.Unchanged));
+        return Ok(rendered);
     }
 
     private static CallToolResult GetRelatedFiles(
@@ -196,7 +204,9 @@ public static class McpTools
             return Fail($"File not found in index: {relative}");
         }
 
-        return Ok(RelatedOutput.Render(result, OutputFormat.Json));
+        string rendered = RelatedOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered);
+        return Ok(rendered);
     }
 
     private static CallToolResult GetOutline(
@@ -225,7 +235,10 @@ public static class McpTools
             return Fail($"File not found in index: {relative}");
         }
 
-        return Ok(OutlineOutput.Render(result, OutputFormat.Json));
+        string rendered = OutlineOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "outline", UsageSources.Mcp, rendered,
+            replacedTokens: result.TokenCount, files: 1);
+        return Ok(rendered);
     }
 
     private static CallToolResult GetChanges()
@@ -243,7 +256,9 @@ public static class McpTools
         }
 
         ChangedResult result = ChangeDetector.Run(layout, config, store);
-        return Ok(ChangedOutput.Render(result, OutputFormat.Json));
+        string rendered = ChangedOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered);
+        return Ok(rendered);
     }
 
     /// <summary>Resolves an initialized, indexed repository from the working directory.</summary>

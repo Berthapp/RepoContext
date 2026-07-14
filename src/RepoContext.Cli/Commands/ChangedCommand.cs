@@ -3,6 +3,7 @@ using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Indexing;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
@@ -51,7 +52,9 @@ public static class ChangedCommand
             }
 
             ChangedResult result = ChangeDetector.Run(layout, config, store);
-            CommandSupport.WriteRendered(ChangedOutput.Render(result, outputFormat));
+            string rendered = ChangedOutput.Render(result, outputFormat);
+            CommandSupport.WriteRendered(rendered);
+            UsageRecorder.Record(layout, "changed", UsageSources.Cli, rendered);
             return ExitCode.Success;
         });
 

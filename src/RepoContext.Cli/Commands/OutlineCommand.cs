@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
@@ -68,7 +69,10 @@ public static class OutlineCommand
                 return ExitCode.Error;
             }
 
-            CommandSupport.WriteRendered(OutlineOutput.Render(result, outputFormat));
+            string rendered = OutlineOutput.Render(result, outputFormat);
+            CommandSupport.WriteRendered(rendered);
+            UsageRecorder.Record(layout, "outline", UsageSources.Cli, rendered,
+                replacedTokens: result.TokenCount, files: 1);
             return ExitCode.Success;
         });
 

@@ -2,6 +2,7 @@ using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Query;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
@@ -77,12 +78,8 @@ public static class SearchCommand
 
             IReadOnlyList<SearchHit> hits = store.Search(match, topN, parseResult.GetValue(symbolsOnly));
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
-            Console.Out.Write(rendered);
-            if (!rendered.EndsWith('\n'))
-            {
-                Console.Out.Write('\n');
-            }
-
+            CommandSupport.WriteRendered(rendered);
+            UsageRecorder.Record(layout, "search", UsageSources.Cli, rendered);
             return ExitCode.Success;
         });
 

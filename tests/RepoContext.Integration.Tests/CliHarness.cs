@@ -30,7 +30,11 @@ public static class CliHarness
     public static CliResult Run(params string[] args) =>
         RunIn(Environment.CurrentDirectory, args);
 
-    public static CliResult RunIn(string workingDirectory, params string[] args)
+    public static CliResult RunIn(string workingDirectory, params string[] args) =>
+        RunIn(workingDirectory, environment: null, args);
+
+    public static CliResult RunIn(
+        string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
@@ -39,6 +43,10 @@ public static class CliHarness
             UseShellExecute = false,
             WorkingDirectory = workingDirectory,
         };
+        foreach ((string name, string value) in environment ?? new Dictionary<string, string>())
+        {
+            startInfo.Environment[name] = value;
+        }
         startInfo.ArgumentList.Add(CliDll);
         foreach (string arg in args)
         {

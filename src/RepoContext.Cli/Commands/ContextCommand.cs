@@ -3,6 +3,7 @@ using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
@@ -124,7 +125,12 @@ public static class ContextCommand
                 Known = knownMap,
             });
 
-            CommandSupport.WriteRendered(ContextOutput.Render(result, outputFormat));
+            string rendered = ContextOutput.Render(result, outputFormat);
+            CommandSupport.WriteRendered(rendered);
+            UsageRecorder.Record(layout, "context", UsageSources.Cli, rendered,
+                UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+                files: result.Items.Count,
+                unchanged: result.Items.Count(i => i.Unchanged));
             return ExitCode.Success;
         });
 
