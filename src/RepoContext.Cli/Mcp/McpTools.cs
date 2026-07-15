@@ -42,14 +42,16 @@ public static class McpTools
                     + "document (schema_version, results[] with path, score, kind, lines and "
                     + "machine-readable reasons). Use for finding files or symbols by term.")),
             McpServerTool.Create(
-                (Func<string, int, int?, string, string[]?, CallToolResult>)GetContext,
+                (Func<string, int, int?, string, string[]?, string?, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Ranked, explained context bundle for a natural-language task, packed into a "
                     + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
                     + "costs; 'outline' adds symbol skeletons; 'slices' embeds the best source "
-                    + "slice so no file read is needed. Pass path@hash as 'known' only for files "
-                    + "whose content you already hold; do not echo hashes from pointer-only results. "
-                    + "Prefer this over reading files.")),
+                    + "slice so no file read is needed. Pass a stable 'session' name and delivered "
+                    + "slices are tracked server-side, so unchanged files return as zero-cost "
+                    + "markers on later calls without echoing hashes. Pass path@hash as 'known' "
+                    + "only for files whose content you already hold; do not echo hashes from "
+                    + "pointer-only results. Prefer this over reading files.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
                 Describe("repoctx.get_related_files",
@@ -112,7 +114,10 @@ public static class McpTools
         [Description("Per-file detail: 'paths', 'outline' or 'slices'.")] string detail = "paths",
         [Description("Files whose full content you already hold, each as path@hash; "
             + "unchanged ones return as zero-cost markers.")]
-        string[]? known = null)
+        string[]? known = null,
+        [Description("Session name (A-Za-z0-9._-): the known-file set is tracked server-side "
+            + "under .repoctx/sessions/, so hashes need not be echoed back.")]
+        string? session = null)
     {
         if (top <= 0)
         {
@@ -152,9 +157,26 @@ public static class McpTools
             }
         }
 
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
         if (Locate() is not { } layout)
         {
             return NoIndex();
+        }
+
+        if (session is not null)
+        {
+            var merged = new Dictionary<string, string>(
+                SessionStore.Load(layout, session), StringComparer.Ordinal);
+            foreach ((string path, string hash) in knownMap ?? new Dictionary<string, string>())
+            {
+                merged[path] = hash;
+            }
+
+            knownMap = merged;
         }
 
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
@@ -181,6 +203,11 @@ public static class McpTools
             files: result.Items.Count,
             unchanged: result.Items.Count(i => i.Unchanged),
             scale: scale);
+        if (session is not null)
+        {
+            SessionStore.Save(layout, session, result);
+        }
+
         return Ok(rendered);
     }
 

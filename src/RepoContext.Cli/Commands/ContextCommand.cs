@@ -41,6 +41,12 @@ public static class ContextCommand
             Description = "A file you already have, as <path>@<hash> (repeatable). " +
                           "Unchanged files come back as zero-cost markers.",
         };
+        var session = new Option<string?>("--session")
+        {
+            Description = "Track the known-file set server-side under this session name " +
+                          "(.repoctx/sessions/), so hashes need not be echoed back. " +
+                          "Delivered slices are remembered; explicit --known entries win.",
+        };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -57,6 +63,7 @@ public static class ContextCommand
             detail,
             snippets,
             known,
+            session,
             format,
         };
 
@@ -101,11 +108,24 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
+            string? sessionName = parseResult.GetValue(session);
+            if (sessionName is not null && !SessionStore.IsValidName(sessionName))
+            {
+                Console.Error.WriteLine(
+                    "Invalid --session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+                return ExitCode.InvalidArguments;
+            }
+
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
             if (layout is null || !layout.HasIndex)
             {
                 Console.Error.WriteLine("No index found. Run 'repoctx index' first.");
                 return ExitCode.NoIndex;
+            }
+
+            if (sessionName is not null)
+            {
+                knownMap = MergeKnown(SessionStore.Load(layout, sessionName), knownMap);
             }
 
             string query = parseResult.GetValue(task) ?? string.Empty;
@@ -135,6 +155,11 @@ public static class ContextCommand
                 files: result.Items.Count,
                 unchanged: result.Items.Count(i => i.Unchanged),
                 scale: scale);
+            if (sessionName is not null)
+            {
+                SessionStore.Save(layout, sessionName, result);
+            }
+
             return ExitCode.Success;
         });
 
@@ -158,6 +183,19 @@ public static class ContextCommand
                 detail = ContextDetail.Paths;
                 return false;
         }
+    }
+
+    /// <summary>Session entries seed the map; explicit <c>--known</c> entries win.</summary>
+    private static Dictionary<string, string> MergeKnown(
+        IReadOnlyDictionary<string, string> sessionKnown, Dictionary<string, string>? explicitKnown)
+    {
+        var merged = new Dictionary<string, string>(sessionKnown, StringComparer.Ordinal);
+        foreach ((string path, string hash) in explicitKnown ?? new Dictionary<string, string>())
+        {
+            merged[path] = hash;
+        }
+
+        return merged;
     }
 
     /// <summary>Parses repeated <c>path@hash</c> entries; the last '@' separates.</summary>
