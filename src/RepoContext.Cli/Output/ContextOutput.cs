@@ -31,6 +31,16 @@ public static class ContextOutput
                 sb.Append(" · **unchanged**");
             }
 
+            if (item.DuplicateOf is { } dupMd)
+            {
+                sb.Append(" · **duplicate of** `").Append(dupMd).Append('`');
+            }
+
+            if (item.Stripped)
+            {
+                sb.Append(" · comments stripped");
+            }
+
             sb.Append(" · hash `").Append(item.Hash).Append("`\n");
             sb.Append("- reasons: ").Append(string.Join(", ", item.Reasons)).Append('\n');
             AppendSymbolsMd(sb, item);
@@ -90,7 +100,10 @@ public static class ContextOutput
         int i = 1;
         foreach (ContextItem item in result.Items)
         {
-            string marker = item.Unchanged ? "  unchanged" : string.Empty;
+            string marker = item.Unchanged ? "  unchanged"
+                : item.DuplicateOf is { } dup ? "  duplicate-of:" + dup
+                : item.Stripped ? "  stripped"
+                : string.Empty;
             sb.Append($"{i,3}. {item.Path,-46} {item.Score,7:F4}  {item.Kind,-6}  " +
                       $"[L{item.StartLine}-{item.EndLine}]  ~{item.EstimatedTokens} tokens  {item.Hash}{marker}\n");
             sb.Append("      reasons: ").Append(string.Join(", ", item.Reasons)).Append('\n');
@@ -158,6 +171,8 @@ public static class ContextOutput
                 FileTokens = item.FileTokens,
                 Hash = item.Hash,
                 Unchanged = item.Unchanged ? true : null,
+                DuplicateOf = item.DuplicateOf,
+                Stripped = item.Stripped ? true : null,
                 Reasons = item.Reasons,
                 Symbols = item.Symbols?.Select(s => new ContextSymbolDto
                 {
@@ -225,6 +240,12 @@ public static class ContextOutput
 
         /// <summary>Present (true) only when the caller's known hash still matches.</summary>
         public bool? Unchanged { get; init; }
+
+        /// <summary>Another bundle item with byte-identical content; read that one.</summary>
+        public string? DuplicateOf { get; init; }
+
+        /// <summary>Present (true) when the slice was comment-stripped (lines approximate).</summary>
+        public bool? Stripped { get; init; }
 
         public required IReadOnlyList<string> Reasons { get; init; }
 

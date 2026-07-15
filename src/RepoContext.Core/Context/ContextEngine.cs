@@ -242,6 +242,7 @@ public sealed class ContextEngine
         List<Candidate> ordered, ContextOptions options, Dictionary<string, FileRow> fileByPath)
     {
         var items = new List<ContextItem>();
+        var firstByContent = new Dictionary<string, string>(StringComparer.Ordinal);
         int usedTokens = 0;
 
         foreach (Candidate c in ordered)
@@ -261,7 +262,10 @@ public sealed class ContextEngine
                 continue;
             }
 
-            ContextItem item = BuildItem(c, row, options);
+            // Byte-identical content already admitted under another path
+            // (copies, generated files): a zero-cost pointer suffices.
+            string? duplicateOf = firstByContent.GetValueOrDefault(row.ContentHash);
+            ContextItem item = BuildItem(c, row, options, duplicateOf);
             if (options.BudgetTokens is { } budget && items.Count > 0
                 && usedTokens + item.EstimatedTokens > budget)
             {
@@ -269,13 +273,14 @@ public sealed class ContextEngine
             }
 
             items.Add(item);
+            firstByContent.TryAdd(row.ContentHash, c.Path);
             usedTokens += item.EstimatedTokens;
         }
 
         return items;
     }
 
-    private ContextItem BuildItem(Candidate c, FileRow row, ContextOptions options)
+    private ContextItem BuildItem(Candidate c, FileRow row, ContextOptions options, string? duplicateOf)
     {
         // Symbol hits give the most precise range; fall back to the best FTS
         // chunk, then to the file preamble.
@@ -306,6 +311,12 @@ public sealed class ContextEngine
             return item with { Unchanged = true, EstimatedTokens = 0 };
         }
 
+        if (duplicateOf is not null)
+        {
+            // Same bytes as an item already in the bundle: point there instead.
+            return item with { DuplicateOf = duplicateOf, EstimatedTokens = 0 };
+        }
+
         switch (options.Detail)
         {
             case ContextDetail.Outline:
@@ -325,12 +336,19 @@ public sealed class ContextEngine
                 int cappedEnd = Math.Min(end, start + MaxSliceLines - 1);
                 if (_store.GetSourceSlice(c.Path, start, cappedEnd) is { } slice)
                 {
+                    (string text, bool stripped) = options.StripComments
+                        ? CommentStripper.Strip(slice.Text)
+                        : (slice.Text, false);
+                    int contentTokens = options.SerializedCharging
+                        ? JsonTextTokens(text)
+                        : Tokens.Count(text);
                     return item with
                     {
                         StartLine = slice.StartLine,
                         EndLine = slice.EndLine,
-                        Snippet = slice.Text,
-                        EstimatedTokens = _scale.Apply(JsonTextTokens(slice.Text) + EnvelopeTokens(item)),
+                        Snippet = text,
+                        Stripped = stripped,
+                        EstimatedTokens = _scale.Apply(contentTokens + EnvelopeTokens(item)),
                         FileTokens = _scale.Apply(row.TokenCount),
                     };
                 }

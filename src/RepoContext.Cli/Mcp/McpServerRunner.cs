@@ -24,12 +24,16 @@ public static class McpServerRunner
                 "RepoContext serves compact, explainable, deterministic context from a local "
                 + "repository index; every token figure is a real BPE count. The economical loop: "
                 + "(1) repoctx.get_context with a budgetTokens and detail='slices' for working "
-                + "context, or detail='outline' to survey; (2) repoctx.get_outline before reading "
+                + "context, or detail='outline' to survey; pass a stable 'session' name and "
+                + "delivered slices are remembered, so later calls return unchanged files as "
+                + "zero-cost markers without you echoing hashes; set stripComments=true to drop "
+                + "comment banners from slices (lossy); (2) repoctx.get_outline before reading "
                 + "any file - a skeleton costs a fraction of the file; (3) repoctx.get_related_files "
-                + "instead of searching for dependencies; (4) after editing, repoctx.get_changes - "
-                + "when stale, run 'repoctx index' (fast, incremental) and re-query; (5) never pay "
-                + "twice: echo each result's hash back via known=['path@hash'] and unchanged files "
-                + "return as zero-cost markers. Results are deterministic and carry machine-readable "
+                + "instead of searching for dependencies; (4) after editing, repoctx.get_changes "
+                + "with patch=true returns just the changed hunks instead of a full re-read - when "
+                + "stale, run 'repoctx index' (fast, incremental) and re-query; (5) never pay "
+                + "twice: a session (above) or known=['path@hash'] makes unchanged files "
+                + "zero-cost markers. Results are deterministic and carry machine-readable "
                 + "reasons. All tools are read-only and never leave the machine.",
             ToolCollection = McpTools.Build(),
         };

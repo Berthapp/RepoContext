@@ -42,7 +42,7 @@ public static class McpTools
                     + "document (schema_version, results[] with path, score, kind, lines and "
                     + "machine-readable reasons). Use for finding files or symbols by term.")),
             McpServerTool.Create(
-                (Func<string, int, int?, string, string[]?, string?, CallToolResult>)GetContext,
+                (Func<string, int, int?, string, string[]?, string?, bool, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Ranked, explained context bundle for a natural-language task, packed into a "
                     + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
@@ -119,7 +119,10 @@ public static class McpTools
         string[]? known = null,
         [Description("Session name (A-Za-z0-9._-): the known-file set is tracked server-side "
             + "under .repoctx/sessions/, so hashes need not be echoed back.")]
-        string? session = null)
+        string? session = null,
+        [Description("Lossy: drop full-line comments and blank runs from embedded slices "
+            + "(outline docs already summarize them). Line ranges become approximate.")]
+        bool stripComments = false)
     {
         if (top <= 0)
         {
@@ -195,6 +198,7 @@ public static class McpTools
             BudgetTokens = budgetTokens,
             Detail = detailLevel.Value,
             Known = knownMap,
+            StripComments = stripComments,
         });
 
         TokenScale scale = TokenScale.From(config);

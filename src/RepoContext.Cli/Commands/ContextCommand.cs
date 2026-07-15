@@ -47,6 +47,11 @@ public static class ContextCommand
                           "(.repoctx/sessions/), so hashes need not be echoed back. " +
                           "Delivered slices are remembered; explicit --known entries win.",
         };
+        var stripComments = new Option<bool>("--strip-comments")
+        {
+            Description = "Lossy: drop full-line comments and blank runs from embedded slices " +
+                          "(outline docs already summarize them). Line ranges become approximate.",
+        };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -64,6 +69,7 @@ public static class ContextCommand
             snippets,
             known,
             session,
+            stripComments,
             format,
         };
 
@@ -144,6 +150,10 @@ public static class ContextCommand
                 BudgetTokens = budgetTokens,
                 Detail = detailLevel,
                 Known = knownMap,
+                StripComments = parseResult.GetValue(stripComments),
+                // Text/md deliver raw slice text; only JSON pays the escape tax,
+                // so charge in serialized form only when JSON is the output (ADR 0012).
+                SerializedCharging = outputFormat == OutputFormat.Json,
             });
 
             TokenScale scale = TokenScale.From(config);
