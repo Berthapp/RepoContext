@@ -54,7 +54,8 @@ public static class ChangedCommand
             ChangedResult result = ChangeDetector.Run(layout, config, store);
             string rendered = ChangedOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "changed", UsageSources.Cli, rendered);
+            UsageRecorder.Record(layout, "changed", UsageSources.Cli, rendered,
+                scale: TokenScale.From(config));
             return ExitCode.Success;
         });
 

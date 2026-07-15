@@ -3,6 +3,7 @@ using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
@@ -125,12 +126,15 @@ public static class ContextCommand
                 Known = knownMap,
             });
 
+            TokenScale scale = TokenScale.From(config);
             string rendered = ContextOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(layout, "context", UsageSources.Cli, rendered,
-                UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+                UsageMeter.ReplacedTokens(result,
+                    path => store.FindFile(path) is { } f ? scale.Apply(f.TokenCount) : null),
                 files: result.Items.Count,
-                unchanged: result.Items.Count(i => i.Unchanged));
+                unchanged: result.Items.Count(i => i.Unchanged),
+                scale: scale);
             return ExitCode.Success;
         });
 

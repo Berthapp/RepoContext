@@ -95,6 +95,12 @@ public sealed record ContextResult
 
     public required ContextDetail Detail { get; init; }
 
+    /// <summary>
+    /// Active token-calibration label (profile name or <c>x&lt;factor&gt;</c>),
+    /// null when counts are raw o200k (ADR 0012).
+    /// </summary>
+    public string? TokenProfile { get; init; }
+
     public required IReadOnlyList<ContextItem> Items { get; init; }
 
     public required int TotalCandidates { get; init; }

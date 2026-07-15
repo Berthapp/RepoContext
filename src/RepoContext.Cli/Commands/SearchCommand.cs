@@ -79,7 +79,8 @@ public static class SearchCommand
             IReadOnlyList<SearchHit> hits = store.Search(match, topN, parseResult.GetValue(symbolsOnly));
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "search", UsageSources.Cli, rendered);
+            UsageRecorder.Record(layout, "search", UsageSources.Cli, rendered,
+                scale: CommandSupport.ScaleFor(layout));
             return ExitCode.Success;
         });
 

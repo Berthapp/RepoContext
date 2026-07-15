@@ -100,7 +100,8 @@ public static class McpTools
 
         IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols);
         string rendered = SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json);
-        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered,
+            scale: Commands.CommandSupport.ScaleFor(layout));
         return Ok(rendered);
     }
 
@@ -172,11 +173,14 @@ public static class McpTools
             Known = knownMap,
         });
 
+        TokenScale scale = TokenScale.From(config);
         string rendered = ContextOutput.Render(result, OutputFormat.Json);
         UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
-            UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+            UsageMeter.ReplacedTokens(result,
+                path => store.FindFile(path) is { } f ? scale.Apply(f.TokenCount) : null),
             files: result.Items.Count,
-            unchanged: result.Items.Count(i => i.Unchanged));
+            unchanged: result.Items.Count(i => i.Unchanged),
+            scale: scale);
         return Ok(rendered);
     }
 
@@ -207,7 +211,8 @@ public static class McpTools
         }
 
         string rendered = RelatedOutput.Render(result, OutputFormat.Json);
-        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered,
+            scale: Commands.CommandSupport.ScaleFor(layout));
         return Ok(rendered);
     }
 
@@ -231,7 +236,8 @@ public static class McpTools
             return outdated;
         }
 
-        Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative);
+        TokenScale scale = Commands.CommandSupport.ScaleFor(layout);
+        Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative, scale);
         if (result is null)
         {
             return Fail($"File not found in index: {relative}");
@@ -239,7 +245,7 @@ public static class McpTools
 
         string rendered = OutlineOutput.Render(result, OutputFormat.Json);
         UsageRecorder.Record(layout, "outline", UsageSources.Mcp, rendered,
-            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1);
+            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1, scale: scale);
         return Ok(rendered);
     }
 
@@ -259,7 +265,8 @@ public static class McpTools
 
         ChangedResult result = ChangeDetector.Run(layout, config, store);
         string rendered = ChangedOutput.Render(result, OutputFormat.Json);
-        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered,
+            scale: TokenScale.From(config));
         return Ok(rendered);
     }
 

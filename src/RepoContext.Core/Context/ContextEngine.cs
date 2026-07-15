@@ -26,11 +26,13 @@ public sealed class ContextEngine
 
     private readonly IndexStore _store;
     private readonly RepoctxConfig _config;
+    private readonly TokenScale _scale;
 
     public ContextEngine(IndexStore store, RepoctxConfig config)
     {
         _store = store;
         _config = config;
+        _scale = TokenScale.From(config);
     }
 
     public ContextResult Run(string query, ContextOptions options)
@@ -54,6 +56,7 @@ public sealed class ContextEngine
             Terms = analyzed.Terms,
             State = Hashes.Short(_store.GetMeta(MetaKeys.StateHash) ?? string.Empty),
             Detail = options.Detail,
+            TokenProfile = _scale.Label,
             Items = items,
             TotalCandidates = candidates.Count,
             Omitted = scored - items.Count,
@@ -291,7 +294,7 @@ public sealed class ContextEngine
             EndLine = end,
             Reasons = ReasonCompression.Compress(c.Reasons),
             Hash = Hashes.Short(row.ContentHash),
-            EstimatedTokens = row.TokenCount,
+            EstimatedTokens = _scale.Apply(row.TokenCount),
         };
 
         bool unchanged = options.Known is { } known
@@ -312,9 +315,10 @@ public sealed class ContextEngine
                 {
                     Symbols = symbols,
                     SymbolsOmitted = cut > 0 ? cut : null,
-                    EstimatedTokens = OutlineTokens(symbols) + symbols.Count * SymbolFramingTokens
-                        + EnvelopeTokens(item),
-                    FileTokens = row.TokenCount,
+                    EstimatedTokens = _scale.Apply(
+                        OutlineTokens(symbols) + symbols.Count * SymbolFramingTokens
+                        + EnvelopeTokens(item)),
+                    FileTokens = _scale.Apply(row.TokenCount),
                 };
 
             case ContextDetail.Slices:
@@ -326,8 +330,8 @@ public sealed class ContextEngine
                         StartLine = slice.StartLine,
                         EndLine = slice.EndLine,
                         Snippet = slice.Text,
-                        EstimatedTokens = JsonTextTokens(slice.Text) + EnvelopeTokens(item),
-                        FileTokens = row.TokenCount,
+                        EstimatedTokens = _scale.Apply(JsonTextTokens(slice.Text) + EnvelopeTokens(item)),
+                        FileTokens = _scale.Apply(row.TokenCount),
                     };
                 }
 

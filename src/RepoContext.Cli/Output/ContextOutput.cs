@@ -43,6 +43,11 @@ public static class ContextOutput
         }
 
         sb.Append($"_Budget: {result.Items.Count} file(s) · ~{result.EstimatedTokens} estimated tokens");
+        if (result.TokenProfile is { } mdProfile)
+        {
+            sb.Append(" (").Append(mdProfile).Append("-calibrated)");
+        }
+
         if (result.Omitted > 0)
         {
             sb.Append($" · {result.Omitted} more candidate(s) omitted");
@@ -114,6 +119,11 @@ public static class ContextOutput
         }
 
         sb.Append($"\nBudget: {result.Items.Count} file(s) · ~{result.EstimatedTokens} estimated tokens");
+        if (result.TokenProfile is { } profile)
+        {
+            sb.Append(" (").Append(profile).Append("-calibrated)");
+        }
+
         if (result.Omitted > 0)
         {
             sb.Append($" · {result.Omitted} more candidate(s) omitted");
@@ -133,6 +143,7 @@ public static class ContextOutput
             Terms = result.Terms,
             State = result.State,
             Detail = result.Detail.ToString().ToLowerInvariant(),
+            TokenProfile = result.TokenProfile,
             Count = result.Items.Count,
             Omitted = result.Omitted > 0 ? result.Omitted : null,
             EstimatedTokens = result.EstimatedTokens,
@@ -179,6 +190,9 @@ public static class ContextOutput
         public required string State { get; init; }
 
         public required string Detail { get; init; }
+
+        /// <summary>Active token-calibration label (absent for raw o200k counts).</summary>
+        public string? TokenProfile { get; init; }
 
         public int Count { get; init; }
 
