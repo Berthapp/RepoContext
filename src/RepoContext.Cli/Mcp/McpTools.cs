@@ -65,11 +65,13 @@ public static class McpTools
                     + "content hash and exact full-read token cost. Costs a fraction of reading the "
                     + "file - use it to decide whether (and which part of) a file is worth reading.")),
             McpServerTool.Create(
-                (Func<CallToolResult>)GetChanges,
+                (Func<bool, CallToolResult>)GetChanges,
                 Describe("repoctx.get_changes",
                     "Diff the working tree against the index: added/modified/deleted files plus the "
-                    + "indexed files that import or test them. Use after editing to learn what is "
-                    + "stale (then re-run 'repoctx index') instead of re-reading everything.")),
+                    + "indexed files that import or test them. With patch=true, modified files carry "
+                    + "delta hunks so an edit costs a patch instead of a full re-read. Use after "
+                    + "editing to learn what is stale (then re-run 'repoctx index') instead of "
+                    + "re-reading everything.")),
         };
     }
 
@@ -276,7 +278,9 @@ public static class McpTools
         return Ok(rendered);
     }
 
-    private static CallToolResult GetChanges()
+    private static CallToolResult GetChanges(
+        [Description("Include delta hunks (working tree vs indexed content) for modified files.")]
+        bool patch = false)
     {
         if (Locate() is not { } layout)
         {
@@ -290,10 +294,12 @@ public static class McpTools
             return outdated;
         }
 
-        ChangedResult result = ChangeDetector.Run(layout, config, store);
+        TokenScale scale = TokenScale.From(config);
+        ChangedResult result = ChangeDetector.Run(layout, config, store, patch, scale);
         string rendered = ChangedOutput.Render(result, OutputFormat.Json);
         UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered,
-            scale: TokenScale.From(config));
+            replacedTokens: UsageMeter.PatchReplacedTokens(result),
+            scale: scale);
         return Ok(rendered);
     }
 
