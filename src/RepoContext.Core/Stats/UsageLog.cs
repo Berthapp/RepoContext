@@ -1,3 +1,5 @@
+using System.Security.Cryptography;
+using System.Text;
 using System.Text.Json;
 
 namespace RepoContext.Core.Stats;
@@ -9,6 +11,8 @@ namespace RepoContext.Core.Stats;
 /// </summary>
 public static class UsageLog
 {
+    private const int AppendLockTimeoutMilliseconds = 3_000;
+
     /// <summary>The log file name inside the index directory.</summary>
     public const string FileName = "stats.jsonl";
 
@@ -16,15 +20,61 @@ public static class UsageLog
     public static string PathFor(RepoLayout layout) =>
         Path.Combine(layout.IndexDirectory, FileName);
 
-    /// <summary>Appends one record as a single JSON line.</summary>
+    /// <summary>
+    /// Appends one record as a single JSON line. Writers are serialized across
+    /// processes, while readers may keep the log open. If a crashed writer left
+    /// an unterminated tail, it is separated before the new record is written.
+    /// </summary>
     public static void Append(string path, UsageRecord record)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        string line = JsonSerializer.Serialize(record, UsageRecord.SerializerOptions) + "\n";
+        if (!IsValid(record))
+        {
+            throw new ArgumentException("The usage record contains invalid values.", nameof(record));
+        }
 
-        using var stream = new FileStream(path, FileMode.Append, FileAccess.Write, FileShare.Read);
-        using var writer = new StreamWriter(stream);
-        writer.Write(line);
+        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        byte[] line = Encoding.UTF8.GetBytes(
+            JsonSerializer.Serialize(record, UsageRecord.SerializerOptions) + "\n");
+
+        using var mutex = new Mutex(initiallyOwned: false, MutexName(path));
+        bool ownsMutex = false;
+        try
+        {
+            try
+            {
+                ownsMutex = mutex.WaitOne(AppendLockTimeoutMilliseconds);
+                if (!ownsMutex)
+                {
+                    throw new TimeoutException("Timed out waiting to append usage statistics.");
+                }
+            }
+            catch (AbandonedMutexException)
+            {
+                // The previous writer crashed. The OS transferred ownership to
+                // this thread; the tail repair below makes its partial write safe.
+                ownsMutex = true;
+            }
+
+            using var stream = new FileStream(
+                path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.ReadWrite);
+            if (stream.Length > 0)
+            {
+                stream.Seek(-1, SeekOrigin.End);
+                if (stream.ReadByte() != '\n')
+                {
+                    stream.WriteByte((byte)'\n');
+                }
+            }
+
+            stream.Write(line);
+        }
+        finally
+        {
+            if (ownsMutex)
+            {
+                mutex.ReleaseMutex();
+            }
+        }
     }
 
     /// <summary>
@@ -40,7 +90,10 @@ public static class UsageLog
         }
 
         var records = new List<UsageRecord>();
-        foreach (string line in File.ReadLines(path))
+        using var stream = new FileStream(
+            path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+        using var reader = new StreamReader(stream);
+        while (reader.ReadLine() is { } line)
         {
             if (string.IsNullOrWhiteSpace(line))
             {
@@ -51,7 +104,7 @@ public static class UsageLog
             {
                 UsageRecord? record = JsonSerializer.Deserialize<UsageRecord>(
                     line, UsageRecord.SerializerOptions);
-                if (record is { Command.Length: > 0, Source.Length: > 0 })
+                if (record is not null && IsValid(record))
                 {
                     records.Add(record);
                 }
@@ -62,5 +115,35 @@ public static class UsageLog
         }
 
         return records;
+    }
+
+    private static bool IsValid(UsageRecord record) =>
+        record.V == 1 &&
+        !string.IsNullOrWhiteSpace(record.Command) &&
+        record.Source is UsageSources.Cli or UsageSources.Mcp &&
+        record.Served >= 0 &&
+        record.Replaced >= 0 &&
+        record.Files is null or >= 0 &&
+        record.Unchanged is null or >= 0 &&
+        (record.Unchanged is null ||
+            record.Unchanged is { } unchanged &&
+            record.Files is { } files &&
+            unchanged <= files);
+
+    /// <summary>
+    /// A stable, path-scoped mutex name lets independent repoctx processes
+    /// coordinate without leaving a lock file behind. Windows paths are folded
+    /// because its file system is case-insensitive by default.
+    /// </summary>
+    private static string MutexName(string path)
+    {
+        string fullPath = Path.GetFullPath(path);
+        if (OperatingSystem.IsWindows())
+        {
+            fullPath = fullPath.ToUpperInvariant();
+        }
+
+        byte[] hash = SHA256.HashData(Encoding.UTF8.GetBytes(fullPath));
+        return "RepoContext.Stats." + Convert.ToHexString(hash);
     }
 }

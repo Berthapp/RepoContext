@@ -59,6 +59,22 @@ public class StatsDashboardTests
     }
 
     [Fact]
+    public void OutlineWithoutSymbols_DoesNotClaimAReplacedRead()
+    {
+        using FixtureWorkspace ws = Indexed();
+
+        CliResult result = ws.Run("outline", "docs/architecture.md", "--format", "json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument response = JsonDocument.Parse(result.StdOut);
+        Assert.Empty(response.RootElement.GetProperty("symbols").EnumerateArray());
+
+        string line = Assert.Single(File.ReadAllLines(ws.PathOf(StatsFile)));
+        using JsonDocument record = JsonDocument.Parse(line);
+        Assert.Equal(0, record.RootElement.GetProperty("replaced").GetInt32());
+    }
+
+    [Fact]
     public void ContextWithKnownHash_RecordsTheAvoidedReRead()
     {
         using FixtureWorkspace ws = Indexed();
@@ -68,6 +84,9 @@ public class StatsDashboardTests
         JsonElement login = firstDoc.RootElement.GetProperty("results").EnumerateArray()
             .Single(r => r.GetProperty("path").GetString() == "src/auth/login.ts");
         string hash = login.GetProperty("hash").GetString()!;
+        // --known is an assertion that the caller holds the file content, not
+        // permission to echo a hash learned from a pointer-only response.
+        Assert.NotEmpty(File.ReadAllText(ws.PathOf("src/auth/login.ts")));
 
         ws.Run("context", "change the login logic",
             "--known", $"src/auth/login.ts@{hash}", "--format", "json");
@@ -128,6 +147,15 @@ public class StatsDashboardTests
         Assert.StartsWith("<!doctype html>", first.StdOut);
         Assert.Contains("<svg", first.StdOut);
         Assert.Contains("reads replaced", first.StdOut);
+        // Theme tokens must be inherited by body as well as the dashboard so
+        // the outer canvas follows both the light and dark palettes.
+        Assert.Contains(":root{color-scheme:light dark;--plane:#f9f9f7;", first.StdOut);
+        Assert.Contains(
+            "@media (prefers-color-scheme:dark){:root:not([data-theme=light]){--plane:#0d0d0d;",
+            first.StdOut);
+        Assert.Contains(":root[data-theme=dark]{--plane:#0d0d0d;", first.StdOut);
+        Assert.Contains("body{background:var(--plane)}", first.StdOut);
+        Assert.DoesNotContain(".viz-root{--plane:", first.StdOut);
         // Self-contained: no external resources (the no-network principle).
         Assert.DoesNotContain("http://", first.StdOut);
         Assert.DoesNotContain("https://", first.StdOut);

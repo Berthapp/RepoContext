@@ -14,20 +14,21 @@ aggregates them.
 
 ## Decisions
 
-1. **A conservative, explainable savings ledger.** Every served query records
-   two real (o200k) figures:
+1. **An explainable savings estimate.** Every successfully served
+   query records two real (o200k) figures:
    - `served` — what the rendered response itself costs.
-   - `replaced` — full-read tokens the response made unnecessary: embedded
-     slices and outline skeletons count the file's stored full-read cost
-     (`files.token_count`), and `unchanged` markers count the re-read they
-     avoided. Pointers (`context --detail paths`) and discovery answers
-     (`search`, `related`, `changed`, `architecture`) replace nothing and
-     record `replaced = 0`, whatever their guidance value over grep.
+   - `replaced` — full-read tokens the response is assumed to make unnecessary:
+     embedded slices and non-empty outline skeletons count the file's stored
+     full-read cost (`files.token_count`), and `unchanged` markers count an
+     avoided re-read only under the caller contract that it holds the matching
+     file content. Pointers (`context --detail paths`) and discovery answers
+     (`search`, `related`, `changed`, `architecture`) replace nothing and record
+     `replaced = 0`, whatever their guidance value over grep.
 
    **Net saved = Σ replaced − Σ served**, over all recorded calls. The number
-   can be negative for discovery-heavy usage — the dashboard reports
-   measurements, not marketing. Discovery value is deliberately not credited;
-   the reported figure is a floor.
+   can be negative for discovery-heavy usage. It is an estimate, not a guaranteed
+   lower bound: discovery value is deliberately not credited, while each credited
+   item assumes the caller would otherwise have read the full file.
 2. **Local JSONL log, never part of the index.** Records append to
    `.repoctx/stats.jsonl` (one compact JSON line each: `v`, `ts` UTC,
    `command`, `source` cli|mcp, `served`, `replaced`, `files`, `unchanged`).
@@ -40,7 +41,9 @@ aggregates them.
    (identical index + identical query ⇒ byte-identical output) is untouched:
    the timestamp lives only in the log, which is usage statistics — the same
    carve-out the constraint grants index statistics. Both CLI commands and MCP
-   tools record, under the same command names, distinguished by `source`.
+   tools record, under the same command names, distinguished by `source`. Since
+   MCP calls update this ledger, their protocol annotations are non-read-only,
+   non-idempotent and non-destructive.
 4. **`repoctx stats [--format text|json|md]`** aggregates the log into totals,
    a per-command breakdown (ordered by name) and the most recent 14 *recorded*
    days. The recent-day window anchors on the newest record, not the wall
@@ -63,12 +66,13 @@ aggregates them.
    per command and per day, tooltips + table view + aria-labels so no value
    is color- or hover-gated, light/dark via tokens). Like every renderer it
    is a pure projection of the log: identical log ⇒ byte-identical HTML.
-6. **Free for everyone; funding is sponsorship, not a gate.** The dashboard
-   was evaluated as a paid "pro" feature and deliberately shipped free: the
-   project stays fully free and open, funded by sponsoring (GitHub Sponsors,
+6. **The basic dashboard is free; reporting stays reusable.** The dashboard
+   was evaluated as a paid "pro" feature and deliberately shipped free: this
+   feature stays fully free and open, funded by sponsoring (GitHub Sponsors,
    `.github/FUNDING.yml`). The dashboard doubles as the honest sponsorship
-   pitch — it shows each user their own measured savings. No license
-   infrastructure exists or is planned. No MCP `get_stats` tool for now — the
+   pitch. Its reusable ledger/report separation also prepares a foundation for
+   a future advanced-report Pro SKU; entitlement and distribution remain a
+   separate, undecided product choice. No MCP `get_stats` tool for now — the
    dashboard is human-facing; agents already see per-response costs.
 
 ## Measured effect (this repository, 88 files)
@@ -88,6 +92,6 @@ from slices/outline/known usage, not from discovery calls.
 - The Privacy story changes slightly: repoctx now *stores* usage data — still
   strictly local, git-ignored, opt-out via `REPOCTX_NO_STATS=1`; nothing is
   ever transmitted. README documents this.
-- The ledger undercounts (no credit for avoided grep/exploration) and can
-  overcount when an agent would not actually have read a delivered file; both
-  biases are documented, the first dominates in practice.
+- The estimate can undercount (no credit for avoided grep/exploration) or
+  overcount when an agent would not actually have read a delivered file; its
+  assumptions are documented rather than presented as a guaranteed bound.

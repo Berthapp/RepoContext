@@ -201,8 +201,8 @@ time), so budgets can be trusted. The intended agent workflow:
 
 ### The token-savings dashboard
 
-`repoctx stats` shows what that loop actually saved you, measured from your own
-usage (CLI and MCP alike):
+`repoctx stats` estimates the net token impact of that loop from your recorded
+successful usage (CLI and MCP alike):
 
 ```text
 Token savings (o200k counts, 2026-07-01 to 2026-07-14):
@@ -213,14 +213,15 @@ Token savings (o200k counts, 2026-07-01 to 2026-07-14):
   net saved              73,358  (70 % of replaced reads)
 ```
 
-Every query response records two real token figures to a local log
-(`.repoctx/stats.jsonl`): what the response cost, and the full file reads it
-made unnecessary — embedded slices and outlines at the file's full-read cost,
-`--known` unchanged markers at the re-read they avoided. **Net saved** is
-replaced reads minus response cost, summed over every call. The ledger is
-deliberately conservative: discovery calls (`search`, `related`, `changed`,
-`architecture`, `context --detail paths`) count as pure cost even though they
-replace grep sessions and wrong-file reads, so the reported number is a floor.
+Every successful query response records two real token figures to a local log
+(`.repoctx/stats.jsonl`): what the response cost, and the full file reads it is
+assumed to make unnecessary. Embedded slices and non-empty outlines are credited
+at the file's full-read cost; `--known` markers assume the caller actually holds
+the matching file content. **Net saved** is replaced reads minus response cost,
+summed over every recorded call. It is an estimate, not a guaranteed lower bound:
+discovery calls (`search`, `related`, `changed`, `architecture`, and
+`context --detail paths`) receive no credit, while credited content assumes a
+full read would otherwise have happened.
 Breakdowns per command and per day (`--format md`/`json` for reports and
 tooling) show where the savings come from. For a visual dashboard, run
 `repoctx stats --open` — it writes a self-contained HTML page (charts, no
@@ -274,7 +275,7 @@ BPE counts. The economical loop:
 
 Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
-server over stdio and exposes five read-only tools:
+server over stdio and exposes five non-destructive query tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
@@ -287,7 +288,8 @@ server over stdio and exposes five read-only tools:
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
 from the working directory, communicates over stdin/stdout only (no network),
-and never mutates the index.
+and never mutates the index. Successful calls append token counts to the local
+usage ledger described above.
 
 Register it with an MCP-capable client, for example:
 

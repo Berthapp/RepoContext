@@ -72,7 +72,7 @@ public static class OutlineCommand
             string rendered = OutlineOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(layout, "outline", UsageSources.Cli, rendered,
-                replacedTokens: result.TokenCount, files: 1);
+                replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1);
             return ExitCode.Success;
         });
 

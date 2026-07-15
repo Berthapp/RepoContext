@@ -10,13 +10,13 @@ public sealed record UsageBucket
     /// <summary>Tokens all responses in this bucket cost (real o200k counts).</summary>
     public required long ServedTokens { get; init; }
 
-    /// <summary>Full-read tokens these responses made unnecessary.</summary>
+    /// <summary>Full-read tokens these responses are credited as replacing.</summary>
     public required long ReplacedTokens { get; init; }
 
     /// <summary>
-    /// Net tokens saved: replaced reads minus response cost. Negative while
-    /// usage is discovery-heavy — the dashboard reports measurements, not
-    /// marketing.
+    /// Estimated net tokens saved: credited reads minus response cost. This can
+    /// be negative while usage is discovery-heavy and follows the documented
+    /// replacement assumptions in ADR 0011.
     /// </summary>
     public long SavedTokens => ReplacedTokens - ServedTokens;
 }

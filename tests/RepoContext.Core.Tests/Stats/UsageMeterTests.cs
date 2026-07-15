@@ -1,4 +1,5 @@
 using RepoContext.Core.Context;
+using RepoContext.Core.Outline;
 using RepoContext.Core.Stats;
 
 namespace RepoContext.Core.Tests.Stats;
@@ -13,6 +14,8 @@ public class UsageMeterTests
             Item("src/pointer.ts", fileTokens: null),
             // A slice/outline item: full-read cost carried on the item.
             Item("src/slice.ts", fileTokens: 500, snippet: "const x = 1;"),
+            // FileTokens alone are metadata, not delivered skeleton content.
+            Item("docs/no-symbols.md", fileTokens: 700),
             // An unchanged marker: the avoided re-read is resolved via the index.
             Item("src/known.ts", fileTokens: null, unchanged: true));
 
@@ -29,6 +32,20 @@ public class UsageMeterTests
         ContextResult result = Result(Item("src/gone.ts", fileTokens: null, unchanged: true));
 
         Assert.Equal(0, UsageMeter.ReplacedTokens(result, _ => null));
+    }
+
+    [Fact]
+    public void OutlineReplacedTokens_RequiresDeliveredSkeleton()
+    {
+        var empty = new OutlineResult(
+            "docs/readme.md", "doc", "markdown", 20, 500, "abcdef123456", []);
+        OutlineResult withSymbol = empty with
+        {
+            Symbols = [new OutlineSymbol("Title", "heading", 1, 1, "# Title", null)],
+        };
+
+        Assert.Equal(0, UsageMeter.OutlineReplacedTokens(empty));
+        Assert.Equal(500, UsageMeter.OutlineReplacedTokens(withSymbol));
     }
 
     private static ContextResult Result(params ContextItem[] items) => new()

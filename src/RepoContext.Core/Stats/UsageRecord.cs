@@ -21,6 +21,7 @@ public static class UsageSources
 public sealed record UsageRecord
 {
     /// <summary>Record format version, for forward-compatible readers.</summary>
+    [JsonRequired]
     public int V { get; init; } = 1;
 
     /// <summary>When the query ran (UTC). Never part of query output.</summary>
@@ -36,9 +37,10 @@ public sealed record UsageRecord
     public int Served { get; init; }
 
     /// <summary>
-    /// Full-read tokens this response made unnecessary: embedded slices and
-    /// outline skeletons at the file's full-read cost, unchanged markers at
-    /// the re-read they avoided. Zero for pure discovery responses.
+    /// Full-read tokens this response is credited with replacing: embedded
+    /// slices and non-empty outline skeletons at the file's full-read cost,
+    /// unchanged markers at the re-read they avoided. Zero for pure discovery
+    /// responses.
     /// </summary>
     public int Replaced { get; init; }
 

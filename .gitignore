@@ -446,4 +446,3 @@ FodyWeavers.xsd
 !tests/fixtures/**/.env
 !tests/fixtures/sample-ts/node_modules/
 !tests/fixtures/sample-ts/node_modules/**
-docs/decisions/README.md

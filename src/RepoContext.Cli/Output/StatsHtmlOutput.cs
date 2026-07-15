@@ -58,8 +58,9 @@ public static class StatsHtmlOutput
             AppendTables(sb, report);
         }
 
-        sb.Append("<footer><p>Conservative ledger: embedded slices, outline skeletons and " +
-                  "unchanged markers count the full file reads they replaced; discovery " +
+        sb.Append("<footer><p>Explainable estimate: embedded slices and non-empty outline " +
+                  "skeletons are credited at the full-file read cost they are assumed to " +
+                  "replace; unchanged markers assume the caller holds matching content. Discovery " +
                   "responses (search, related, changed, architecture, paths-only context) " +
                   "count as pure cost. All figures are real o200k token counts from the " +
                   "local log <code>.repoctx/stats.jsonl</code> — nothing leaves this " +
@@ -77,13 +78,14 @@ public static class StatsHtmlOutput
     private static void AppendStyle(StringBuilder sb)
     {
         sb.Append("<style>\n");
-        sb.Append(":root{color-scheme:light dark}\n");
-        sb.Append(".viz-root{").Append(LightVars).Append("}\n");
+        // Theme tokens belong on the root so the outer page canvas and the
+        // dashboard inherit the same palette.
+        sb.Append(":root{color-scheme:light dark;").Append(LightVars).Append("}\n");
         // The OS preference, unless a host page pinned data-theme="light" ...
-        sb.Append("@media (prefers-color-scheme:dark){:root:not([data-theme=light]) .viz-root{")
+        sb.Append("@media (prefers-color-scheme:dark){:root:not([data-theme=light]){")
           .Append(DarkVars).Append("}}\n");
         // ... and an explicit host toggle always wins.
-        sb.Append(":root[data-theme=dark] .viz-root{").Append(DarkVars).Append("}\n");
+        sb.Append(":root[data-theme=dark]{").Append(DarkVars).Append("}\n");
         sb.Append("""
             *{box-sizing:border-box;margin:0}
             body{background:var(--plane)}
