@@ -173,9 +173,10 @@ via `repoctx related`).
 | `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--detail paths\|outline\|slices`, `--known <path>@<hash>`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--detail paths\|outline\|slices`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--format` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
-| `changed` | Working-tree diff against the index, with impacted dependents. | `--format` |
+| `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
+| `prime` | Cache-stable repository primer for the top of an agent's prompt (byte-identical until code changes). | `--files`, `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
 | `stats` | Token-savings dashboard aggregated from your local usage (see below). | `--format` (incl. `html`), `--open` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
@@ -187,17 +188,28 @@ Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
 All token figures are real BPE counts (`o200k_base`, computed offline at index
 time), so budgets can be trusted. The intended agent workflow:
 
-1. `architecture --depth 1` — orientation for a handful of tokens.
-2. `context "<task>" --detail slices --budget-tokens 2000` — working context
-   with source slices packed into the budget (`--detail outline` surveys more
-   files for fewer tokens; the default `paths` returns pointers plus exact
-   full-read costs).
+1. `prime` — a byte-stable primer (languages, layout, entrypoints, key files)
+   for the top of the prompt, behind a cache breakpoint. It changes only when
+   code changes, so every later turn re-reads it at cached-token rates.
+2. `context "<task>" --detail slices --budget-tokens 2000 --format md` —
+   working context with source slices packed into the budget. Prefer `md` for
+   slices: JSON escaping of embedded code is billed and adds 10-20 %. `--detail
+   outline` surveys more files for fewer tokens; the default `paths` returns
+   pointers plus exact full-read costs. `--strip-comments` drops comment
+   banners from slices (lossy; line ranges become approximate).
 3. `outline <file>` before any full read.
-4. After editing: `changed` — and `repoctx index` when it reports `stale`.
-5. Echo the `hash` of files you already hold via `--known <path>@<hash>`:
-   unchanged files return as zero-cost markers instead of repeated content.
-   Every `context` response also carries a `state` hash that moves whenever
-   the index content changes.
+4. After editing: `changed --patch` returns just the changed hunks (far
+   cheaper than a re-read) — and `repoctx index` when it reports `stale`.
+5. Never pay twice. Pass `--session <name>` and `context` remembers the slices
+   it delivered, returning unchanged files as zero-cost markers on later calls
+   without you re-typing anything (echoed `--known <path>@<hash>` lists work
+   too, but that text is output tokens, which cost more than input). Every
+   `context` response also carries a `state` hash that moves whenever the
+   index content changes.
+
+Using a non-OpenAI model? Set `tokens.profile` (e.g. `"claude"`) in
+`repoctx.config.json` so budgets and reported counts match your tokenizer —
+the index keeps raw counts, so no re-index is needed when you switch.
 
 ### The token-savings dashboard
 
@@ -261,14 +273,18 @@ instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 This repository is indexed by RepoContext (`repoctx`); token figures are real
 BPE counts. The economical loop:
 
-1. Orient once: `repoctx architecture --depth 1 --format md`.
-2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format json`.
-3. Before reading any file: `repoctx outline <file> --format json`.
-4. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
-5. Find a symbol: `repoctx search "<term>" --symbols --format json`.
-6. After editing: `repoctx changed --format json`; when `stale`, run `repoctx index`.
-7. Never pay twice: `--known <path>@<hash>` returns unchanged files as
-   zero-cost markers.
+1. Orient once: `repoctx prime` — a cache-stable primer; place it at the top
+   of the prompt behind a cache breakpoint.
+2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format md`
+   (prefer `md` for slices — JSON escaping of code is billed; `--strip-comments`
+   drops comment banners).
+3. Track a session instead of echoing hashes: `repoctx context "<task>" --session <name>`
+   returns unchanged files as zero-cost markers on later calls.
+4. Before reading any file: `repoctx outline <file> --format json`.
+5. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
+6. Find a symbol: `repoctx search "<term>" --symbols --format json`.
+7. After editing: `repoctx changed --patch --format md` for just the changed
+   hunks; when `stale`, run `repoctx index`.
 ```
 
 ## MCP server
@@ -280,10 +296,10 @@ server over stdio and exposes five non-destructive query tools:
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known`, `session`, `stripComments` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |
-| `repoctx.get_changes` | `changed` | — |
+| `repoctx.get_changes` | `changed` | `patch` |
 
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
@@ -356,6 +372,10 @@ until an index exists.
 | `indexing.includeTests` / `includeDocs` | Include test / documentation files. |
 | `ranking.weights` | Signal weights used by `context` (fts, symbol, graph, path). |
 | `ranking.synonyms` | Query-term expansions used by `context`. |
+| `tokens.profile` | Calibrate reported counts/budgets to a tokenizer: `o200k`/`openai` (default) or `claude`. |
+| `tokens.factor` | Explicit calibration multiplier; overrides `tokens.profile`. |
+| `pricing.inputPerMtok` | Input price per million tokens; enables the money view in `stats`. |
+| `pricing.currency` | Currency label for the `stats` money view (default `USD`). |
 
 You can also add a `.repoctxignore` file (gitignore syntax) for extra
 exclusions. The index (`.repoctx/`) contains code excerpts and is a sensitive

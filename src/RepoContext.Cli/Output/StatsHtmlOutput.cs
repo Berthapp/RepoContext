@@ -32,7 +32,7 @@ public static class StatsHtmlOutput
     private const int SvgWidth = 720;
 
     /// <summary>Renders the full HTML document.</summary>
-    public static string Render(UsageReport report)
+    public static string Render(UsageReport report, TokenPricing pricing = default)
     {
         var sb = new StringBuilder();
         sb.Append("<!doctype html>\n<html lang=\"en\">\n<head>\n");
@@ -51,7 +51,7 @@ public static class StatsHtmlOutput
         }
         else
         {
-            AppendTiles(sb, report.Totals);
+            AppendTiles(sb, report.Totals, pricing);
             AppendLegend(sb);
             AppendCommandChart(sb, report);
             AppendDayChart(sb, report);
@@ -152,10 +152,17 @@ public static class StatsHtmlOutput
         sb.Append("</p></header>\n");
     }
 
-    private static void AppendTiles(StringBuilder sb, UsageBucket totals)
+    private static void AppendTiles(StringBuilder sb, UsageBucket totals, TokenPricing pricing)
     {
         sb.Append("<section class=\"tiles\">\n");
         Tile(sb, "Net saved", N(totals.SavedTokens), DeltaHtml(totals));
+        if (pricing.Format(totals.SavedTokens) is { } money)
+        {
+            string rate = WebUtility.HtmlEncode(pricing.Format(1_000_000) + "/M input");
+            Tile(sb, "Net saved (money)", WebUtility.HtmlEncode(money),
+                string.Create(CultureInfo.InvariantCulture, $"<div class=\"delta\">{rate}</div>"));
+        }
+
         Tile(sb, "Reads replaced", N(totals.ReplacedTokens), null);
         Tile(sb, "Response tokens", N(totals.ServedTokens), null);
         Tile(sb, "Calls", N(totals.Calls), null);
