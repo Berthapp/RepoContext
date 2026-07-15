@@ -33,7 +33,7 @@ public class McpServerTests
     }
 
     [Fact]
-    public async Task ListTools_ExposesTheFiveReadOnlyTools()
+    public async Task ListTools_ExposesFiveNonDestructiveInstrumentedTools()
     {
         using FixtureWorkspace ws = Indexed();
         await using McpClient client = await ConnectAsync(ws);
@@ -47,6 +47,13 @@ public class McpServerTests
         Assert.Contains("repoctx.get_related_files", names);
         Assert.Contains("repoctx.get_outline", names);
         Assert.Contains("repoctx.get_changes", names);
+        Assert.All(tools, tool =>
+        {
+            ToolAnnotations annotations = Assert.IsType<ToolAnnotations>(tool.ProtocolTool.Annotations);
+            Assert.Equal(false, annotations.ReadOnlyHint);
+            Assert.Equal(false, annotations.IdempotentHint);
+            Assert.Equal(false, annotations.DestructiveHint);
+        });
     }
 
     [Fact]
@@ -64,6 +71,26 @@ public class McpServerTests
         Assert.Equal("outline", doc.RootElement.GetProperty("command").GetString());
         Assert.Contains(doc.RootElement.GetProperty("symbols").EnumerateArray(),
             s => s.GetProperty("name").GetString() == "loginUser");
+    }
+
+    [Fact]
+    public async Task GetOutline_WithoutSymbols_RecordsNoReplacement()
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+
+        CallToolResult result = await client.CallToolAsync(
+            "repoctx.get_outline",
+            new Dictionary<string, object?> { ["file"] = "docs/architecture.md" });
+
+        Assert.True(result.IsError is not true);
+        using JsonDocument response = JsonDocument.Parse(TextOf(result));
+        Assert.Empty(response.RootElement.GetProperty("symbols").EnumerateArray());
+
+        string line = Assert.Single(File.ReadAllLines(ws.PathOf(".repoctx/stats.jsonl")));
+        using JsonDocument record = JsonDocument.Parse(line);
+        Assert.Equal("mcp", record.RootElement.GetProperty("source").GetString());
+        Assert.Equal(0, record.RootElement.GetProperty("replaced").GetInt32());
     }
 
     [Fact]
@@ -97,6 +124,7 @@ public class McpServerTests
         JsonElement login = firstDoc.RootElement.GetProperty("results").EnumerateArray()
             .Single(r => r.GetProperty("path").GetString() == "src/auth/login.ts");
         string hash = login.GetProperty("hash").GetString()!;
+        Assert.NotEmpty(File.ReadAllText(ws.PathOf("src/auth/login.ts")));
 
         CallToolResult second = await client.CallToolAsync(
             "repoctx.get_context",

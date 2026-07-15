@@ -2,6 +2,7 @@ using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Architecture;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Commands;
@@ -59,7 +60,9 @@ public static class ArchitectureCommand
             }
 
             ArchitectureResult result = new ArchitectureEngine(store).Build(treeDepth);
-            CommandSupport.WriteRendered(ArchitectureOutput.Render(result, outputFormat));
+            string rendered = ArchitectureOutput.Render(result, outputFormat);
+            CommandSupport.WriteRendered(rendered);
+            UsageRecorder.Record(layout, "architecture", UsageSources.Cli, rendered);
             return ExitCode.Success;
         });
 

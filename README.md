@@ -177,6 +177,7 @@ via `repoctx related`).
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
+| `stats` | Token-savings dashboard aggregated from your local usage (see below). | `--format` (incl. `html`), `--open` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
 Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
@@ -197,6 +198,38 @@ time), so budgets can be trusted. The intended agent workflow:
    unchanged files return as zero-cost markers instead of repeated content.
    Every `context` response also carries a `state` hash that moves whenever
    the index content changes.
+
+### The token-savings dashboard
+
+`repoctx stats` estimates the net token impact of that loop from your recorded
+successful usage (CLI and MCP alike):
+
+```text
+Token savings (o200k counts, 2026-07-01 to 2026-07-14):
+
+  calls                      42
+  response tokens        31,208
+  reads replaced        104,566
+  net saved              73,358  (70 % of replaced reads)
+```
+
+Every successful query response records two real token figures to a local log
+(`.repoctx/stats.jsonl`): what the response cost, and the full file reads it is
+assumed to make unnecessary. Embedded slices and non-empty outlines are credited
+at the file's full-read cost; `--known` markers assume the caller actually holds
+the matching file content. **Net saved** is replaced reads minus response cost,
+summed over every recorded call. It is an estimate, not a guaranteed lower bound:
+discovery calls (`search`, `related`, `changed`, `architecture`, and
+`context --detail paths`) receive no credit, while credited content assumes a
+full read would otherwise have happened.
+Breakdowns per command and per day (`--format md`/`json` for reports and
+tooling) show where the savings come from. For a visual dashboard, run
+`repoctx stats --open` — it writes a self-contained HTML page (charts, no
+external resources, works fully offline) to `.repoctx/stats.html` and opens it
+in your default browser; `--format html` prints the same page to stdout. There
+is deliberately no localhost server: the browser renders the local file, and
+RepoContext stays network-free. Set `REPOCTX_NO_STATS=1` to disable recording;
+delete the log file to reset the dashboard. See ADR 0011.
 
 ## Agent integration
 
@@ -242,7 +275,7 @@ BPE counts. The economical loop:
 
 Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
-server over stdio and exposes five read-only tools:
+server over stdio and exposes five non-destructive query tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
@@ -255,7 +288,8 @@ server over stdio and exposes five read-only tools:
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
 from the working directory, communicates over stdin/stdout only (no network),
-and never mutates the index.
+and never mutates the index. Successful calls append token counts to the local
+usage ledger described above.
 
 Register it with an MCP-capable client, for example:
 
@@ -329,10 +363,13 @@ artifact; it is git-ignored automatically.
 
 ## Privacy
 
-RepoContext never sends repository data anywhere and contains no telemetry. It
-cannot stop a downstream agent from forwarding the excerpts it returns to an LLM
-provider — for maximum privacy use a local/self-hosted agent and model, and list
-sensitive files in `sensitiveFiles` / `.repoctxignore`.
+RepoContext never sends repository data anywhere and contains no telemetry. The
+`stats` dashboard is fed by a strictly local usage log (`.repoctx/stats.jsonl`,
+git-ignored, token counts and command names only — never content); nothing is
+transmitted, and `REPOCTX_NO_STATS=1` disables it. RepoContext cannot stop a
+downstream agent from forwarding the excerpts it returns to an LLM provider —
+for maximum privacy use a local/self-hosted agent and model, and list sensitive
+files in `sensitiveFiles` / `.repoctxignore`.
 
 ## Troubleshooting
 

@@ -8,13 +8,14 @@ using RepoContext.Core.Context;
 using RepoContext.Core.Graph;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Query;
+using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Cli.Mcp;
 
 /// <summary>
 /// The MCP tools exposed by <c>repoctx mcp</c> (M5 + M6, product doc §11,
-/// ADR 0008/0010). Each tool is a thin, read-only wrapper over the same
+/// ADR 0008/0010). Each tool is a thin query wrapper over the same
 /// deterministic query engines the CLI uses and returns the identical JSON
 /// contract as <c>--format json</c> (same <c>schema_version</c>, same fields).
 /// Tools never mutate the index.
@@ -22,9 +23,10 @@ namespace RepoContext.Cli.Mcp;
 /// <remarks>
 /// Tool handlers resolve the index per call from the current working directory
 /// (as the CLI does), so a re-index is picked up without restarting the server.
-/// Failures (no index, bad arguments) are returned as tool errors with a
-/// human-readable message rather than thrown, because the SDK masks thrown
-/// exception details.
+/// Successful calls append to the local usage ledger, so they are non-destructive
+/// but not read-only or idempotent at the protocol level. Failures (no index, bad
+/// arguments) are returned as tool errors with a human-readable message rather
+/// than thrown, because the SDK masks thrown exception details.
 /// </remarks>
 public static class McpTools
 {
@@ -45,8 +47,8 @@ public static class McpTools
                     "Ranked, explained context bundle for a natural-language task, packed into a "
                     + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
                     + "costs; 'outline' adds symbol skeletons; 'slices' embeds the best source "
-                    + "slice so no file read is needed. Pass previously returned path@hash pairs "
-                    + "as 'known' to get zero-cost unchanged markers instead of repeated content. "
+                    + "slice so no file read is needed. Pass path@hash as 'known' only for files "
+                    + "whose content you already hold; do not echo hashes from pointer-only results. "
                     + "Prefer this over reading files.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
@@ -97,7 +99,9 @@ public static class McpTools
         }
 
         IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols);
-        return Ok(SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json));
+        string rendered = SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json);
+        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered);
+        return Ok(rendered);
     }
 
     private static CallToolResult GetContext(
@@ -105,7 +109,8 @@ public static class McpTools
         [Description("Maximum number of files (default 8).")] int top = 8,
         [Description("Token budget the bundle is packed into (real BPE counts).")] int? budgetTokens = null,
         [Description("Per-file detail: 'paths', 'outline' or 'slices'.")] string detail = "paths",
-        [Description("Files you already have, each as path@hash; unchanged ones return as zero-cost markers.")]
+        [Description("Files whose full content you already hold, each as path@hash; "
+            + "unchanged ones return as zero-cost markers.")]
         string[]? known = null)
     {
         if (top <= 0)
@@ -167,7 +172,12 @@ public static class McpTools
             Known = knownMap,
         });
 
-        return Ok(ContextOutput.Render(result, OutputFormat.Json));
+        string rendered = ContextOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
+            UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+            files: result.Items.Count,
+            unchanged: result.Items.Count(i => i.Unchanged));
+        return Ok(rendered);
     }
 
     private static CallToolResult GetRelatedFiles(
@@ -196,7 +206,9 @@ public static class McpTools
             return Fail($"File not found in index: {relative}");
         }
 
-        return Ok(RelatedOutput.Render(result, OutputFormat.Json));
+        string rendered = RelatedOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered);
+        return Ok(rendered);
     }
 
     private static CallToolResult GetOutline(
@@ -225,7 +237,10 @@ public static class McpTools
             return Fail($"File not found in index: {relative}");
         }
 
-        return Ok(OutlineOutput.Render(result, OutputFormat.Json));
+        string rendered = OutlineOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "outline", UsageSources.Mcp, rendered,
+            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1);
+        return Ok(rendered);
     }
 
     private static CallToolResult GetChanges()
@@ -243,7 +258,9 @@ public static class McpTools
         }
 
         ChangedResult result = ChangeDetector.Run(layout, config, store);
-        return Ok(ChangedOutput.Render(result, OutputFormat.Json));
+        string rendered = ChangedOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered);
+        return Ok(rendered);
     }
 
     /// <summary>Resolves an initialized, indexed repository from the working directory.</summary>
@@ -262,8 +279,8 @@ public static class McpTools
     {
         Name = name,
         Description = description,
-        ReadOnly = true,
-        Idempotent = true,
+        ReadOnly = false,
+        Idempotent = false,
         Destructive = false,
         OpenWorld = false,
     };

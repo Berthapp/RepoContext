@@ -14,3 +14,5 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
 - `0009-token-lean-output.md` — compact JSON, null omission, graph-reason cap.
 - `0010-token-frugal-context-protocol.md` — M6: real token counts, outline,
   detail levels, budget packing, known-state dedupe, changed.
+- `0011-token-savings-stats.md` — M7: local usage log and the `stats`
+  token-savings dashboard.

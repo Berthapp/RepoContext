@@ -7,6 +7,10 @@ numbers are reproducible: 75 files, 774 chunks, 536 symbols, 205 edges at the
 time of measurement. All figures are real `o200k_base` BPE counts of the
 bytes an agent would actually receive — not estimates.
 
+For the same accounting applied automatically to *your* usage, run
+`repoctx stats` — the token-savings dashboard aggregated from a local usage
+log (ADR 0011).
+
 **Task used throughout:** *"improve token budget packing in the context
 engine"* (top-3 relevant files: `ContextEngine.cs` 3,256 tokens,
 `ContextResult.cs` 882, `ContextCommand.cs` 1,198 — 5,336 together).
