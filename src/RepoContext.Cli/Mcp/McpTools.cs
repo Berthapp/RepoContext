@@ -42,14 +42,16 @@ public static class McpTools
                     + "document (schema_version, results[] with path, score, kind, lines and "
                     + "machine-readable reasons). Use for finding files or symbols by term.")),
             McpServerTool.Create(
-                (Func<string, int, int?, string, string[]?, CallToolResult>)GetContext,
+                (Func<string, int, int?, string, string[]?, string?, bool, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Ranked, explained context bundle for a natural-language task, packed into a "
                     + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
                     + "costs; 'outline' adds symbol skeletons; 'slices' embeds the best source "
-                    + "slice so no file read is needed. Pass path@hash as 'known' only for files "
-                    + "whose content you already hold; do not echo hashes from pointer-only results. "
-                    + "Prefer this over reading files.")),
+                    + "slice so no file read is needed. Pass a stable 'session' name and delivered "
+                    + "slices are tracked server-side, so unchanged files return as zero-cost "
+                    + "markers on later calls without echoing hashes. Pass path@hash as 'known' "
+                    + "only for files whose content you already hold; do not echo hashes from "
+                    + "pointer-only results. Prefer this over reading files.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
                 Describe("repoctx.get_related_files",
@@ -63,11 +65,13 @@ public static class McpTools
                     + "content hash and exact full-read token cost. Costs a fraction of reading the "
                     + "file - use it to decide whether (and which part of) a file is worth reading.")),
             McpServerTool.Create(
-                (Func<CallToolResult>)GetChanges,
+                (Func<bool, CallToolResult>)GetChanges,
                 Describe("repoctx.get_changes",
                     "Diff the working tree against the index: added/modified/deleted files plus the "
-                    + "indexed files that import or test them. Use after editing to learn what is "
-                    + "stale (then re-run 'repoctx index') instead of re-reading everything.")),
+                    + "indexed files that import or test them. With patch=true, modified files carry "
+                    + "delta hunks so an edit costs a patch instead of a full re-read. Use after "
+                    + "editing to learn what is stale (then re-run 'repoctx index') instead of "
+                    + "re-reading everything.")),
         };
     }
 
@@ -100,7 +104,8 @@ public static class McpTools
 
         IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols);
         string rendered = SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json);
-        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered,
+            scale: Commands.CommandSupport.ScaleFor(layout));
         return Ok(rendered);
     }
 
@@ -111,7 +116,13 @@ public static class McpTools
         [Description("Per-file detail: 'paths', 'outline' or 'slices'.")] string detail = "paths",
         [Description("Files whose full content you already hold, each as path@hash; "
             + "unchanged ones return as zero-cost markers.")]
-        string[]? known = null)
+        string[]? known = null,
+        [Description("Session name (A-Za-z0-9._-): the known-file set is tracked server-side "
+            + "under .repoctx/sessions/, so hashes need not be echoed back.")]
+        string? session = null,
+        [Description("Lossy: drop full-line comments and blank runs from embedded slices "
+            + "(outline docs already summarize them). Line ranges become approximate.")]
+        bool stripComments = false)
     {
         if (top <= 0)
         {
@@ -151,9 +162,26 @@ public static class McpTools
             }
         }
 
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
         if (Locate() is not { } layout)
         {
             return NoIndex();
+        }
+
+        if (session is not null)
+        {
+            var merged = new Dictionary<string, string>(
+                SessionStore.Load(layout, session), StringComparer.Ordinal);
+            foreach ((string path, string hash) in knownMap ?? new Dictionary<string, string>())
+            {
+                merged[path] = hash;
+            }
+
+            knownMap = merged;
         }
 
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
@@ -170,13 +198,22 @@ public static class McpTools
             BudgetTokens = budgetTokens,
             Detail = detailLevel.Value,
             Known = knownMap,
+            StripComments = stripComments,
         });
 
+        TokenScale scale = TokenScale.From(config);
         string rendered = ContextOutput.Render(result, OutputFormat.Json);
         UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
-            UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+            UsageMeter.ReplacedTokens(result,
+                path => store.FindFile(path) is { } f ? scale.Apply(f.TokenCount) : null),
             files: result.Items.Count,
-            unchanged: result.Items.Count(i => i.Unchanged));
+            unchanged: result.Items.Count(i => i.Unchanged),
+            scale: scale);
+        if (session is not null)
+        {
+            SessionStore.Save(layout, session, result);
+        }
+
         return Ok(rendered);
     }
 
@@ -207,7 +244,8 @@ public static class McpTools
         }
 
         string rendered = RelatedOutput.Render(result, OutputFormat.Json);
-        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered,
+            scale: Commands.CommandSupport.ScaleFor(layout));
         return Ok(rendered);
     }
 
@@ -231,7 +269,8 @@ public static class McpTools
             return outdated;
         }
 
-        Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative);
+        TokenScale scale = Commands.CommandSupport.ScaleFor(layout);
+        Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative, scale);
         if (result is null)
         {
             return Fail($"File not found in index: {relative}");
@@ -239,11 +278,13 @@ public static class McpTools
 
         string rendered = OutlineOutput.Render(result, OutputFormat.Json);
         UsageRecorder.Record(layout, "outline", UsageSources.Mcp, rendered,
-            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1);
+            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1, scale: scale);
         return Ok(rendered);
     }
 
-    private static CallToolResult GetChanges()
+    private static CallToolResult GetChanges(
+        [Description("Include delta hunks (working tree vs indexed content) for modified files.")]
+        bool patch = false)
     {
         if (Locate() is not { } layout)
         {
@@ -257,9 +298,12 @@ public static class McpTools
             return outdated;
         }
 
-        ChangedResult result = ChangeDetector.Run(layout, config, store);
+        TokenScale scale = TokenScale.From(config);
+        ChangedResult result = ChangeDetector.Run(layout, config, store, patch, scale);
         string rendered = ChangedOutput.Render(result, OutputFormat.Json);
-        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered,
+            replacedTokens: UsageMeter.PatchReplacedTokens(result),
+            scale: scale);
         return Ok(rendered);
     }
 

@@ -22,11 +22,17 @@ public static class ChangedCommand
             DefaultValueFactory = _ => "text",
         };
         format.Aliases.Add("-f");
+        var patch = new Option<bool>("--patch")
+        {
+            Description = "Include delta hunks (working tree vs indexed content) for modified " +
+                          "files, so edits cost a patch instead of a full re-read.",
+        };
 
         var command = new Command("changed",
             "Show working-tree changes since the last index and the files they impact.")
         {
             format,
+            patch,
         };
 
         command.SetAction(parseResult =>
@@ -51,10 +57,14 @@ public static class ChangedCommand
                 return ExitCode.NoIndex;
             }
 
-            ChangedResult result = ChangeDetector.Run(layout, config, store);
+            TokenScale scale = TokenScale.From(config);
+            ChangedResult result = ChangeDetector.Run(
+                layout, config, store, parseResult.GetValue(patch), scale);
             string rendered = ChangedOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "changed", UsageSources.Cli, rendered);
+            UsageRecorder.Record(layout, "changed", UsageSources.Cli, rendered,
+                replacedTokens: UsageMeter.PatchReplacedTokens(result),
+                scale: scale);
             return ExitCode.Success;
         });
 

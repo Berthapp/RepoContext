@@ -62,7 +62,8 @@ public static class ArchitectureCommand
             ArchitectureResult result = new ArchitectureEngine(store).Build(treeDepth);
             string rendered = ArchitectureOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "architecture", UsageSources.Cli, rendered);
+            UsageRecorder.Record(layout, "architecture", UsageSources.Cli, rendered,
+                scale: CommandSupport.ScaleFor(layout));
             return ExitCode.Success;
         });
 

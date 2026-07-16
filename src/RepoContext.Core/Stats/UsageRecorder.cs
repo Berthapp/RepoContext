@@ -20,11 +20,14 @@ public static class UsageRecorder
 
     /// <summary>
     /// Appends a record for a served response; <paramref name="rendered"/> is
-    /// counted with the same tokenizer the index uses.
+    /// counted with the same tokenizer the index uses, then calibrated with
+    /// <paramref name="scale"/> so the ledger matches what the caller's model
+    /// family is billed (ADR 0012). Replaced figures must arrive pre-scaled.
     /// </summary>
     public static void Record(
         RepoLayout layout, string command, string source, string rendered,
-        int replacedTokens = 0, int? files = null, int? unchanged = null)
+        int replacedTokens = 0, int? files = null, int? unchanged = null,
+        TokenScale scale = default)
     {
         if (!Enabled)
         {
@@ -38,7 +41,7 @@ public static class UsageRecorder
                 Ts = DateTimeOffset.UtcNow,
                 Command = command,
                 Source = source,
-                Served = Tokens.Count(rendered),
+                Served = scale.Apply(Tokens.Count(rendered)),
                 Replaced = replacedTokens,
                 Files = files,
                 Unchanged = unchanged,

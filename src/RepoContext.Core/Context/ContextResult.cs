@@ -41,6 +41,22 @@ public sealed record ContextOptions
     /// inputs still yield identical output.
     /// </summary>
     public IReadOnlyDictionary<string, string>? Known { get; init; }
+
+    /// <summary>
+    /// Whether embedded slices are charged in their JSON-serialized form
+    /// (escaping adds 10-20 % on code and is billed when the consumer reads
+    /// JSON — ADR 0010). Text/md renderings deliver the raw text, so the CLI
+    /// turns this off for those formats and the budget stays honest (ADR 0012).
+    /// </summary>
+    public bool SerializedCharging { get; init; } = true;
+
+    /// <summary>
+    /// Opt-in lossy transform: strip full-line comments and collapse blank
+    /// runs in embedded slices. Items whose text was altered carry
+    /// <see cref="ContextItem.Stripped"/> so line ranges are known to be
+    /// approximate (ADR 0012).
+    /// </summary>
+    public bool StripComments { get; init; }
 }
 
 /// <summary>A single file in a context bundle, with its reasons.</summary>
@@ -73,6 +89,15 @@ public sealed record ContextItem
     /// <summary>True when the caller's known hash still matches; no content included.</summary>
     public bool Unchanged { get; init; }
 
+    /// <summary>
+    /// Set when another bundle item carries byte-identical content (copied or
+    /// generated files): read that one instead — this item costs nothing.
+    /// </summary>
+    public string? DuplicateOf { get; init; }
+
+    /// <summary>True when the slice was comment-stripped (line ranges approximate).</summary>
+    public bool Stripped { get; init; }
+
     /// <summary>Symbol skeleton (outline detail).</summary>
     public IReadOnlyList<OutlineSymbol>? Symbols { get; init; }
 
@@ -94,6 +119,12 @@ public sealed record ContextResult
     public required string State { get; init; }
 
     public required ContextDetail Detail { get; init; }
+
+    /// <summary>
+    /// Active token-calibration label (profile name or <c>x&lt;factor&gt;</c>),
+    /// null when counts are raw o200k (ADR 0012).
+    /// </summary>
+    public string? TokenProfile { get; init; }
 
     public required IReadOnlyList<ContextItem> Items { get; init; }
 

@@ -68,7 +68,8 @@ public static class RelatedCommand
 
             string rendered = RelatedOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "related", UsageSources.Cli, rendered);
+            UsageRecorder.Record(layout, "related", UsageSources.Cli, rendered,
+                scale: CommandSupport.ScaleFor(layout));
             return ExitCode.Success;
         });
 

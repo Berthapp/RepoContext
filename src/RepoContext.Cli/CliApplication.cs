@@ -47,6 +47,7 @@ public static class CliApplication
         root.Subcommands.Add(OutlineCommand.Build());
         root.Subcommands.Add(ChangedCommand.Build());
         root.Subcommands.Add(ArchitectureCommand.Build());
+        root.Subcommands.Add(PrimeCommand.Build());
         root.Subcommands.Add(StatsCommand.Build());
         root.Subcommands.Add(McpCommand.Build());
 

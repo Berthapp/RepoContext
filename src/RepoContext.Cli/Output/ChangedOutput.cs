@@ -28,7 +28,21 @@ public static class ChangedOutput
         sb.Append("Changed:\n");
         foreach (ChangedFile file in r.Changed)
         {
-            sb.Append($"  {file.Status,-8}  {file.Path}\n");
+            sb.Append($"  {file.Status,-8}  {file.Path}");
+            if (file.Hunks is not null && file.PatchTokens is { } patchTokens && file.FileTokens is { } fileTokens)
+            {
+                sb.Append($"  (~{patchTokens} patch tokens vs {fileTokens} full read)");
+            }
+
+            sb.Append('\n');
+            foreach (PatchHunk hunk in file.Hunks ?? [])
+            {
+                sb.Append($"      @@ -{hunk.OldStart},{hunk.OldLines} +{hunk.NewStart},{hunk.NewLines} @@\n");
+                foreach (string line in hunk.Text.Split('\n'))
+                {
+                    sb.Append("      ").Append(line).Append('\n');
+                }
+            }
         }
 
         if (r.Impacted.Count > 0)
@@ -52,7 +66,24 @@ public static class ChangedOutput
             : $"_Index current (state `{r.State}`). No changes._\n");
         foreach (ChangedFile file in r.Changed)
         {
-            sb.Append($"- **{file.Status}** `{file.Path}`\n");
+            sb.Append($"- **{file.Status}** `{file.Path}`");
+            if (file.Hunks is not null && file.PatchTokens is { } patchTokens && file.FileTokens is { } fileTokens)
+            {
+                sb.Append($" — ~{patchTokens} patch tokens vs {fileTokens} full read");
+            }
+
+            sb.Append('\n');
+            if (file.Hunks is { Count: > 0 } hunks)
+            {
+                sb.Append("\n```diff\n");
+                foreach (PatchHunk hunk in hunks)
+                {
+                    sb.Append($"@@ -{hunk.OldStart},{hunk.OldLines} +{hunk.NewStart},{hunk.NewLines} @@\n");
+                    sb.Append(hunk.Text).Append('\n');
+                }
+
+                sb.Append("```\n\n");
+            }
         }
 
         if (r.Impacted.Count > 0)
@@ -76,7 +107,21 @@ public static class ChangedOutput
             State = r.State,
             Stale = r.Stale,
             Count = r.Changed.Count,
-            Changed = r.Changed.Select(c => new ChangedFileDto { Path = c.Path, Status = c.Status }).ToList(),
+            Changed = r.Changed.Select(c => new ChangedFileDto
+            {
+                Path = c.Path,
+                Status = c.Status,
+                PatchTokens = c.PatchTokens,
+                FileTokens = c.FileTokens,
+                Hunks = c.Hunks?.Select(h => new HunkDto
+                {
+                    OldStart = h.OldStart,
+                    OldLines = h.OldLines,
+                    NewStart = h.NewStart,
+                    NewLines = h.NewLines,
+                    Text = h.Text,
+                }).ToList(),
+            }).ToList(),
             Impacted = r.Impacted.Select(i => new ImpactedFileDto { Path = i.Path, Reasons = i.Reasons }).ToList(),
         };
 
@@ -107,6 +152,29 @@ public static class ChangedOutput
         public required string Path { get; init; }
 
         public required string Status { get; init; }
+
+        /// <summary>Cost of receiving the hunks (patch mode, modified files).</summary>
+        public int? PatchTokens { get; init; }
+
+        /// <summary>The full re-read the patch replaces (patch mode).</summary>
+        public int? FileTokens { get; init; }
+
+        /// <summary>Delta hunks vs the indexed content (patch mode).</summary>
+        public IReadOnlyList<HunkDto>? Hunks { get; init; }
+    }
+
+    private sealed record HunkDto
+    {
+        public int OldStart { get; init; }
+
+        public int OldLines { get; init; }
+
+        public int NewStart { get; init; }
+
+        public int NewLines { get; init; }
+
+        /// <summary>Body lines prefixed ' ' (context), '-' (removed), '+' (added).</summary>
+        public required string Text { get; init; }
     }
 
     private sealed record ImpactedFileDto

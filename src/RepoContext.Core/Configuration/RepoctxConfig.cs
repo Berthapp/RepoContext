@@ -21,6 +21,10 @@ public sealed record RepoctxConfig
 
     public RankingOptions Ranking { get; init; } = new();
 
+    public TokenOptions Tokens { get; init; } = new();
+
+    public PricingOptions Pricing { get; init; } = new();
+
     /// <summary>The default configuration written by <c>repoctx init</c>.</summary>
     public static RepoctxConfig CreateDefault() => new()
     {
@@ -39,6 +43,8 @@ public sealed record RepoctxConfig
             Weights = new RankingWeights { Fts = 0.4, Symbol = 0.3, Graph = 0.2, Path = 0.1 },
             Synonyms = new Dictionary<string, IReadOnlyList<string>>(),
         },
+        Tokens = new TokenOptions { Profile = "o200k" },
+        Pricing = new PricingOptions(),
     };
 
     /// <summary>Serializer options shared by config read/write (stable, indented).</summary>
@@ -59,6 +65,35 @@ public sealed record IndexingOptions
     public bool IncludeTests { get; init; } = true;
 
     public bool IncludeDocs { get; init; } = true;
+}
+
+/// <summary>
+/// Query-time token-count calibration (ADR 0012). The index stores raw
+/// <c>o200k_base</c> counts; these options scale what budgets charge and
+/// what responses report so the figures match the consuming model family.
+/// </summary>
+public sealed record TokenOptions
+{
+    /// <summary>
+    /// Calibration profile: <c>o200k</c>/<c>openai</c> (raw counts, default)
+    /// or <c>claude</c> (~1.2×). Unknown names fall back to raw counts.
+    /// </summary>
+    public string Profile { get; init; } = "o200k";
+
+    /// <summary>Explicit multiplier; overrides <see cref="Profile"/> when set.</summary>
+    public double? Factor { get; init; }
+}
+
+/// <summary>
+/// Optional token pricing used by <c>repoctx stats</c> to express net savings
+/// as money (ADR 0012). Prices change; RepoContext ships no built-in rates.
+/// </summary>
+public sealed record PricingOptions
+{
+    /// <summary>Price per million input tokens, in <see cref="Currency"/>; null disables the estimate.</summary>
+    public double? InputPerMtok { get; init; }
+
+    public string Currency { get; init; } = "USD";
 }
 
 public sealed record RankingOptions

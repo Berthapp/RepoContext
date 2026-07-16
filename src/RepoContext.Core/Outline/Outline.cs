@@ -1,3 +1,4 @@
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Storage;
 
 namespace RepoContext.Core.Outline;
@@ -21,8 +22,12 @@ public static class Outline
     /// <summary>Doc summaries are cut to one line of at most this many characters.</summary>
     private const int MaxDocLength = 140;
 
-    /// <summary>Returns the outline of a file, or null if it is not indexed.</summary>
-    public static OutlineResult? Query(IndexStore store, string relativePath)
+    /// <summary>
+    /// Returns the outline of a file, or null if it is not indexed. The
+    /// full-read token cost is reported through <paramref name="scale"/>
+    /// (query-time calibration, ADR 0012).
+    /// </summary>
+    public static OutlineResult? Query(IndexStore store, string relativePath, TokenScale scale = default)
     {
         if (store.FindFile(relativePath) is not { } file)
         {
@@ -31,7 +36,7 @@ public static class Outline
 
         (IReadOnlyList<OutlineSymbol> symbols, _) = Symbols(store, file.Id, int.MaxValue);
         return new OutlineResult(
-            file.Path, file.Kind, file.Language, file.LineCount, file.TokenCount,
+            file.Path, file.Kind, file.Language, file.LineCount, scale.Apply(file.TokenCount),
             Hashes.Short(file.ContentHash), symbols);
     }
 

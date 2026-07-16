@@ -2,6 +2,7 @@ using System.CommandLine;
 using System.Diagnostics;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Stats;
 
 namespace RepoContext.Cli.Commands;
@@ -61,11 +62,12 @@ public static class StatsCommand
             }
 
             UsageReport report = UsageReport.Build(UsageLog.Read(UsageLog.PathFor(layout)));
+            TokenPricing pricing = TokenPricing.From(ConfigStore.Load(layout.ConfigPath));
             if (openDashboard)
             {
                 string path = Path.Combine(layout.IndexDirectory, "stats.html");
                 Directory.CreateDirectory(layout.IndexDirectory);
-                File.WriteAllText(path, StatsHtmlOutput.Render(report));
+                File.WriteAllText(path, StatsHtmlOutput.Render(report, pricing));
                 Console.Out.WriteLine($"Dashboard written to {path}");
                 if (!TryOpenInBrowser(path))
                 {
@@ -76,8 +78,8 @@ public static class StatsCommand
             }
 
             string rendered = html
-                ? StatsHtmlOutput.Render(report)
-                : StatsOutput.Render(report, outputFormat);
+                ? StatsHtmlOutput.Render(report, pricing)
+                : StatsOutput.Render(report, outputFormat, pricing);
             CommandSupport.WriteRendered(rendered);
             return ExitCode.Success;
         });
