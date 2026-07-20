@@ -19,3 +19,5 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
 - `0012-token-optimization-levers.md` — M8: token calibration profiles,
   `--session` known-set, `changed --patch`, `prime`, slice output-lean
   measures (md charging, dedupe, `--strip-comments`), stats money view.
+- `0013-agent-memory.md` — M9: agent-authored memory (`memory` command +
+  MCP tools, JSONL store, hash-based staleness, context bundle folding).

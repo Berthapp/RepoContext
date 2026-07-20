@@ -33,8 +33,13 @@ public static class McpServerRunner
                 + "with patch=true returns just the changed hunks instead of a full re-read - when "
                 + "stale, run 'repoctx index' (fast, incremental) and re-query; (5) never pay "
                 + "twice: a session (above) or known=['path@hash'] makes unchanged files "
-                + "zero-cost markers. Results are deterministic and carry machine-readable "
-                + "reasons. All tools are read-only and never leave the machine.",
+                + "zero-cost markers; (6) never re-derive: repoctx.memory_search before "
+                + "exploring a topic (get_context folds matching memories in automatically), "
+                + "and after completing a task repoctx.memory_add stores 1-2 distilled "
+                + "sentences - kind='note' for knowledge, 'decision' for a why, 'constraint' "
+                + "for a warning - linked to the files they describe, so they are stale-flagged "
+                + "when the code drifts. Results are deterministic and carry machine-readable "
+                + "reasons. Nothing ever leaves the machine.",
             ToolCollection = McpTools.Build(),
         };
 

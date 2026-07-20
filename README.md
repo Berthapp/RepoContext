@@ -177,6 +177,9 @@ via `repoctx related`).
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
 | `prime` | Cache-stable repository primer for the top of an agent's prompt (byte-identical until code changes). | `--files`, `--format` |
+| `memory add <text>` | Store one agent-authored insight: a `note`, `decision` or `constraint`, optionally linked to files (hash-recorded) and scoped to a session. | `--kind`, `--file`, `--tag`, `--session`, `--format` |
+| `memory search [query]` | Deterministic recall with reasons and hash-based `stale` flags; omit the query to list. | `--top`, `--kind`, `--file`, `--session`, `--stale`, `--format` |
+| `memory rm <id>` | Remove one memory entry (curation). | `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
 | `stats` | Token-savings dashboard aggregated from your local usage (see below). | `--format` (incl. `html`), `--open` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
@@ -206,6 +209,10 @@ time), so budgets can be trusted. The intended agent workflow:
    too, but that text is output tokens, which cost more than input). Every
    `context` response also carries a `state` hash that moves whenever the
    index content changes.
+6. Never re-derive. `memory add` stores a distilled insight after the work is
+   done; `memory search` (and `context`, automatically) brings it back in the
+   next session for a fraction of the re-discovery cost. See
+   [Agent memory](#agent-memory-never-re-derive) below.
 
 Using a non-OpenAI model? Set `tokens.profile` (e.g. `"claude"`) in
 `repoctx.config.json` so budgets and reported counts match your tokenizer —
@@ -242,6 +249,43 @@ in your default browser; `--format html` prints the same page to stdout. There
 is deliberately no localhost server: the browser renders the local file, and
 RepoContext stays network-free. Set `REPOCTX_NO_STATS=1` to disable recording;
 delete the log file to reset the dashboard. See ADR 0011.
+
+### Agent memory: never re-derive
+
+The index remembers what the code *is*; agent memory remembers what agents
+*learned* about it — and both stay local, deterministic and explainable.
+RepoContext never writes a memory itself (no LLM, no generated prose): an
+agent deposits distilled insights, and the tool stores, recalls, explains and
+stale-flags them.
+
+```bash
+repoctx memory add "JWT chosen over cookie sessions: mobile clients cannot hold cookies." \
+  --kind decision --file src/auth/login.ts --tag auth
+repoctx memory search "auth" --format json     # deterministic recall, with reasons
+repoctx context "change the login logic"       # matching memories ride along in the bundle
+```
+
+Three shapes, one store (`.repoctx/memory.jsonl`, git-ignored like the rest
+of `.repoctx/`):
+
+- **`note`** — long-term knowledge ("PaymentService retries 3×, see `retry()`").
+- **`decision`** — reasoning memory: a recorded *why*, so the next agent does
+  not re-litigate it.
+- **`constraint`** — an invariant or warning ("`Action` is public API — do not
+  rename").
+- `--session <name>` scopes an entry short-term: a scratchpad note visible
+  only to calls carrying that session (it survives an agent's context-window
+  compaction), while the session's known-set keeps tracking delivered files.
+
+Every entry is content-addressed (re-adding updates instead of duplicating),
+capped at 2,000 characters, and linked files record their content hash — when
+a linked file changes, recall flags the entry `stale` with the drifted paths,
+so outdated knowledge is visible instead of silently trusted. `context` folds
+at most 3 matching memories into a reserve of at most a fifth of the token
+budget (opt out with `--no-memory`); a repo without memories produces
+byte-identical output to previous versions. The economics: a re-derived
+"how does X work here" costs an outline (~1,100 tokens on this repo) to
+several file reads — a recalled memory answers it for ~40-80.
 
 ## Agent integration
 
@@ -285,21 +329,31 @@ BPE counts. The economical loop:
 6. Find a symbol: `repoctx search "<term>" --symbols --format json`.
 7. After editing: `repoctx changed --patch --format md` for just the changed
    hunks; when `stale`, run `repoctx index`.
+8. Never re-derive: `repoctx memory search "<topic>" --format json` before
+   exploring (`context` folds matching memories in automatically); verify
+   entries flagged `stale`.
+9. Remember what you learned: `repoctx memory add "<1-2 sentence insight>"
+   --kind note|decision|constraint --file <path>` after completing a task.
 ```
 
 ## MCP server
 
 Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
-server over stdio and exposes five non-destructive query tools:
+server over stdio and exposes seven non-destructive tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known`, `session`, `stripComments` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known`, `session`, `stripComments`, `includeMemory` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |
 | `repoctx.get_changes` | `changed` | `patch` |
+| `repoctx.memory_add` | `memory add` | `text`, `kind`, `files`, `tags`, `session` |
+| `repoctx.memory_search` | `memory search` | `query`, `top`, `kind`, `file`, `session`, `stale` |
+
+(`memory rm` is deliberately CLI-only: deleting team knowledge is curation and
+stays under human supervision.)
 
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
@@ -378,8 +432,9 @@ until an index exists.
 | `pricing.currency` | Currency label for the `stats` money view (default `USD`). |
 
 You can also add a `.repoctxignore` file (gitignore syntax) for extra
-exclusions. The index (`.repoctx/`) contains code excerpts and is a sensitive
-artifact; it is git-ignored automatically.
+exclusions. The index (`.repoctx/`) contains code excerpts — and, with M9,
+agent-authored memory notes about the code — so it is a sensitive artifact;
+it is git-ignored automatically.
 
 ## Privacy
 

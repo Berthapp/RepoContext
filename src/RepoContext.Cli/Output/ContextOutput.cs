@@ -52,7 +52,14 @@ public static class ContextOutput
             sb.Append('\n');
         }
 
-        sb.Append($"_Budget: {result.Items.Count} file(s) · ~{result.EstimatedTokens} estimated tokens");
+        AppendMemoriesMd(sb, result);
+        sb.Append($"_Budget: {result.Items.Count} file(s)");
+        if (result.Memories.Count > 0)
+        {
+            sb.Append($" + {result.Memories.Count} memory item(s)");
+        }
+
+        sb.Append($" · ~{result.EstimatedTokens} estimated tokens");
         if (result.TokenProfile is { } mdProfile)
         {
             sb.Append(" (").Append(mdProfile).Append("-calibrated)");
@@ -65,6 +72,50 @@ public static class ContextOutput
 
         sb.Append("._\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Renders the bundle's memory section (ADR 0013) — distilled agent
+    /// knowledge recalled for this task, each entry explained and stale-flagged.
+    /// Omitted entirely when no memory matched, so bundles without memories
+    /// are byte-identical to earlier versions.
+    /// </summary>
+    private static void AppendMemoriesMd(StringBuilder sb, ContextResult result)
+    {
+        if (result.Memories.Count == 0)
+        {
+            return;
+        }
+
+        sb.Append("### Memory\n");
+        foreach (Core.Memory.MemoryHit hit in result.Memories)
+        {
+            sb.Append("- `").Append(hit.Entry.Id).Append("` **").Append(hit.Entry.Kind)
+              .Append($"** ({hit.Score:F4} · ~{hit.EstimatedTokens} tokens");
+            if (hit.Stale)
+            {
+                sb.Append(" · **stale**");
+            }
+
+            sb.Append(")  \n  ").Append(hit.Entry.Text.Replace("\n", "\n  ")).Append('\n');
+            var details = new List<string>();
+            if (hit.Entry.Files.Count > 0)
+            {
+                details.Add("files: " + string.Join(", ", hit.Entry.Files.Keys.Select(p => $"`{p}`")));
+            }
+
+            if (hit.Reasons.Count > 0)
+            {
+                details.Add("reasons: " + string.Join(", ", hit.Reasons));
+            }
+
+            if (details.Count > 0)
+            {
+                sb.Append("  ").Append(string.Join(" · ", details)).Append('\n');
+            }
+        }
+
+        sb.Append('\n');
     }
 
     private static void AppendSymbolsMd(StringBuilder sb, ContextItem item)
@@ -131,7 +182,52 @@ public static class ContextOutput
             i++;
         }
 
-        sb.Append($"\nBudget: {result.Items.Count} file(s) · ~{result.EstimatedTokens} estimated tokens");
+        if (result.Memories.Count > 0)
+        {
+            sb.Append("\nMemory:\n");
+            int m = 1;
+            foreach (Core.Memory.MemoryHit hit in result.Memories)
+            {
+                string staleMarker = hit.Stale ? "  stale" : string.Empty;
+                sb.Append($"  M{m}. {hit.Entry.Id}  {hit.Entry.Kind,-10}  {hit.Score,6:F4}  " +
+                          $"~{hit.EstimatedTokens} tokens{staleMarker}\n");
+                foreach (string line in hit.Entry.Text.Split('\n'))
+                {
+                    sb.Append("      ").Append(line).Append('\n');
+                }
+
+                var details = new List<string>();
+                if (hit.Entry.Files.Count > 0)
+                {
+                    details.Add("files: " + string.Join(", ", hit.Entry.Files.Keys));
+                }
+
+                if (hit.Reasons.Count > 0)
+                {
+                    details.Add("reasons: " + string.Join(", ", hit.Reasons));
+                }
+
+                if (hit.StaleFiles.Count > 0)
+                {
+                    details.Add("stale: " + string.Join(", ", hit.StaleFiles));
+                }
+
+                if (details.Count > 0)
+                {
+                    sb.Append("      ").Append(string.Join(" · ", details)).Append('\n');
+                }
+
+                m++;
+            }
+        }
+
+        sb.Append($"\nBudget: {result.Items.Count} file(s)");
+        if (result.Memories.Count > 0)
+        {
+            sb.Append($" + {result.Memories.Count} memory item(s)");
+        }
+
+        sb.Append($" · ~{result.EstimatedTokens} estimated tokens");
         if (result.TokenProfile is { } profile)
         {
             sb.Append(" (").Append(profile).Append("-calibrated)");
@@ -186,6 +282,9 @@ public static class ContextOutput
                 SymbolsOmitted = item.SymbolsOmitted,
                 Snippet = item.Snippet,
             }).ToList(),
+            Memories = result.Memories.Count > 0
+                ? result.Memories.Select(MemoryDto.From).ToList()
+                : null,
         };
 
         return JsonSerializer.Serialize(doc, OutputJson.Options);
@@ -217,6 +316,9 @@ public static class ContextOutput
         public int EstimatedTokens { get; init; }
 
         public required IReadOnlyList<ContextItemDto> Results { get; init; }
+
+        /// <summary>Relevant agent memories folded into the bundle (absent when none — ADR 0013).</summary>
+        public IReadOnlyList<MemoryDto>? Memories { get; init; }
     }
 
     private sealed record ContextItemDto

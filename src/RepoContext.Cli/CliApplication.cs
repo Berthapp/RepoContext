@@ -11,8 +11,9 @@ namespace RepoContext.Cli;
 /// <c>index</c>, <c>search</c>, <c>related</c>, <c>context</c> and
 /// <c>architecture</c>, plus <c>mcp</c> (M5) which serves the same query
 /// engine to AI agents over the Model Context Protocol, the token-lean
-/// M6 additions <c>outline</c> and <c>changed</c> (ADR 0010), and the
-/// <c>stats</c> token-savings dashboard (ADR 0011).
+/// M6 additions <c>outline</c> and <c>changed</c> (ADR 0010), the
+/// <c>stats</c> token-savings dashboard (ADR 0011), and the M9 agent
+/// <c>memory</c> store (ADR 0013).
 /// </remarks>
 public static class CliApplication
 {
@@ -48,6 +49,7 @@ public static class CliApplication
         root.Subcommands.Add(ChangedCommand.Build());
         root.Subcommands.Add(ArchitectureCommand.Build());
         root.Subcommands.Add(PrimeCommand.Build());
+        root.Subcommands.Add(MemoryCommand.Build());
         root.Subcommands.Add(StatsCommand.Build());
         root.Subcommands.Add(McpCommand.Build());
 

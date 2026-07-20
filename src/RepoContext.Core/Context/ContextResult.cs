@@ -57,6 +57,15 @@ public sealed record ContextOptions
     /// approximate (ADR 0012).
     /// </summary>
     public bool StripComments { get; init; }
+
+    /// <summary>
+    /// Agent memories visible to this call — long-term entries plus the
+    /// active session's short-term ones (ADR 0013). Loaded by the caller (the
+    /// engine does no file I/O), so determinism holds: the memory store is
+    /// input exactly like <see cref="Known"/>. Relevant entries are folded
+    /// into the bundle; null or empty disables memory items.
+    /// </summary>
+    public IReadOnlyList<Memory.MemoryEntry>? Memories { get; init; }
 }
 
 /// <summary>A single file in a context bundle, with its reasons.</summary>
@@ -127,6 +136,14 @@ public sealed record ContextResult
     public string? TokenProfile { get; init; }
 
     public required IReadOnlyList<ContextItem> Items { get; init; }
+
+    /// <summary>
+    /// Relevant agent memories folded into the bundle (ADR 0013): distilled
+    /// prior knowledge at a fraction of a re-discovery's cost, each with
+    /// reasons and a stale flag. Empty when none matched or memory was
+    /// disabled.
+    /// </summary>
+    public IReadOnlyList<Memory.MemoryHit> Memories { get; init; } = [];
 
     public required int TotalCandidates { get; init; }
 

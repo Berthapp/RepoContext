@@ -33,7 +33,7 @@ public class McpServerTests
     }
 
     [Fact]
-    public async Task ListTools_ExposesFiveNonDestructiveInstrumentedTools()
+    public async Task ListTools_ExposesSevenNonDestructiveInstrumentedTools()
     {
         using FixtureWorkspace ws = Indexed();
         await using McpClient client = await ConnectAsync(ws);
@@ -41,12 +41,14 @@ public class McpServerTests
         IList<McpClientTool> tools = await client.ListToolsAsync();
         var names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(5, tools.Count);
+        Assert.Equal(7, tools.Count);
         Assert.Contains("repoctx.search", names);
         Assert.Contains("repoctx.get_context", names);
         Assert.Contains("repoctx.get_related_files", names);
         Assert.Contains("repoctx.get_outline", names);
         Assert.Contains("repoctx.get_changes", names);
+        Assert.Contains("repoctx.memory_add", names);
+        Assert.Contains("repoctx.memory_search", names);
         Assert.All(tools, tool =>
         {
             ToolAnnotations annotations = Assert.IsType<ToolAnnotations>(tool.ProtocolTool.Annotations);
