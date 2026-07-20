@@ -7,6 +7,7 @@ using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
 using RepoContext.Core.Graph;
 using RepoContext.Core.Indexing;
+using RepoContext.Core.Memory;
 using RepoContext.Core.Query;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
@@ -14,11 +15,13 @@ using RepoContext.Core.Storage;
 namespace RepoContext.Cli.Mcp;
 
 /// <summary>
-/// The MCP tools exposed by <c>repoctx mcp</c> (M5 + M6, product doc §11,
-/// ADR 0008/0010). Each tool is a thin query wrapper over the same
-/// deterministic query engines the CLI uses and returns the identical JSON
-/// contract as <c>--format json</c> (same <c>schema_version</c>, same fields).
-/// Tools never mutate the index.
+/// The MCP tools exposed by <c>repoctx mcp</c> (M5 + M6 + M9, product doc §11,
+/// ADR 0008/0010/0013). Each tool is a thin wrapper over the same
+/// deterministic engines the CLI uses and returns the identical JSON contract
+/// as <c>--format json</c> (same <c>schema_version</c>, same fields). Tools
+/// never mutate the index; <c>memory_add</c> appends to the separate agent
+/// memory store (curation via <c>memory rm</c> stays CLI-only, under human
+/// supervision).
 /// </summary>
 /// <remarks>
 /// Tool handlers resolve the index per call from the current working directory
@@ -42,7 +45,7 @@ public static class McpTools
                     + "document (schema_version, results[] with path, score, kind, lines and "
                     + "machine-readable reasons). Use for finding files or symbols by term.")),
             McpServerTool.Create(
-                (Func<string, int, int?, string, string[]?, string?, bool, CallToolResult>)GetContext,
+                (Func<string, int, int?, string, string[]?, string?, bool, bool, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Ranked, explained context bundle for a natural-language task, packed into a "
                     + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
@@ -72,6 +75,22 @@ public static class McpTools
                     + "delta hunks so an edit costs a patch instead of a full re-read. Use after "
                     + "editing to learn what is stale (then re-run 'repoctx index') instead of "
                     + "re-reading everything.")),
+            McpServerTool.Create(
+                (Func<string, string, string[]?, string[]?, string?, CallToolResult>)MemoryAdd,
+                Describe("repoctx.memory_add",
+                    "Store one distilled insight in the repository's agent memory so the next "
+                    + "session pays a ~50-token recall instead of a re-discovery. Kinds: 'note' "
+                    + "(knowledge), 'decision' (a why), 'constraint' (a warning). Link the files "
+                    + "the insight is about — their content hashes are recorded and the memory is "
+                    + "flagged stale when they change. Keep it to 1-2 sentences. Use after "
+                    + "completing a task, for anything that took real work to figure out.")),
+            McpServerTool.Create(
+                (Func<string?, int, string?, string?, string?, bool, CallToolResult>)MemorySearch,
+                Describe("repoctx.memory_search",
+                    "Recall stored agent memories deterministically: term/tag/path scoring with "
+                    + "machine-readable reasons and hash-based stale flags. Query before exploring "
+                    + "a topic — a stale-free hit replaces a whole re-discovery. Omit the query to "
+                    + "list entries. get_context already folds matching memories into its bundle.")),
         };
     }
 
@@ -122,7 +141,9 @@ public static class McpTools
         string? session = null,
         [Description("Lossy: drop full-line comments and blank runs from embedded slices "
             + "(outline docs already summarize them). Line ranges become approximate.")]
-        bool stripComments = false)
+        bool stripComments = false,
+        [Description("Fold relevant stored agent memories into the bundle (ADR 0013).")]
+        bool includeMemory = true)
     {
         if (top <= 0)
         {
@@ -199,6 +220,9 @@ public static class McpTools
             Detail = detailLevel.Value,
             Known = knownMap,
             StripComments = stripComments,
+            Memories = includeMemory
+                ? Commands.ContextCommand.VisibleMemories(layout, session)
+                : null,
         });
 
         TokenScale scale = TokenScale.From(config);
@@ -304,6 +328,181 @@ public static class McpTools
         UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered,
             replacedTokens: UsageMeter.PatchReplacedTokens(result),
             scale: scale);
+        return Ok(rendered);
+    }
+
+    private static CallToolResult MemoryAdd(
+        [Description("The distilled insight to remember (1-2 sentences, max 2000 characters).")]
+        string text,
+        [Description("Memory kind: 'note' (knowledge), 'decision' (a why) or 'constraint' (a warning).")]
+        string kind = "note",
+        [Description("Repo-relative files this memory is about; their hashes make staleness detectable.")]
+        string[]? files = null,
+        [Description("Lowercase tags for recall.")] string[]? tags = null,
+        [Description("Session name to scope the memory to (short-term); omit for long-term.")]
+        string? session = null)
+    {
+        if (!MemoryKinds.IsValid(kind))
+        {
+            return Fail("kind must be 'note', 'decision' or 'constraint'.");
+        }
+
+        string trimmed = (text ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return Fail("text must not be empty.");
+        }
+
+        if (trimmed.Length > MemoryStore.MaxTextLength)
+        {
+            return Fail($"text exceeds {MemoryStore.MaxTextLength} characters — distill it.");
+        }
+
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
+        var tagList = new List<string>();
+        foreach (string input in tags ?? [])
+        {
+            string t = (input ?? string.Empty).Trim().ToLowerInvariant();
+            if (t.Length is 0 or > 32 || !t.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+            {
+                return Fail($"Invalid tag '{input}'. Use 1-32 characters from a-z, 0-9, '-', '_'.");
+            }
+
+            if (!tagList.Contains(t, StringComparer.Ordinal))
+            {
+                tagList.Add(t);
+            }
+        }
+
+        if (tagList.Count > MemoryStore.MaxTags)
+        {
+            return Fail($"At most {MemoryStore.MaxTags} tags per memory.");
+        }
+
+        if (files is { Length: > MemoryStore.MaxFiles })
+        {
+            return Fail($"At most {MemoryStore.MaxFiles} file links per memory.");
+        }
+
+        if (Locate() is not { } layout)
+        {
+            return NoIndex();
+        }
+
+        using IndexStore store = IndexStore.Open(layout.DatabasePath);
+        if (OutdatedSchema(store) is { } outdated)
+        {
+            return outdated;
+        }
+
+        var links = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (string input in files ?? [])
+        {
+            string? relative = layout.ToRelativePath(input ?? string.Empty, Directory.GetCurrentDirectory());
+            if (relative is null)
+            {
+                return Fail($"Path is outside the repository: {input}");
+            }
+
+            if (store.FindFile(relative) is not { } row)
+            {
+                return Fail($"File not found in index: {relative}");
+            }
+
+            links[relative] = Hashes.Short(row.ContentHash);
+        }
+
+        var entry = new MemoryEntry
+        {
+            Id = MemoryEntry.ComputeId(kind, trimmed, session, links.Keys),
+            Kind = kind,
+            Text = trimmed,
+            Files = links,
+            Tags = tagList,
+            Session = session,
+            Created = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+        };
+
+        bool updated;
+        try
+        {
+            updated = MemoryStore.Add(layout, entry);
+        }
+        catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+        {
+            return Fail(e.Message);
+        }
+
+        string rendered = MemoryOutput.RenderAdd(
+            entry, updated, MemoryStore.Load(layout).Count, OutputFormat.Json);
+        UsageRecorder.Record(layout, "memory", UsageSources.Mcp, rendered,
+            scale: Commands.CommandSupport.ScaleFor(layout));
+        return Ok(rendered);
+    }
+
+    private static CallToolResult MemorySearch(
+        [Description("Free-text recall query; omit to list entries.")] string? query = null,
+        [Description("Maximum number of entries (default 10).")] int top = 10,
+        [Description("Restrict to one kind: 'note', 'decision' or 'constraint'.")] string? kind = null,
+        [Description("Restrict to memories linked to this repo-relative file.")] string? file = null,
+        [Description("Also include this session's short-term memories.")] string? session = null,
+        [Description("Return only stale entries (linked files changed since they were written).")]
+        bool stale = false)
+    {
+        if (top <= 0)
+        {
+            return Fail("top must be greater than zero.");
+        }
+
+        if (kind is not null && !MemoryKinds.IsValid(kind))
+        {
+            return Fail("kind must be 'note', 'decision' or 'constraint'.");
+        }
+
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
+        if (Locate() is not { } layout)
+        {
+            return NoIndex();
+        }
+
+        string? fileFilter = null;
+        if (file is { Length: > 0 })
+        {
+            fileFilter = layout.ToRelativePath(file, Directory.GetCurrentDirectory());
+            if (fileFilter is null)
+            {
+                return Fail("Path is outside the repository.");
+            }
+        }
+
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+        using IndexStore store = IndexStore.Open(layout.DatabasePath);
+        if (OutdatedSchema(store) is { } outdated)
+        {
+            return outdated;
+        }
+
+        MemoryQueryResult result = MemoryEngine.Search(MemoryStore.Load(layout), new MemoryQueryOptions
+        {
+            Query = query,
+            Top = top,
+            Kind = kind,
+            File = fileFilter,
+            Session = session,
+            StaleOnly = stale,
+        }, config, store);
+
+        string rendered = MemoryOutput.RenderSearch(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "memory", UsageSources.Mcp, rendered,
+            scale: Commands.CommandSupport.ScaleFor(layout));
         return Ok(rendered);
     }
 

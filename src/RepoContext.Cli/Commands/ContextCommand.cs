@@ -52,6 +52,10 @@ public static class ContextCommand
             Description = "Lossy: drop full-line comments and blank runs from embedded slices " +
                           "(outline docs already summarize them). Line ranges become approximate.",
         };
+        var noMemory = new Option<bool>("--no-memory")
+        {
+            Description = "Exclude stored agent memories from the bundle.",
+        };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -70,6 +74,7 @@ public static class ContextCommand
             known,
             session,
             stripComments,
+            noMemory,
             format,
         };
 
@@ -154,6 +159,9 @@ public static class ContextCommand
                 // Text/md deliver raw slice text; only JSON pays the escape tax,
                 // so charge in serialized form only when JSON is the output (ADR 0012).
                 SerializedCharging = outputFormat == OutputFormat.Json,
+                Memories = parseResult.GetValue(noMemory)
+                    ? null
+                    : VisibleMemories(layout, sessionName),
             });
 
             TokenScale scale = TokenScale.From(config);
@@ -194,6 +202,17 @@ public static class ContextCommand
                 return false;
         }
     }
+
+    /// <summary>
+    /// The memories visible to this call: long-term entries always, a
+    /// session's short-term entries only when that session is active (ADR
+    /// 0013). Loading here keeps the engine free of file I/O.
+    /// </summary>
+    internal static IReadOnlyList<Core.Memory.MemoryEntry> VisibleMemories(
+        RepoLayout layout, string? sessionName) =>
+        Core.Memory.MemoryStore.Load(layout)
+            .Where(m => m.Session is null || (sessionName is not null && m.Session == sessionName))
+            .ToList();
 
     /// <summary>Session entries seed the map; explicit <c>--known</c> entries win.</summary>
     private static Dictionary<string, string> MergeKnown(

@@ -23,6 +23,11 @@ public sealed class ContextEngine
     private const int PreambleFallbackLines = 20;
     private const int ItemEnvelopeOverhead = 40;
     private const int SymbolFramingTokens = 26;
+    private const int MaxContextMemories = 3;
+    private const int MemoryBudgetDivisor = 5;
+    private const int MemoryEnvelopeOverhead = 24;
+    private const double MemoryTermWeight = 0.7;
+    private const double MemoryOverlapWeight = 0.3;
 
     private readonly IndexStore _store;
     private readonly RepoctxConfig _config;
@@ -47,7 +52,33 @@ public sealed class ContextEngine
         ScoreCandidates(candidates);
 
         List<Candidate> ordered = ApplyDiversity(candidates.Values);
-        List<ContextItem> items = Budget(ordered, options, fileByPath);
+
+        // Memories are packed first into a bounded reserve (they are the
+        // cheapest knowledge per token); files get whatever the reserve did
+        // not actually consume, so an empty memory store changes nothing.
+        List<Memory.MemoryHit> memories = SelectMemories(analyzed, ordered, options);
+        int memoryTokens = memories.Sum(m => m.EstimatedTokens);
+        ContextOptions fileOptions = options.BudgetTokens is { } budget && memoryTokens > 0
+            ? options with { BudgetTokens = budget - memoryTokens }
+            : options;
+
+        List<ContextItem> items = Budget(ordered, fileOptions, fileByPath);
+
+        // The always-admitted first file can overshoot a tight budget (the
+        // one sanctioned exception, ADR 0010). Memories are optional extras
+        // and must never widen it: drop the lowest-ranked until the bundle
+        // fits the budget again (or no memories remain).
+        if (options.BudgetTokens is { } cap)
+        {
+            int itemTokens = items.Sum(i => i.EstimatedTokens);
+            while (memories.Count > 0 && itemTokens + memories.Sum(m => m.EstimatedTokens) > cap)
+            {
+                memories.RemoveAt(memories.Count - 1);
+            }
+
+            memoryTokens = memories.Sum(m => m.EstimatedTokens);
+        }
+
         int scored = ordered.Count(c => c.Score > 0);
 
         return new ContextResult
@@ -58,9 +89,10 @@ public sealed class ContextEngine
             Detail = options.Detail,
             TokenProfile = _scale.Label,
             Items = items,
+            Memories = memories,
             TotalCandidates = candidates.Count,
             Omitted = scored - items.Count,
-            EstimatedTokens = items.Sum(i => i.EstimatedTokens),
+            EstimatedTokens = items.Sum(i => i.EstimatedTokens) + memoryTokens,
         };
     }
 
@@ -359,6 +391,104 @@ public sealed class ContextEngine
                 return item;
         }
     }
+
+    /// <summary>
+    /// Picks the agent memories worth folding into this bundle (ADR 0013):
+    /// scored 70 % on query-term overlap (via <see cref="Memory.MemoryEngine.Match"/>)
+    /// and 30 % on linkage to the bundle's own candidates, capped at
+    /// <see cref="MaxContextMemories"/> items inside a reserve of at most a
+    /// fifth of the budget. A memory that does not fit is skipped, never a
+    /// stop signal, and staleness is flagged from content hashes so outdated
+    /// knowledge is visible instead of silently trusted.
+    /// </summary>
+    private List<Memory.MemoryHit> SelectMemories(
+        AnalyzedQuery analyzed, List<Candidate> ordered, ContextOptions options)
+    {
+        if (options.Memories is not { Count: > 0 } entries)
+        {
+            return [];
+        }
+
+        double maxAdjusted = Max(ordered.Select(c => c.AdjustedScore));
+        var scoredMemories = new List<(Memory.MemoryEntry Entry, double Score, List<string> Reasons)>();
+        foreach (Memory.MemoryEntry entry in entries)
+        {
+            (double termScore, List<string> reasons) = Memory.MemoryEngine.Match(entry, analyzed.Terms);
+
+            double overlap = 0;
+            string? overlapPath = null;
+            foreach (Candidate c in ordered)
+            {
+                if (c.AdjustedScore > 0 && entry.Files.ContainsKey(c.Path))
+                {
+                    double strength = maxAdjusted > 0 ? c.AdjustedScore / maxAdjusted : 0;
+                    if (strength > overlap)
+                    {
+                        overlap = strength;
+                        overlapPath = c.Path;
+                    }
+                }
+            }
+
+            double score = MemoryTermWeight * termScore + MemoryOverlapWeight * overlap;
+            if (score <= 0)
+            {
+                continue;
+            }
+
+            if (overlapPath is not null)
+            {
+                reasons.Add("linked:" + overlapPath);
+            }
+
+            scoredMemories.Add((entry, score, reasons));
+        }
+
+        int reserve = options.BudgetTokens is { } budget ? budget / MemoryBudgetDivisor : int.MaxValue;
+        var picked = new List<Memory.MemoryHit>();
+        int used = 0;
+        foreach ((Memory.MemoryEntry entry, double score, List<string> reasons) in scoredMemories
+            .OrderByDescending(m => m.Score)
+            .ThenBy(m => m.Entry.Id, StringComparer.Ordinal))
+        {
+            if (picked.Count >= MaxContextMemories)
+            {
+                break;
+            }
+
+            int contentTokens = options.SerializedCharging
+                ? JsonTextTokens(entry.Text)
+                : Tokens.Count(entry.Text);
+            int cost = _scale.Apply(contentTokens + MemoryEnvelopeTokens(entry, reasons));
+            if (used + cost > reserve)
+            {
+                continue;
+            }
+
+            (bool stale, IReadOnlyList<string> staleFiles) = Memory.MemoryEngine.Staleness(entry, _store);
+            picked.Add(new Memory.MemoryHit
+            {
+                Entry = entry,
+                Score = Math.Round(score, 4, MidpointRounding.AwayFromZero),
+                Reasons = reasons,
+                Stale = stale,
+                StaleFiles = staleFiles,
+                EstimatedTokens = cost,
+            });
+            used += cost;
+        }
+
+        return picked;
+    }
+
+    /// <summary>
+    /// The framing a memory item adds to the response: id, kind, reasons and
+    /// the linked path@hash pairs, plus a flat allowance for field names.
+    /// </summary>
+    private static int MemoryEnvelopeTokens(Memory.MemoryEntry entry, IReadOnlyList<string> reasons) =>
+        MemoryEnvelopeOverhead
+        + Tokens.Count(string.Join(',', reasons))
+        + entry.Files.Keys.Sum(p => Tokens.Count(p) + 8);
 
     /// <summary>The response cost of an outline: its signatures and doc lines.</summary>
     private static int OutlineTokens(IReadOnlyList<OutlineSymbol> symbols) =>
