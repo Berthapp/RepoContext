@@ -34,9 +34,14 @@
 
   <ItemGroup>
     <!-- The build/ folder is auto-imported by NuGet into every consuming
-         project; file names must match the package id exactly. -->
+         project; file names must match the package id exactly. The thin
+         buildMultiTargeting/ copies import them into the outer build of
+         multi-TFM projects too — RepoCtxAutoSetup runs only there (never
+         per-TFM, so init/index cannot race in parallel builds). -->
     <None Include="build\RepoContext.MSBuild.props" Pack="true" PackagePath="build\" />
     <None Include="build\RepoContext.MSBuild.targets" Pack="true" PackagePath="build\" />
+    <None Include="buildMultiTargeting\RepoContext.MSBuild.props" Pack="true" PackagePath="buildMultiTargeting\" />
+    <None Include="buildMultiTargeting\RepoContext.MSBuild.targets" Pack="true" PackagePath="buildMultiTargeting\" />
     <None Include="..\..\README.md" Pack="true" PackagePath="" />
     <None Include="..\..\NOTICE" Pack="true" PackagePath="" />
   </ItemGroup>

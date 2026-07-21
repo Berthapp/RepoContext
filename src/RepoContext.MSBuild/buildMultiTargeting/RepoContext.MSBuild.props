@@ -1,0 +1,4 @@
+<Project>
+  <!-- Outer build of a multi-targeting project: same content as build/. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\build\RepoContext.MSBuild.props" />
+</Project>

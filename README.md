@@ -73,29 +73,43 @@ dotnet add src/YourProject package RepoContext.MSBuild
 ```
 
 It is a development-only dependency: nothing is compiled into your assemblies,
-copied to your output, or passed on to consumers of your package. It brings
-two MSBuild targets:
+copied to your output, or passed on to consumers of your package. **The next
+build sets everything up automatically** — no further commands:
+
+- first build only: `repoctx init --agents` (writes `repoctx.config.json`,
+  git-ignores `.repoctx/`, creates/updates the `CLAUDE.md` and `AGENTS.md`
+  agent instructions);
+- every build: an incremental `repoctx index`, so the index follows your
+  code without anyone remembering to run it;
+- wrapper scripts `repoctx` / `repoctx.cmd` in `.repoctx/bin/` (git-ignored),
+  kept pointing at the current package version across updates.
 
 ```bash
-# Run any repoctx command through MSBuild
-# (runs in the directory you invoke it from):
-dotnet msbuild src/YourProject -t:RepoCtx -p:RepoCtxArgs="init"
-dotnet msbuild src/YourProject -t:RepoCtx -p:RepoCtxArgs="index"
-
-# Or write stable wrapper scripts once (repoctx + repoctx.cmd,
-# into .repoctx/bin/ under the current directory, git-ignored with .repoctx/):
-dotnet msbuild src/YourProject -t:RepoCtxShim
-```
-
-From then on the wrapper is a fixed path — for humans, agent instructions and
-MCP configs alike (use `.repoctx/bin/repoctx` as the MCP `command`):
-
-```bash
+dotnet build      # ...and everything is ready:
 ./.repoctx/bin/repoctx context "change the login logic"
 ```
 
-The wrappers embed the package's absolute path inside the local NuGet cache,
-so re-run `-t:RepoCtxShim` after updating the package version.
+The wrapper is a fixed path for humans, agent instructions and MCP configs
+alike (use `.repoctx/bin/repoctx` as the MCP `command`). The repository root
+is detected as: an existing `repoctx.config.json` above the project, else the
+solution directory, else the directory the build was started from — override
+with `-p:RepoCtxRoot=...`.
+
+Auto-setup is skipped for IDE design-time builds, runs once per build (never
+per target framework), and never fails your build — repoctx problems surface
+as warnings. Opt out per property (in the project file or via `-p:`):
+`RepoCtxAutoSetup=false` (everything), `RepoCtxAutoAgents=false` (init runs
+with `--no-agents`: no `CLAUDE.md`/`AGENTS.md`), `RepoCtxAutoIndex=false`
+(no per-build index), `RepoCtxAutoShim=false` (no wrapper scripts).
+
+For manual control (e.g. with auto-setup off), two MSBuild targets remain:
+
+```bash
+# run any repoctx command through MSBuild, in the detected repository root:
+dotnet msbuild src/YourProject -t:RepoCtx -p:RepoCtxArgs="index"
+# (re)write the wrapper scripts:
+dotnet msbuild src/YourProject -t:RepoCtxShim
+```
 
 Or download a self-contained binary for `linux-x64`, `win-x64` or `osx-arm64`
 (no .NET runtime required) from the [latest release][releases], unpack it and
