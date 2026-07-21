@@ -23,17 +23,25 @@
           the auto-setup rewrites them on the next build after a package
           update.
 
+      dotnet msbuild <project> -t:RepoCtxMcpConfig
+          Writes a .vscode/mcp.json (only when none exists yet, never
+          touching an existing one) that registers the repoctx MCP server
+          for Copilot agent mode and other MCP clients, via the wrapper
+          script path.
+
     Auto-setup switches (set as MSBuild properties, e.g. in the project file
     or via -p:...): RepoCtxAutoSetup=false disables everything;
     RepoCtxAutoAgents=false makes init skip the CLAUDE.md / AGENTS.md
     instruction files; RepoCtxAutoIndex=false skips the per-build index;
-    RepoCtxAutoShim=false skips the wrapper scripts.
+    RepoCtxAutoShim=false skips the wrapper scripts;
+    RepoCtxAutoMcp=false skips the .vscode/mcp.json.
   -->
   <PropertyGroup>
     <RepoCtxAutoSetup Condition="'$(RepoCtxAutoSetup)' == ''">true</RepoCtxAutoSetup>
     <RepoCtxAutoAgents Condition="'$(RepoCtxAutoAgents)' == ''">true</RepoCtxAutoAgents>
     <RepoCtxAutoIndex Condition="'$(RepoCtxAutoIndex)' == ''">true</RepoCtxAutoIndex>
     <RepoCtxAutoShim Condition="'$(RepoCtxAutoShim)' == ''">true</RepoCtxAutoShim>
+    <RepoCtxAutoMcp Condition="'$(RepoCtxAutoMcp)' == ''">true</RepoCtxAutoMcp>
   </PropertyGroup>
 
   <!--
@@ -93,6 +101,42 @@
   </Target>
 
   <!--
+    Registers the repoctx MCP server for MCP-capable agents (Copilot agent
+    mode in VS Code and Visual Studio read .vscode/mcp.json). Created only
+    when the file does not exist yet: an existing mcp.json belongs to the
+    user and is never modified, so this cannot clobber other servers. The
+    file references the wrapper scripts by workspace-relative path, so it is
+    committable and works for the whole team (each machine's build writes
+    its own git-ignored wrappers).
+  -->
+  <Target Name="RepoCtxMcpConfig" DependsOnTargets="_RepoCtxResolveRoot">
+    <PropertyGroup>
+      <RepoCtxMcpConfigFile Condition="'$(RepoCtxMcpConfigFile)' == ''">$([MSBuild]::NormalizePath('$(RepoCtxRoot)', '.vscode', 'mcp.json'))</RepoCtxMcpConfigFile>
+      <_RepoCtxMcpMissing>false</_RepoCtxMcpMissing>
+      <_RepoCtxMcpMissing Condition="!Exists('$(RepoCtxMcpConfigFile)')">true</_RepoCtxMcpMissing>
+      <_RepoCtxMcpJson><![CDATA[{
+  "servers": {
+    "repoctx": {
+      "type": "stdio",
+      "command": "${workspaceFolder}/.repoctx/bin/repoctx",
+      "args": ["mcp"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}]]></_RepoCtxMcpJson>
+    </PropertyGroup>
+    <MakeDir Condition="'$(_RepoCtxMcpMissing)' == 'true'"
+             Directories="$([System.IO.Path]::GetDirectoryName('$(RepoCtxMcpConfigFile)'))" />
+    <WriteLinesToFile Condition="'$(_RepoCtxMcpMissing)' == 'true'"
+                      File="$(RepoCtxMcpConfigFile)"
+                      Lines="$(_RepoCtxMcpJson)" Overwrite="true" />
+    <Message Condition="'$(_RepoCtxMcpMissing)' == 'true'" Importance="high"
+             Text="repoctx: wrote $(RepoCtxMcpConfigFile) (repoctx MCP server for Copilot agent mode and other MCP clients; commit it to share with the team)." />
+    <Message Condition="'$(_RepoCtxMcpMissing)' != 'true'" Importance="normal"
+             Text="repoctx: $(RepoCtxMcpConfigFile) already exists, left untouched." />
+  </Target>
+
+  <!--
     Runs after every real build of the referencing project. Skipped for IDE
     design-time builds. In a multi-targeting project only the outer build
     runs it (the buildMultiTargeting/ copy of this file); the inner per-TFM
@@ -126,6 +170,7 @@
           IgnoreStandardErrorWarningFormat="true"
           StandardOutputImportance="low" />
     <CallTarget Condition="'$(RepoCtxAutoShim)' == 'true'" Targets="RepoCtxShim" />
+    <CallTarget Condition="'$(RepoCtxAutoMcp)' == 'true'" Targets="RepoCtxMcpConfig" />
   </Target>
 
 </Project>

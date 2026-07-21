@@ -49,7 +49,15 @@ DotnetTool package type rejects by design (`NU1212`/`NU1213`).
   root). `.git` cannot serve as the probe: MSBuild's
   `GetDirectoryNameOfFileAbove` only sees files, and `.git` is usually a
   directory.
-- **Two MSBuild targets for manual control**, auto-imported from `build/`:
+- **MCP config out of the box.** Auto-setup also writes `.vscode/mcp.json`
+  (read by Copilot agent mode in VS Code and Visual Studio) registering the
+  repoctx MCP server via the workspace-relative wrapper path — but only when
+  no `mcp.json` exists yet: an existing file belongs to the user and is
+  never modified (no JSON merging in MSBuild), so other configured servers
+  cannot be clobbered. The file is committable; each teammate's first build
+  writes the git-ignored wrappers it points to. Opt-out
+  `RepoCtxAutoMcp=false`; explicit target `RepoCtxMcpConfig`.
+- **Three MSBuild targets for manual control**, auto-imported from `build/`:
   - `RepoCtx` — runs the packaged CLI with `-p:RepoCtxArgs="..."` in the
     detected root, overridable via `-p:RepoCtxWorkingDirectory`.
   - `RepoCtxShim` — writes the `repoctx` / `repoctx.cmd` wrapper scripts
@@ -57,6 +65,8 @@ DotnetTool package type rejects by design (`NU1212`/`NU1213`).
     rest of `.repoctx/`). The wrappers embed the absolute package path in
     the NuGet cache, giving humans, agent instructions and MCP configs a
     stable, quoting-free entry point.
+  - `RepoCtxMcpConfig` — writes the `.vscode/mcp.json` described above when
+    it is missing.
 - **Publish-into-pack.** The packaging project hooks
   `TargetsForTfmSpecificContentInPackage`, publishes the CLI into its own
   `obj/` and packs the result as `TfmSpecificPackageFile`. The MSBuild task
