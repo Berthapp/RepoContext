@@ -1,0 +1,7 @@
+<Project>
+  <!-- Outer build of a multi-targeting project: same content as build/.
+       RepoCtxAutoSetup only ever runs here for multi-TFM projects (its
+       condition skips the inner per-TFM builds), so init/index cannot race
+       in parallel inner builds. -->
+  <Import Project="$(MSBuildThisFileDirectory)..\build\RepoContext.MSBuild.targets" />
+</Project>
