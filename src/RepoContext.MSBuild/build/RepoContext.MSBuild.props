@@ -1,0 +1,15 @@
+<Project>
+
+  <!--
+    Imported automatically into every project that references the
+    RepoContext.MSBuild package. Only defines where the packaged repoctx CLI
+    lives, so consumers (and the .targets next to this file) can invoke it.
+  -->
+  <PropertyGroup>
+    <RepoCtxToolsDirectory>$([MSBuild]::NormalizeDirectory('$(MSBuildThisFileDirectory)', '..', 'tools', 'net10.0', 'any'))</RepoCtxToolsDirectory>
+    <RepoCtxToolAssembly>$(RepoCtxToolsDirectory)repoctx.dll</RepoCtxToolAssembly>
+    <!-- The full command line prefix; append repoctx arguments after it. -->
+    <RepoCtxCommand>dotnet exec &quot;$(RepoCtxToolAssembly)&quot;</RepoCtxCommand>
+  </PropertyGroup>
+
+</Project>

@@ -1,0 +1,55 @@
+<Project>
+
+  <!--
+    Two entry points, both runnable from the repository root without any tool
+    installation (the package arrived via plain NuGet restore):
+
+      dotnet msbuild <project> -t:RepoCtx -p:RepoCtxArgs="index"
+          Runs the packaged repoctx CLI with the given arguments, in the
+          directory msbuild was started from (override with
+          -p:RepoCtxWorkingDirectory=...).
+
+      dotnet msbuild <project> -t:RepoCtxShim
+          Writes stable `repoctx` / `repoctx.cmd` wrapper scripts to
+          .repoctx/bin/ under the startup directory (override with
+          -p:RepoCtxShimDirectory=...), so people, agents and MCP configs get
+          a fixed path instead of quoting through MSBuild. The scripts embed
+          the absolute path of this package version inside the NuGet cache —
+          re-run the target after updating the package.
+  -->
+
+  <Target Name="RepoCtx">
+    <Error Condition="'$(RepoCtxArgs)' == ''"
+           Text="No repoctx arguments given. Pass the command line via -p:RepoCtxArgs=&quot;...&quot;, e.g. -p:RepoCtxArgs=&quot;index&quot;." />
+    <PropertyGroup>
+      <RepoCtxWorkingDirectory Condition="'$(RepoCtxWorkingDirectory)' == ''">$(MSBuildStartupDirectory)</RepoCtxWorkingDirectory>
+    </PropertyGroup>
+    <Exec Command="$(RepoCtxCommand) $(RepoCtxArgs)"
+          WorkingDirectory="$(RepoCtxWorkingDirectory)"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <Target Name="RepoCtxShim">
+    <PropertyGroup>
+      <RepoCtxShimDirectory Condition="'$(RepoCtxShimDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(MSBuildStartupDirectory)', '.repoctx', 'bin'))</RepoCtxShimDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RepoCtxShimSh Include="#!/bin/sh" />
+      <_RepoCtxShimSh Include="exec dotnet exec &quot;$(RepoCtxToolAssembly)&quot; &quot;$@&quot;" />
+      <_RepoCtxShimCmd Include="@echo off" />
+      <!-- %25%2A is MSBuild-escaped "%*": a literal * in an item Include
+           would be treated as a file glob and drop the whole line. -->
+      <_RepoCtxShimCmd Include="dotnet exec &quot;$(RepoCtxToolAssembly)&quot; %25%2A" />
+    </ItemGroup>
+    <MakeDir Directories="$(RepoCtxShimDirectory)" />
+    <WriteLinesToFile File="$(RepoCtxShimDirectory)repoctx"
+                      Lines="@(_RepoCtxShimSh)" Overwrite="true" />
+    <WriteLinesToFile File="$(RepoCtxShimDirectory)repoctx.cmd"
+                      Lines="@(_RepoCtxShimCmd)" Overwrite="true" />
+    <Exec Condition="'$(OS)' != 'Windows_NT'"
+          Command="chmod +x &quot;$(RepoCtxShimDirectory)repoctx&quot;" />
+    <Message Importance="high"
+             Text="repoctx shims written to $(RepoCtxShimDirectory) (re-run this target after a package update)." />
+  </Target>
+
+</Project>

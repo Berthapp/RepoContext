@@ -21,3 +21,6 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   measures (md charging, dedupe, `--strip-comments`), stats money view.
 - `0013-agent-memory.md` — M9: agent-authored memory (`memory` command +
   MCP tools, JSONL store, hash-based staleness, context bundle folding).
+- `0014-packagereference-distribution.md` — `RepoContext.MSBuild`: the CLI as
+  a plain `PackageReference` (no `dotnet tool install`), MSBuild targets
+  `RepoCtx` / `RepoCtxShim`.

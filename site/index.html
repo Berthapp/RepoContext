@@ -247,6 +247,7 @@
 
   /* Install / code blocks */
   .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .install-grid .panel-wide { grid-column: 1 / -1; }
   .panel {
     background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
     overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column;
@@ -435,8 +436,8 @@
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">install</span>
-        <h2>Two ways in.</h2>
-        <p>Have the .NET 10 runtime? Install the global tool. Otherwise grab a self-contained binary — no runtime required.</p>
+        <h2>Three ways in.</h2>
+        <p>Have the .NET 10 runtime? Install the global tool. Otherwise grab a self-contained binary — no runtime required. Tool installs blocked by policy? Add it as a plain NuGet package.</p>
       </div>
       <div class="install-grid">
         <div class="panel">
@@ -469,6 +470,24 @@ repoctx <span class="flag">--version</span></pre></div>
           <div class="code"><pre><span class="comment"># download for your platform, then</span>
 tar -xzf repoctx-linux-x64.tar.gz
 ./repoctx <span class="flag">--version</span></pre></div>
+        </div>
+        <div class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h3>Plain NuGet PackageReference</h3>
+              <p><code>dotnet tool install</code> blocked by company policy? <code>RepoContext.MSBuild</code> delivers the same CLI through the NuGet restore your build already runs — a development-only dependency, nothing ships with your app.</p>
+            </div>
+            <button class="copy-btn" type="button" data-copy="dotnet add package RepoContext.MSBuild" aria-label="Copy install command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span>copy</span>
+            </button>
+          </div>
+          <div class="code"><pre><span class="comment"># in one project of the repository</span>
+dotnet add package RepoContext.MSBuild
+
+<span class="comment"># run any command through MSBuild, or write stable wrappers once</span>
+dotnet msbuild <span class="flag">-t:</span>RepoCtx <span class="flag">-p:</span>RepoCtxArgs="index"
+dotnet msbuild <span class="flag">-t:</span>RepoCtxShim &amp;&amp; ./.repoctx/bin/repoctx <span class="flag">--version</span></pre></div>
         </div>
       </div>
     </div>
