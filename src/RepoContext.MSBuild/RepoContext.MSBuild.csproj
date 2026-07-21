@@ -1,0 +1,73 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    Packaging-only project: delivers the repoctx CLI as a *regular* NuGet
+    package (PackageReference), for environments where `dotnet tool install`
+    is not allowed. The package carries the CLI's framework-dependent publish
+    output under tools/ and MSBuild targets (build/) to invoke it — nothing
+    is compiled into, referenced by, or copied to the consuming project's
+    output. See ADR 0014.
+  -->
+  <PropertyGroup>
+    <!-- netstandard2.0 keeps the (empty) dependency group compatible with any
+         consuming project TFM; running the tool needs the .NET 10 *runtime*
+         on the machine, not a net10.0 consumer project. -->
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <!-- No lib/ for the dependency group is intentional (NU5128). -->
+    <NoWarn>$(NoWarn);NU5128</NoWarn>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <PackageId>RepoContext.MSBuild</PackageId>
+    <!-- PrivateAssets=all by default in consumers: the package never flows
+         to their published output or downstream dependents. -->
+    <DevelopmentDependency>true</DevelopmentDependency>
+    <Description>Local-first, explainable project memory for AI coding agents, delivered as a regular NuGet package. Adds the repoctx CLI to a repository through a plain PackageReference and NuGet restore - no 'dotnet tool install' required (for environments where tool installation is blocked). Run it via 'dotnet msbuild -t:RepoCtx -p:RepoCtxArgs="..."' or generate stable wrapper scripts once with 'dotnet msbuild -t:RepoCtxShim'. Requires the .NET 10 runtime. If dotnet tools are allowed in your environment, prefer the RepoContext.Tool package instead.</Description>
+    <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
+    <PackageTags>ai;agent;context;code-search;tree-sitter;msbuild;cli</PackageTags>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+    <PackageProjectUrl>https://berthapp.github.io/RepoContext/</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/Berthapp/RepoContext</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The build/ folder is auto-imported by NuGet into every consuming
+         project; file names must match the package id exactly. -->
+    <None Include="build\RepoContext.MSBuild.props" Pack="true" PackagePath="build\" />
+    <None Include="build\RepoContext.MSBuild.targets" Pack="true" PackagePath="build\" />
+    <None Include="..\..\README.md" Pack="true" PackagePath="" />
+    <None Include="..\..\NOTICE" Pack="true" PackagePath="" />
+  </ItemGroup>
+
+  <!--
+    Embed the CLI under tools/: publish RepoContext.Cli (framework-dependent,
+    portable, no apphost — it is started with `dotnet exec repoctx.dll`) into
+    obj/ and pack the whole output, runtimes/ natives included. Grammar
+    trimming is always on here, as in the release builds, or the package
+    balloons to >80 MB.
+  -->
+  <PropertyGroup>
+    <TargetsForTfmSpecificContentInPackage>$(TargetsForTfmSpecificContentInPackage);_PackRepoCtxCli</TargetsForTfmSpecificContentInPackage>
+    <_RepoCtxCliStagingDir>$([MSBuild]::NormalizeDirectory('$(MSBuildProjectDirectory)', '$(BaseIntermediateOutputPath)', '$(Configuration)', 'cli-publish'))</_RepoCtxCliStagingDir>
+  </PropertyGroup>
+
+  <Target Name="_PackRepoCtxCli">
+    <!-- RemoveProperties: pack runs this target with TargetFramework=
+         netstandard2.0 as a global property, which must not leak into the
+         net10.0 CLI build. -->
+    <MSBuild Projects="..\RepoContext.Cli\RepoContext.Cli.csproj"
+             Targets="Publish"
+             Properties="Configuration=$(Configuration);PublishDir=$(_RepoCtxCliStagingDir);UseAppHost=false;TrimTreeSitterGrammars=true"
+             RemoveProperties="TargetFramework;RuntimeIdentifier" />
+    <ItemGroup>
+      <_RepoCtxCliFile Include="$(_RepoCtxCliStagingDir)**\*" />
+      <!-- tools/net10.0/any/ mirrors the dotnet-tool layout and signals the
+           required runtime; build/RepoContext.MSBuild.props points here. -->
+      <TfmSpecificPackageFile Include="@(_RepoCtxCliFile)"
+                              PackagePath="tools\net10.0\any\%(RecursiveDir)%(Filename)%(Extension)" />
+    </ItemGroup>
+  </Target>
+
+</Project>

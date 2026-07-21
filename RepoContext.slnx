@@ -2,6 +2,7 @@
   <Folder Name="/src/">
     <Project Path="src/RepoContext.Cli/RepoContext.Cli.csproj" />
     <Project Path="src/RepoContext.Core/RepoContext.Core.csproj" />
+    <Project Path="src/RepoContext.MSBuild/RepoContext.MSBuild.csproj" />
   </Folder>
   <Folder Name="/tests/">
     <Project Path="tests/RepoContext.Core.Tests/RepoContext.Core.Tests.csproj" />

@@ -34,6 +34,14 @@ jobs:
       - name: Test
         run: dotnet test RepoContext.slnx -c Release --no-build --logger "console;verbosity=normal"
 
+      # Smoke-pack the PackageReference distribution (ADR 0014) so packaging
+      # regressions (publish-into-pack, grammar trim, build/ assets) surface
+      # here and not at release time.
+      - name: Pack RepoContext.MSBuild (smoke)
+        run: >
+          dotnet pack src/RepoContext.MSBuild/RepoContext.MSBuild.csproj
+          -c Release --no-restore -o artifacts/nupkg
+
   no-network-integration:
     name: Integration tests (--network none)
     runs-on: ubuntu-latest

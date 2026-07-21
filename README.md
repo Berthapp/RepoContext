@@ -56,7 +56,46 @@ dotnet repoctx --version
 > executable, not a library. Adding it to a project as a `PackageReference`
 > (Visual Studio NuGet Package Manager or `dotnet add package`) fails with
 > `NU1212`/`NU1213` by design. Install it with `dotnet tool install` as shown
-> above instead.
+> above — or, if you want a `PackageReference`, use `RepoContext.MSBuild`
+> (next section).
+
+### As a plain PackageReference — when `dotnet tool install` is blocked
+
+Many corporate environments allow NuGet packages but block installing dotnet
+tools. **`RepoContext.MSBuild`** delivers the same `repoctx` CLI as a regular
+package: it arrives with the `dotnet restore` your build already runs — no
+tool installation, no extra download, nothing outside the NuGet feed you
+already trust. Add it to one project of the repository (any target framework;
+the machine needs the .NET 10 runtime, which the SDK you build with includes):
+
+```bash
+dotnet add src/YourProject package RepoContext.MSBuild
+```
+
+It is a development-only dependency: nothing is compiled into your assemblies,
+copied to your output, or passed on to consumers of your package. It brings
+two MSBuild targets:
+
+```bash
+# Run any repoctx command through MSBuild
+# (runs in the directory you invoke it from):
+dotnet msbuild src/YourProject -t:RepoCtx -p:RepoCtxArgs="init"
+dotnet msbuild src/YourProject -t:RepoCtx -p:RepoCtxArgs="index"
+
+# Or write stable wrapper scripts once (repoctx + repoctx.cmd,
+# into .repoctx/bin/ under the current directory, git-ignored with .repoctx/):
+dotnet msbuild src/YourProject -t:RepoCtxShim
+```
+
+From then on the wrapper is a fixed path — for humans, agent instructions and
+MCP configs alike (use `.repoctx/bin/repoctx` as the MCP `command`):
+
+```bash
+./.repoctx/bin/repoctx context "change the login logic"
+```
+
+The wrappers embed the package's absolute path inside the local NuGet cache,
+so re-run `-t:RepoCtxShim` after updating the package version.
 
 Or download a self-contained binary for `linux-x64`, `win-x64` or `osx-arm64`
 (no .NET runtime required) from the [latest release][releases], unpack it and
