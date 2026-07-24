@@ -1,3 +1,5 @@
+using RepoContext.Core.Indexing;
+
 namespace RepoContext.Integration.Tests.Evaluation;
 
 /// <summary>
@@ -68,6 +70,14 @@ public sealed class BaselineSnapshotTests
         using var repo = new EvalRepo();
 
         Assert.Equal(EvalReport.Render(repo), EvalReport.Render(repo));
+    }
+
+    [Fact]
+    public void McpSessionSurface_StaysWithinTokenBudget()
+    {
+        int tokens = Tokens.Count(McpSessionFixture.InstructionsAndToolSchemas);
+
+        Assert.True(tokens <= 1_500, $"MCP instructions and tool schemas cost {tokens} tokens.");
     }
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal);

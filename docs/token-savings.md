@@ -2,7 +2,7 @@
 
 RepoContext is useful only when an agent gathers the evidence for the same task
 with less model-visible work and without losing relevant evidence. The Release
-1 candidate therefore measures deterministic simulated evidence-gathering
+1 baseline therefore measures deterministic simulated evidence-gathering
 workflows, not character counts or isolated snippets.
 
 The current reviewable results are:
@@ -15,9 +15,9 @@ The current reviewable results are:
 
 All token figures use the local `o200k_base` tokenizer. RepoContext never calls
 an LLM, uses embeddings, or sends code or measurements over a network.
-Because this candidate corpus was introduced with the Release 1 implementation,
-it is a baseline for later changes, not evidence of Release 1 versus pre-change
-quality parity; the manifest records that provenance limitation explicitly.
+Because this corpus was introduced with the Release 1 implementation, it is a
+baseline for later changes, not evidence of Release 1 versus pre-change quality
+parity; the manifest records that provenance limitation explicitly.
 
 ## What is counted
 
@@ -32,6 +32,13 @@ The harness keeps each layer separate:
 | session overhead | the production server instructions and generated tool schemas, once per session |
 | call arguments | actual serialized MCP argument objects |
 | full-file reads | exact indexed token counts for reads required by the frozen workflow |
+
+The default seven-tool MCP declaration, including production instructions, is
+1,339 tokens in the current golden. Tool descriptions deliberately keep the
+receipt/full-file distinction, exact-budget guidance, lossy-strip warning, and
+stale/re-index workflow while avoiding repeated prose. A 1,500-token test
+ceiling prevents later schema growth from being accepted by merely refreshing
+the golden.
 
 The report also records deterministic cold, no-op and one-file-change index
 operation counters (bytes read, files parsed, graph files analyzed and edges

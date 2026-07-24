@@ -15,7 +15,7 @@ public enum EvidenceUnitKind
 
 /// <summary>
 /// A stateless, opaque possession proof for exactly one delivered evidence unit
-/// (Q1, ADR 0012).
+/// (Q1, ADR 0015).
 /// </summary>
 /// <remarks>
 /// <para>

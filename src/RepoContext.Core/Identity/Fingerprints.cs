@@ -1,7 +1,7 @@
 namespace RepoContext.Core.Identity;
 
 /// <summary>
-/// The versioned state fingerprints defined by Q4 (ADR 0012). Each answers a
+/// The versioned state fingerprints defined by Q4 (ADR 0015). Each answers a
 /// different question, and conflating them is what made the pre-Release-1
 /// single <c>state_hash</c> unsafe:
 /// <list type="bullet">

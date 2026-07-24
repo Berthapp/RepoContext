@@ -16,3 +16,16 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   detail levels, budget packing, known-state dedupe, changed.
 - `0011-token-savings-stats.md` — M7: local usage log and the `stats`
   token-savings dashboard.
+- `0012-token-optimization-levers.md` — M8: token calibration profiles,
+  `--session` known-set, `changed --patch`, `prime`, slice output-lean
+  measures (md charging, dedupe, `--strip-comments`), stats money view.
+- `0013-agent-memory.md` — M9: agent-authored memory (`memory` command +
+  MCP tools, JSONL store, hash-based staleness, context bundle folding).
+- `0014-packagereference-distribution.md` — `RepoContext.MSBuild`: the CLI as
+  a plain `PackageReference` (no `dotnet tool install`), MSBuild targets
+  `RepoCtx` / `RepoCtxInstall` / `RepoCtxShim` / `RepoCtxMcpConfig`, and a
+  cross-platform repository-local payload used by generated MCP configuration.
+- `0015-state-identity-and-receipts.md` — state fingerprints, per-unit reuse
+  receipts, fail-closed freshness, and query-aware evidence selection.
+- `0016-exact-budgets-and-cost-semantics.md` — exact CLI/MCP response ceilings,
+  distinct projected-read budgets, retry sizing, and explicit cost fields.

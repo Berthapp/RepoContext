@@ -64,7 +64,8 @@ public static class OutlineCommand
                 return ExitCode.NoIndex;
             }
 
-            Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative);
+            Core.Indexing.TokenScale scale = Core.Indexing.TokenScale.From(config);
+            Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative, scale);
             if (result is null)
             {
                 Console.Error.WriteLine($"File not found in index: {relative}");
@@ -75,7 +76,7 @@ public static class OutlineCommand
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(
                 layout, "outline", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
-                replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1);
+                replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1, scale: scale);
             return ExitCode.Success;
         });
 

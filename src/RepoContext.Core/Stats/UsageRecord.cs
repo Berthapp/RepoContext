@@ -33,7 +33,11 @@ public sealed record UsageRecord
     /// <summary>One of <see cref="UsageSources"/>.</summary>
     public required string Source { get; init; }
 
-    /// <summary>Real (o200k) token count of the rendered response.</summary>
+    /// <summary>
+    /// Token count of the rendered response after the query-time model-profile
+    /// calibration active for that call (raw o200k when no calibration is set).
+    /// Historical logs may therefore contain more than one calibration basis.
+    /// </summary>
     public int Served { get; init; }
 
     /// <summary>

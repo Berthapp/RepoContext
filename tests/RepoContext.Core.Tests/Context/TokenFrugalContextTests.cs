@@ -90,6 +90,32 @@ public class TokenFrugalContextTests
     }
 
     [Fact]
+    public void KnownHash_ReusedReadCredit_UsesActiveTokenScale()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        using IndexStore store = IndexHelper.BuildIndex(repo);
+        FileRow row = store.FindFile("src/auth/login.ts")!.Value;
+        RepoctxConfig config = RepoctxConfig.CreateDefault() with
+        {
+            Include = ["."],
+            Tokens = new TokenOptions { Factor = 2.0 },
+        };
+
+        ContextResult result = new ContextEngine(store, config).Run(
+            "change the login logic",
+            new ContextOptions
+            {
+                Top = 20,
+                Known = new Dictionary<string, string>(StringComparer.Ordinal)
+                {
+                    [row.Path] = Hashes.Short(row.ContentHash),
+                },
+            });
+
+        Assert.Equal(row.TokenCount * 2, result.ReusedReadTokens);
+    }
+
+    [Fact]
     public void SliceBudget_IsPackedNotTruncated_AndRespected()
     {
         using var repo = new FixtureRepo("sample-ts");

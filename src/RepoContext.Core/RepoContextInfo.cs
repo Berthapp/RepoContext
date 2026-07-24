@@ -13,7 +13,7 @@ public static class RepoContextInfo
     /// levels, outline/changed documents — ADR 0010); v3 adds the Release 1
     /// cost-efficiency protocol — per-unit reuse receipts, multi-span evidence,
     /// explicit content/projected-read token accounting and the versioned
-    /// content/analysis/evidence/representation identities (ADR 0012).
+    /// content/analysis/evidence/representation identities (ADR 0015).
     /// </summary>
     /// <remarks>
     /// v2 fields kept for one compatibility window and marked deprecated:

@@ -18,6 +18,38 @@ public class ConfigTests
         Assert.Equal(original.SensitiveFiles, loaded.SensitiveFiles);
         Assert.Equal(512, loaded.Indexing.MaxFileSizeKb);
         Assert.Equal(0.4, loaded.Ranking.Weights.Fts);
+        Assert.Equal("o200k", loaded.Tokens.Profile);
+        Assert.Null(loaded.Tokens.Factor);
+        Assert.Null(loaded.Pricing.InputPerMtok);
+    }
+
+    [Fact]
+    public void ConfigWithoutTokenOrPricingKeys_DeserializesToDefaults()
+    {
+        // Configs written before M8 have neither key; they must load, not fail.
+        const string legacy = "{\"include\":[\"src\"],\"exclude\":[]}";
+        RepoctxConfig loaded = ConfigStore.Deserialize(legacy);
+
+        Assert.Equal("o200k", loaded.Tokens.Profile);
+        Assert.Null(loaded.Pricing.InputPerMtok);
+        Assert.Equal("USD", loaded.Pricing.Currency);
+    }
+
+    [Fact]
+    public void TokensAndPricing_RoundTrip()
+    {
+        RepoctxConfig original = RepoctxConfig.CreateDefault() with
+        {
+            Tokens = new TokenOptions { Profile = "claude", Factor = 1.25 },
+            Pricing = new PricingOptions { InputPerMtok = 5.0, Currency = "EUR" },
+        };
+
+        RepoctxConfig loaded = ConfigStore.Deserialize(ConfigStore.Serialize(original));
+
+        Assert.Equal("claude", loaded.Tokens.Profile);
+        Assert.Equal(1.25, loaded.Tokens.Factor);
+        Assert.Equal(5.0, loaded.Pricing.InputPerMtok);
+        Assert.Equal("EUR", loaded.Pricing.Currency);
     }
 
     [Fact]
@@ -69,6 +101,24 @@ public class ConfigTests
         Assert.Equal(ConfigStore.ComputeHash(first), ConfigStore.ComputeHash(reverseInsertion));
         Assert.Equal(ConfigStore.ComputeIndexHash(baseline), ConfigStore.ComputeIndexHash(first));
         Assert.NotEqual(ConfigStore.ComputeHash(baseline), ConfigStore.ComputeHash(first));
+    }
+
+    [Fact]
+    public void Hash_IncludesEffectiveTokenScale_ButNotStatsOnlyPricing()
+    {
+        RepoctxConfig baseline = RepoctxConfig.CreateDefault();
+        RepoctxConfig claude = baseline with
+        {
+            Tokens = new TokenOptions { Profile = "claude" },
+        };
+        RepoctxConfig priced = baseline with
+        {
+            Pricing = new PricingOptions { InputPerMtok = 5.0, Currency = "EUR" },
+        };
+
+        Assert.NotEqual(ConfigStore.ComputeHash(baseline), ConfigStore.ComputeHash(claude));
+        Assert.Equal(ConfigStore.ComputeIndexHash(baseline), ConfigStore.ComputeIndexHash(claude));
+        Assert.Equal(ConfigStore.ComputeHash(baseline), ConfigStore.ComputeHash(priced));
     }
 
     [Theory]

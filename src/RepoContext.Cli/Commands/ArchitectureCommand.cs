@@ -65,7 +65,8 @@ public static class ArchitectureCommand
             string rendered = ArchitectureOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(
-                layout, "architecture", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered));
+                layout, "architecture", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: Core.Indexing.TokenScale.From(config));
             return ExitCode.Success;
         });
 

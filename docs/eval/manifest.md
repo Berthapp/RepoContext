@@ -1,17 +1,16 @@
-# Release 1 candidate evaluation manifest
+# Release 1 evaluation manifest
 
-This manifest makes the current deterministic evaluation snapshot auditable. It
-does **not** establish a pre-Release-1 before/after comparison: the fixture,
-labels, harness and implementation were introduced in the same uncommitted
-change. Once this candidate is committed, it becomes the frozen baseline for
-later changes.
+This manifest makes the deterministic Release 1 snapshot auditable and freezes
+it as the baseline for later changes. It does **not** establish a
+pre-Release-1 before/after comparison: the fixture, labels, harness and
+implementation were introduced together.
 
 ## Provenance
 
 | Field | Value |
 | --- | --- |
 | Base commit | `9986548ee7c4640d42a2f89ab03e6dd96aaa4982` (`claude/token-savings-dashboard`) |
-| Source state | uncommitted Release 1 candidate; the base commit alone cannot reconstruct it |
+| Source state | the version 0.7.0 source tree containing this manifest; the base commit alone cannot reconstruct it |
 | OS | Windows 11 Pro 10.0.26200 (x64) |
 | Runtime / SDK | .NET SDK 10.0.301, target `net10.0` |
 | Build configuration | `Release` |
@@ -31,8 +30,8 @@ used.
 - Every task uses a declared 3,000-token response budget.
 - Include roots: `src`, `tests`, `vendor`; `.env` is a forbidden sensitive path.
 
-The corpus is a candidate frozen with this implementation, not a retroactive
-quality comparator. It currently lacks JavaScript/TSX, multi-project,
+The corpus is frozen with this implementation, not a retroactive quality
+comparator. It currently lacks JavaScript/TSX, multi-project,
 required-scaffolding and explicit dependency/test-edge labels. The impact task
 requires both affected files but does not score relation kind or direction.
 
@@ -43,8 +42,7 @@ Frozen line labels:
 | `Budget` | `src/Packing/Packer.cs` | 115-139 |
 | `EnvelopeTokens` | `src/Packing/Packer.cs` | 145-148 |
 
-After the candidate is committed, product changes may not edit labels merely to
-pass a gate.
+Product changes may not edit labels merely to pass a gate.
 
 ## Reproduction
 
@@ -64,8 +62,7 @@ dotnet test tests/RepoContext.Integration.Tests -c Release --no-build `
 
 `BaselineSnapshotTests` verifies the aggregate report, every expected raw
 artifact, absence of obsolete raw files and byte-identical repeated rendering.
-Raw artifacts become independently source-reproducible once this candidate is
-committed; until then, preserve the working-tree diff with the review.
+Raw artifacts are independently reproducible from this source tree.
 
 ## Counted boundaries
 

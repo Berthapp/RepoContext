@@ -6,7 +6,8 @@ namespace RepoContext.Cli.Output;
 
 /// <summary>
 /// The concrete Q3 cost oracle: renders a tentative context result through the
-/// real renderer and tokenizes the exact surface the caller will emit (ADR 0013).
+/// real renderer, tokenizes the exact surface the caller will emit, and applies
+/// the configured deterministic model-family calibration (ADR 0012/0016).
 /// </summary>
 /// <remarks>
 /// Both the CLI and the MCP server construct one of these, which is what makes
@@ -17,28 +18,37 @@ namespace RepoContext.Cli.Output;
 public sealed class ContextCostModel : IResponseCostModel
 {
     private readonly OutputFormat _format;
+    private readonly TokenScale _scale;
 
-    private ContextCostModel(OutputFormat format, string surface)
+    private ContextCostModel(OutputFormat format, string surface, TokenScale scale)
     {
         _format = format;
+        _scale = scale;
         Surface = surface;
     }
 
     /// <inheritdoc />
     public string Surface { get; }
 
-    /// <summary>Measures exact CLI stdout, including its single trailing newline.</summary>
-    public static ContextCostModel ForCli(OutputFormat format) => new(format, Surfaces.Cli);
+    /// <summary>
+    /// Measures CLI stdout, including its single trailing newline, in the
+    /// configured token profile.
+    /// </summary>
+    public static ContextCostModel ForCli(
+        OutputFormat format, TokenScale scale = default) =>
+        new(format, Surfaces.Cli, scale);
 
     /// <summary>
-    /// Measures the model-visible MCP text content block. The JSON-RPC envelope
-    /// around it is transport overhead reported separately by the evaluation
-    /// harness and is deliberately not part of the per-call response budget.
+    /// Measures the model-visible MCP text content block in the configured token
+    /// profile. The JSON-RPC envelope around it is transport overhead reported
+    /// separately by the evaluation harness and is deliberately not part of the
+    /// per-call response budget.
     /// </summary>
-    public static ContextCostModel ForMcpText() => new(OutputFormat.Json, Surfaces.McpText);
+    public static ContextCostModel ForMcpText(TokenScale scale = default) =>
+        new(OutputFormat.Json, Surfaces.McpText, scale);
 
     /// <inheritdoc />
-    public int Measure(ContextResult result) => Tokens.Count(SurfaceText(result));
+    public int Measure(ContextResult result) => _scale.Apply(Tokens.Count(SurfaceText(result)));
 
     /// <summary>The exact text emitted at this surface, for measuring or asserting.</summary>
     public string SurfaceText(ContextResult result)

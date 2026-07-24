@@ -32,7 +32,7 @@ public static class StatsHtmlOutput
     private const int SvgWidth = 720;
 
     /// <summary>Renders the full HTML document.</summary>
-    public static string Render(UsageReport report)
+    public static string Render(UsageReport report, TokenPricing pricing = default)
     {
         var sb = new StringBuilder();
         sb.Append("<!doctype html>\n<html lang=\"en\">\n<head>\n");
@@ -51,7 +51,7 @@ public static class StatsHtmlOutput
         }
         else
         {
-            AppendTiles(sb, report.Totals);
+            AppendTiles(sb, report.Totals, pricing);
             AppendLegend(sb);
             AppendCommandChart(sb, report);
             AppendDayChart(sb, report);
@@ -63,7 +63,8 @@ public static class StatsHtmlOutput
                   "replace; only explicit matching full-file possession assertions credit a " +
                   "reused read. Partial-evidence receipts receive no full-file credit. Discovery " +
                   "responses (search, related, changed, architecture, paths-only context) " +
-                  "count as pure cost. All figures are real o200k token counts from the " +
+                  "count as pure cost. Figures use the token calibration active for each " +
+                  "recorded call (historical logs may mix profiles) from the " +
                   "local log <code>.repoctx/stats.jsonl</code> — nothing leaves this " +
                   "machine; set <code>REPOCTX_NO_STATS=1</code> to disable recording.</p></footer>\n");
         sb.Append("<div id=\"tip\" hidden></div>\n");
@@ -144,7 +145,7 @@ public static class StatsHtmlOutput
 
     private static void AppendHeader(StringBuilder sb, UsageReport report)
     {
-        sb.Append("<header><h1>Token savings</h1><p class=\"sub\">repoctx · real o200k token counts");
+        sb.Append("<header><h1>Token savings</h1><p class=\"sub\">repoctx · per-call calibrated token counts");
         if (report.FirstDay is not null)
         {
             sb.Append(" · ").Append(Html(report.FirstDay)).Append(" to ").Append(Html(report.LastDay!));
@@ -153,10 +154,17 @@ public static class StatsHtmlOutput
         sb.Append("</p></header>\n");
     }
 
-    private static void AppendTiles(StringBuilder sb, UsageBucket totals)
+    private static void AppendTiles(StringBuilder sb, UsageBucket totals, TokenPricing pricing)
     {
         sb.Append("<section class=\"tiles\">\n");
         Tile(sb, "Net saved", N(totals.SavedTokens), DeltaHtml(totals));
+        if (pricing.Format(totals.SavedTokens) is { } money)
+        {
+            string rate = WebUtility.HtmlEncode(pricing.Format(1_000_000) + "/M input");
+            Tile(sb, "Net saved (money)", WebUtility.HtmlEncode(money),
+                string.Create(CultureInfo.InvariantCulture, $"<div class=\"delta\">{rate}</div>"));
+        }
+
         Tile(sb, "Reads replaced", N(totals.ReplacedTokens), null);
         Tile(sb, "Response tokens", N(totals.ServedTokens), null);
         Tile(sb, "Calls", N(totals.Calls), null);

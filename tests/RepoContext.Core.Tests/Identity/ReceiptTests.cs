@@ -3,7 +3,7 @@ using RepoContext.Core.Identity;
 namespace RepoContext.Core.Tests.Identity;
 
 /// <summary>
-/// The Q1 receipt contract (ADR 0012): what must invalidate a receipt, and —
+/// The Q1 receipt contract (ADR 0015): what must invalidate a receipt, and —
 /// just as importantly — what must not.
 /// </summary>
 public class ReceiptTests

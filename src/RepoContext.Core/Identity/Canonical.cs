@@ -4,7 +4,7 @@ using System.Text;
 namespace RepoContext.Core.Identity;
 
 /// <summary>
-/// Centralised deterministic canonical hashing (Q4, ADR 0012). Every fingerprint
+/// Centralised deterministic canonical hashing (Q4, ADR 0015). Every fingerprint
 /// and receipt in the system is a SHA-256 over a canonical byte layout produced
 /// here, so the layout is defined in exactly one place and can be documented and
 /// tested. Every field and repeated record is UTF-8 length-prefixed, so arbitrary

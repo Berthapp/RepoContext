@@ -4,6 +4,7 @@ using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
 using RepoContext.Core.Identity;
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
@@ -25,13 +26,14 @@ public static class ContextCommand
         };
         var budget = new Option<int?>("--budget-tokens")
         {
-            Description = "Compatibility 'charged work' cap (real BPE counts): projected reads for "
+            Description = "Compatibility 'charged work' cap (active token-profile counts): projected reads for "
                           + "paths, embedded content otherwise. For a hard ceiling on the response "
                           + "itself use --response-budget-tokens.",
         };
         var responseBudget = new Option<int?>("--response-budget-tokens")
         {
-            Description = "Hard ceiling on the exact serialized response, including its trailing newline.",
+            Description = "Hard ceiling on the active token-profile cost of the exact serialized "
+                          + "response, including its trailing newline.",
         };
         var readBudget = new Option<int?>("--projected-read-budget-tokens")
         {
@@ -56,6 +58,21 @@ public static class ContextCommand
             Description = "A receipt from evidence you already received (repeatable). Only that exact "
                           + "span or symbol is suppressed; unseen parts of the same file still arrive.",
         };
+        var session = new Option<string?>("--session")
+        {
+            Description = "Track whole-file claims and exact evidence receipts locally under " +
+                          "this session name (.repoctx/sessions/), so they need not be echoed. " +
+                          "Explicit --known and --seen entries are merged in.",
+        };
+        var stripComments = new Option<bool>("--strip-comments")
+        {
+            Description = "Lossy: drop full-line comments and blank runs from embedded slices " +
+                          "(outline docs already summarize them). Line ranges become approximate.",
+        };
+        var noMemory = new Option<bool>("--no-memory")
+        {
+            Description = "Exclude stored agent memories from the bundle.",
+        };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -75,6 +92,9 @@ public static class ContextCommand
             snippets,
             known,
             seen,
+            session,
+            stripComments,
+            noMemory,
             format,
         };
 
@@ -130,11 +150,26 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
+            string? sessionName = parseResult.GetValue(session);
+            if (sessionName is not null && !SessionStore.IsValidName(sessionName))
+            {
+                Console.Error.WriteLine(
+                    "Invalid --session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+                return ExitCode.InvalidArguments;
+            }
+
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
             if (layout is null || !layout.HasIndex)
             {
                 Console.Error.WriteLine("No index found. Run 'repoctx index' first.");
                 return ExitCode.NoIndex;
+            }
+
+            if (sessionName is not null)
+            {
+                SessionState state = SessionStore.LoadState(layout, sessionName);
+                knownMap = MergeKnown(state.Known, knownMap);
+                seenReceipts = MergeSeen(state.Seen, seenReceipts);
             }
 
             string query = parseResult.GetValue(task) ?? string.Empty;
@@ -146,7 +181,8 @@ public static class ContextCommand
                 return ExitCode.NoIndex;
             }
 
-            var costModel = ContextCostModel.ForCli(outputFormat);
+            TokenScale scale = TokenScale.From(config);
+            var costModel = ContextCostModel.ForCli(outputFormat, scale);
             var engine = new ContextEngine(store, config);
             ContextResult result = engine.Run(query, new ContextOptions
             {
@@ -157,6 +193,13 @@ public static class ContextCommand
                 Detail = detailLevel,
                 Known = knownMap,
                 Seen = seenReceipts,
+                StripComments = parseResult.GetValue(stripComments),
+                // Text/md deliver raw slice text; only JSON pays the escape tax,
+                // so charge in serialized form only when JSON is the output (ADR 0012).
+                SerializedCharging = outputFormat == OutputFormat.Json,
+                Memories = parseResult.GetValue(noMemory)
+                    ? null
+                    : VisibleMemories(layout, sessionName),
             }, responseBudgetTokens is null ? null : costModel);
 
             if (result.Shortfall is { } shortfall)
@@ -173,7 +216,13 @@ public static class ContextCommand
             UsageRecorder.Record(layout, "context", UsageSources.Cli, costModel.SurfaceText(result),
                 UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
                 files: result.Items.Count,
-                unchanged: result.ReusedFilesCount);
+                unchanged: result.ReusedFilesCount,
+                scale: scale);
+            if (sessionName is not null)
+            {
+                SessionStore.Save(layout, sessionName, result, knownMap, seenReceipts);
+            }
+
             return ExitCode.Success;
         });
 
@@ -210,6 +259,43 @@ public static class ContextCommand
                 return false;
         }
     }
+
+    /// <summary>
+    /// The memories visible to this call: long-term entries always, a
+    /// session's short-term entries only when that session is active (ADR
+    /// 0013). Loading here keeps the engine free of file I/O.
+    /// </summary>
+    internal static IReadOnlyList<Core.Memory.MemoryEntry> VisibleMemories(
+        RepoLayout layout, string? sessionName) =>
+        Core.Memory.MemoryStore.Load(layout)
+            .Where(m => m.Session is null || (sessionName is not null && m.Session == sessionName))
+            .ToList();
+
+    /// <summary>Session entries seed the map; explicit <c>--known</c> entries win.</summary>
+    private static Dictionary<string, string> MergeKnown(
+        IReadOnlyDictionary<string, string> sessionKnown, Dictionary<string, string>? explicitKnown)
+    {
+        var merged = new Dictionary<string, string>(sessionKnown, StringComparer.Ordinal);
+        foreach ((string path, string hash) in explicitKnown ?? new Dictionary<string, string>())
+        {
+            merged[path] = hash;
+        }
+
+        return merged;
+    }
+
+    /// <summary>
+    /// Session receipts seed the reuse set; explicit <c>--seen</c> entries are
+    /// unioned in. Sorting makes the persisted/request identity independent of
+    /// argument order.
+    /// </summary>
+    private static string[] MergeSeen(
+        IReadOnlyList<string> sessionSeen, IReadOnlyList<string> explicitSeen) =>
+        sessionSeen.Concat(explicitSeen)
+            .Where(Receipt.IsWellFormed)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(receipt => receipt, StringComparer.Ordinal)
+            .ToArray();
 
     /// <summary>Parses repeated <c>path@hash</c> entries; the last '@' separates.</summary>
     private static bool TryParseKnown(string[]? entries, out Dictionary<string, string>? known)

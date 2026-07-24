@@ -1,4 +1,5 @@
 using RepoContext.Core.Context;
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Outline;
 
 namespace RepoContext.Core.Stats;
@@ -52,6 +53,14 @@ public static class UsageMeter
     /// </summary>
     public static int OutlineReplacedTokens(OutlineResult result) =>
         result.Symbols.Count > 0 ? result.TokenCount : 0;
+
+    /// <summary>
+    /// Full re-read tokens credited as replaced by delivered patch hunks
+    /// (<c>changed --patch</c>). Only files whose delta actually carries
+    /// hunks count — a plain status line replaces nothing.
+    /// </summary>
+    public static int PatchReplacedTokens(ChangedResult result) =>
+        result.Changed.Sum(c => c.Hunks is { Count: > 0 } ? c.FileTokens ?? 0 : 0);
 
     private static bool CarriesContent(ContextItem item) =>
         item.Spans is { Count: > 0 } || item.Symbols is { Count: > 0 };

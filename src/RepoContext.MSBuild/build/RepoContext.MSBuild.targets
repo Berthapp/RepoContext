@@ -1,0 +1,241 @@
+<Project>
+
+  <!--
+    After `dotnet add package RepoContext.MSBuild`, the next build sets
+    everything up unattended (RepoCtxAutoSetup below): a repository-local
+    copy of the packaged portable CLI, wrapper scripts, one initial
+    `repoctx init` (with the agents flag, so CLAUDE.md / AGENTS.md are
+    written) when no repoctx.config.json exists yet, and an incremental
+    `repoctx index` per build. (Editors: XML forbids double hyphens inside
+    comments, so CLI flags are paraphrased throughout, never spelled out.)
+    Explicit entry points for manual use remain:
+
+      dotnet msbuild <project> -t:RepoCtx -p:RepoCtxArgs="search login"
+          Runs the packaged repoctx CLI with the given arguments, in the
+          repository root (see _RepoCtxResolveRoot; override with
+          -p:RepoCtxWorkingDirectory=...).
+
+      dotnet msbuild <project> -t:RepoCtxShim
+          Copies the portable tool payload to .repoctx/bin/tool/ and writes
+          stable `repoctx` / `repoctx.cmd` wrapper scripts to .repoctx/bin/
+          under the repository root (override the wrapper location with
+          -p:RepoCtxShimDirectory=...). People and agents get a fixed path
+          instead of quoting through MSBuild. Package updates refresh the
+          local payload; unchanged builds only compare a short stamp.
+
+      dotnet msbuild <project> -t:RepoCtxMcpConfig
+          Writes a .vscode/mcp.json (only when none exists yet, never
+          touching an existing one) that registers the repoctx MCP server
+          for Copilot agent mode and other MCP clients. It launches
+          `dotnet exec` directly against the repository-local portable
+          assembly, so the committed config works on Windows, macOS and
+          Linux without selecting a platform-specific wrapper.
+
+    Auto-setup switches (set as MSBuild properties, e.g. in the project file
+    or via -p:...): RepoCtxAutoSetup=false disables everything;
+    RepoCtxAutoAgents=false makes init skip the CLAUDE.md / AGENTS.md
+    instruction files; RepoCtxAutoIndex=false skips the per-build index;
+    RepoCtxAutoShim=false skips the wrapper scripts (the local payload is
+    still installed when MCP setup is enabled);
+    RepoCtxAutoMcp=false skips the .vscode/mcp.json.
+  -->
+  <PropertyGroup>
+    <RepoCtxAutoSetup Condition="'$(RepoCtxAutoSetup)' == ''">true</RepoCtxAutoSetup>
+    <RepoCtxAutoAgents Condition="'$(RepoCtxAutoAgents)' == ''">true</RepoCtxAutoAgents>
+    <RepoCtxAutoIndex Condition="'$(RepoCtxAutoIndex)' == ''">true</RepoCtxAutoIndex>
+    <RepoCtxAutoShim Condition="'$(RepoCtxAutoShim)' == ''">true</RepoCtxAutoShim>
+    <RepoCtxAutoMcp Condition="'$(RepoCtxAutoMcp)' == ''">true</RepoCtxAutoMcp>
+  </PropertyGroup>
+
+  <!--
+    Where repoctx should run. In order: an explicit -p:RepoCtxRoot=..., the
+    nearest directory at or above the project that already holds a
+    repoctx.config.json, the solution directory (Visual Studio builds), and
+    finally the directory the build was started from (`dotnet build` at the
+    repository root).
+  -->
+  <Target Name="_RepoCtxResolveRoot">
+    <PropertyGroup>
+      <_RepoCtxConfigDirAbove>$([MSBuild]::GetDirectoryNameOfFileAbove('$(MSBuildProjectDirectory)', 'repoctx.config.json'))</_RepoCtxConfigDirAbove>
+      <RepoCtxRoot Condition="'$(RepoCtxRoot)' == '' and '$(_RepoCtxConfigDirAbove)' != ''">$(_RepoCtxConfigDirAbove)</RepoCtxRoot>
+      <RepoCtxRoot Condition="'$(RepoCtxRoot)' == '' and '$(SolutionDir)' != '' and '$(SolutionDir)' != '*Undefined*'">$(SolutionDir)</RepoCtxRoot>
+      <RepoCtxRoot Condition="'$(RepoCtxRoot)' == ''">$(MSBuildStartupDirectory)</RepoCtxRoot>
+      <RepoCtxRoot>$([MSBuild]::NormalizeDirectory('$(RepoCtxRoot)'))</RepoCtxRoot>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RepoCtx" DependsOnTargets="_RepoCtxResolveRoot">
+    <Error Condition="'$(RepoCtxArgs)' == ''"
+           Text="No repoctx arguments given. Pass the command line via -p:RepoCtxArgs=&quot;...&quot;, e.g. -p:RepoCtxArgs=&quot;index&quot;." />
+    <PropertyGroup>
+      <RepoCtxWorkingDirectory Condition="'$(RepoCtxWorkingDirectory)' == ''">$(RepoCtxRoot)</RepoCtxWorkingDirectory>
+    </PropertyGroup>
+    <Exec Command="$(RepoCtxCommand) $(RepoCtxArgs)"
+          WorkingDirectory="$(RepoCtxWorkingDirectory)"
+          IgnoreStandardErrorWarningFormat="true" />
+  </Target>
+
+  <!--
+    Materializes the package's framework-dependent publish output at one
+    workspace-relative, git-ignored path. The source stamp is the immutable
+    NuGet package path (which includes the package version). Reading that
+    one-line file is the entire no-op cost; a package update changes the path
+    and refreshes the payload. Keeping the portable assembly in the workspace
+    lets a committed MCP config use one command on every operating system.
+  -->
+  <Target Name="_RepoCtxResolveLocalTool" DependsOnTargets="_RepoCtxResolveRoot">
+    <PropertyGroup>
+      <RepoCtxBinDirectory Condition="'$(RepoCtxBinDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(RepoCtxRoot)', '.repoctx', 'bin'))</RepoCtxBinDirectory>
+      <RepoCtxShimDirectory Condition="'$(RepoCtxShimDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(RepoCtxRoot)', '.repoctx', 'bin'))</RepoCtxShimDirectory>
+      <RepoCtxLocalToolDirectory Condition="'$(RepoCtxLocalToolDirectory)' == ''">$([MSBuild]::NormalizeDirectory('$(RepoCtxBinDirectory)', 'tool'))</RepoCtxLocalToolDirectory>
+      <RepoCtxLocalToolAssembly Condition="'$(RepoCtxLocalToolAssembly)' == ''">$([MSBuild]::NormalizePath('$(RepoCtxLocalToolDirectory)', 'repoctx.dll'))</RepoCtxLocalToolAssembly>
+      <_RepoCtxToolSourceStampFile>$([MSBuild]::NormalizePath('$(RepoCtxBinDirectory)', '.tool-source'))</_RepoCtxToolSourceStampFile>
+      <_RepoCtxToolSourceStamp>$(RepoCtxToolAssembly)</_RepoCtxToolSourceStamp>
+      <_RepoCtxToolInstallNeeded>true</_RepoCtxToolInstallNeeded>
+    </PropertyGroup>
+    <ReadLinesFromFile Condition="Exists('$(_RepoCtxToolSourceStampFile)')"
+                       File="$(_RepoCtxToolSourceStampFile)">
+      <Output TaskParameter="Lines" ItemName="_RepoCtxInstalledToolSource" />
+    </ReadLinesFromFile>
+    <PropertyGroup>
+      <_RepoCtxToolInstallNeeded Condition="'@(_RepoCtxInstalledToolSource)' == '$(_RepoCtxToolSourceStamp)' and Exists('$(RepoCtxLocalToolAssembly)')">false</_RepoCtxToolInstallNeeded>
+    </PropertyGroup>
+  </Target>
+
+  <Target Name="RepoCtxInstall" DependsOnTargets="_RepoCtxResolveLocalTool">
+    <ItemGroup Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'">
+      <_RepoCtxPackagedToolFile Include="$(RepoCtxToolsDirectory)**\*" />
+    </ItemGroup>
+    <RemoveDir Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'"
+               Directories="$(RepoCtxLocalToolDirectory)" />
+    <MakeDir Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'"
+             Directories="$(RepoCtxLocalToolDirectory)" />
+    <Copy Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'"
+          SourceFiles="@(_RepoCtxPackagedToolFile)"
+          DestinationFiles="@(_RepoCtxPackagedToolFile->'$(RepoCtxLocalToolDirectory)%(RecursiveDir)%(Filename)%(Extension)')"
+          SkipUnchangedFiles="true" />
+    <Error Condition="'$(_RepoCtxToolInstallNeeded)' == 'true' and !Exists('$(RepoCtxLocalToolAssembly)')"
+           Text="repoctx: the packaged tool payload could not be installed at $(RepoCtxLocalToolDirectory)." />
+    <MakeDir Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'"
+             Directories="$(RepoCtxBinDirectory)" />
+    <WriteLinesToFile Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'"
+                      File="$(_RepoCtxToolSourceStampFile)"
+                      Lines="$(_RepoCtxToolSourceStamp)"
+                      Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <Message Condition="'$(_RepoCtxToolInstallNeeded)' == 'true'" Importance="normal"
+             Text="repoctx portable tool installed at $(RepoCtxLocalToolDirectory)" />
+  </Target>
+
+  <Target Name="RepoCtxShim" DependsOnTargets="_RepoCtxResolveLocalTool;RepoCtxInstall">
+    <PropertyGroup>
+      <!-- Keep existing callers that override only the shim directory working. -->
+      <RepoCtxShimDirectory Condition="'$(RepoCtxShimDirectory)' == ''">$(RepoCtxBinDirectory)</RepoCtxShimDirectory>
+    </PropertyGroup>
+    <ItemGroup>
+      <_RepoCtxShimSh Include="#!/bin/sh" />
+      <_RepoCtxShimSh Include="exec dotnet exec &quot;$(RepoCtxLocalToolAssembly)&quot; &quot;$@&quot;" />
+      <_RepoCtxShimCmd Include="@echo off" />
+      <!-- %25%2A is MSBuild-escaped "%*": a literal * in an item Include
+           would be treated as a file glob and drop the whole line. -->
+      <_RepoCtxShimCmd Include="dotnet exec &quot;$(RepoCtxLocalToolAssembly)&quot; %25%2A" />
+    </ItemGroup>
+    <MakeDir Directories="$(RepoCtxShimDirectory)" />
+    <!-- WriteOnlyWhenDifferent: the auto-setup calls this every build; only
+         touch the files when the package path actually changed. -->
+    <WriteLinesToFile File="$(RepoCtxShimDirectory)repoctx"
+                      Lines="@(_RepoCtxShimSh)" Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <WriteLinesToFile File="$(RepoCtxShimDirectory)repoctx.cmd"
+                      Lines="@(_RepoCtxShimCmd)" Overwrite="true"
+                      WriteOnlyWhenDifferent="true" />
+    <Exec Condition="'$(OS)' != 'Windows_NT'"
+          Command="chmod +x &quot;$(RepoCtxShimDirectory)repoctx&quot;"
+          EchoOff="true" />
+    <Message Importance="normal"
+             Text="repoctx shims written to $(RepoCtxShimDirectory)" />
+  </Target>
+
+  <!--
+    Registers the repoctx MCP server for MCP-capable agents (Copilot agent
+    mode in VS Code and Visual Studio read .vscode/mcp.json). Created only
+    when the file does not exist yet: an existing mcp.json belongs to the
+    user and is never modified, so this cannot clobber other servers. The
+    file invokes `dotnet exec` against the portable payload's
+    workspace-relative assembly path. This avoids selecting `repoctx` versus
+    `repoctx.cmd` and is therefore committable and cross-platform. Each
+    machine's first build writes its own git-ignored payload.
+  -->
+  <Target Name="RepoCtxMcpConfig" DependsOnTargets="_RepoCtxResolveLocalTool;RepoCtxInstall">
+    <PropertyGroup>
+      <RepoCtxMcpConfigFile Condition="'$(RepoCtxMcpConfigFile)' == ''">$([MSBuild]::NormalizePath('$(RepoCtxRoot)', '.vscode', 'mcp.json'))</RepoCtxMcpConfigFile>
+      <RepoCtxMcpToolAssembly Condition="'$(RepoCtxMcpToolAssembly)' == ''">${workspaceFolder}/.repoctx/bin/tool/repoctx.dll</RepoCtxMcpToolAssembly>
+      <_RepoCtxMcpMissing>false</_RepoCtxMcpMissing>
+      <_RepoCtxMcpMissing Condition="!Exists('$(RepoCtxMcpConfigFile)')">true</_RepoCtxMcpMissing>
+      <_RepoCtxMcpJson><![CDATA[{
+  "servers": {
+    "repoctx": {
+      "type": "stdio",
+      "command": "dotnet",
+      "args": ["exec", "$(RepoCtxMcpToolAssembly)", "mcp"],
+      "cwd": "${workspaceFolder}"
+    }
+  }
+}]]></_RepoCtxMcpJson>
+    </PropertyGroup>
+    <MakeDir Condition="'$(_RepoCtxMcpMissing)' == 'true'"
+             Directories="$([System.IO.Path]::GetDirectoryName('$(RepoCtxMcpConfigFile)'))" />
+    <WriteLinesToFile Condition="'$(_RepoCtxMcpMissing)' == 'true'"
+                      File="$(RepoCtxMcpConfigFile)"
+                      Lines="$(_RepoCtxMcpJson)" Overwrite="true" />
+    <Message Condition="'$(_RepoCtxMcpMissing)' == 'true'" Importance="high"
+             Text="repoctx: wrote $(RepoCtxMcpConfigFile) (repoctx MCP server for Copilot agent mode and other MCP clients; commit it to share with the team)." />
+    <Message Condition="'$(_RepoCtxMcpMissing)' != 'true'" Importance="normal"
+             Text="repoctx: $(RepoCtxMcpConfigFile) already exists, left untouched." />
+  </Target>
+
+  <!--
+    Runs after every real build of the referencing project. Skipped for IDE
+    design-time builds. In a multi-targeting project only the outer build
+    runs it (the buildMultiTargeting/ copy of this file); the inner per-TFM
+    builds skip it so init/index never run twice in parallel. Auto-setup is
+    repository-scoped, so the package must be referenced by exactly one
+    project in a repository; separate referencing projects can otherwise
+    execute their after-build hooks concurrently.
+  -->
+  <Target Name="RepoCtxAutoSetup" AfterTargets="Build"
+          DependsOnTargets="_RepoCtxResolveRoot"
+          Condition="'$(RepoCtxAutoSetup)' == 'true'
+                     and '$(DesignTimeBuild)' != 'true'
+                     and ('$(TargetFrameworks)' == '' or '$(TargetFramework)' == '')">
+    <PropertyGroup>
+      <_RepoCtxConfigFile>$([MSBuild]::NormalizePath('$(RepoCtxRoot)', 'repoctx.config.json'))</_RepoCtxConfigFile>
+      <_RepoCtxAgentsFlag>--agents</_RepoCtxAgentsFlag>
+      <_RepoCtxAgentsFlag Condition="'$(RepoCtxAutoAgents)' != 'true'">--no-agents</_RepoCtxAgentsFlag>
+    </PropertyGroup>
+    <!-- First build only: init the repository (config, .gitignore entry and,
+         unless RepoCtxAutoAgents=false, CLAUDE.md / AGENTS.md). -->
+    <Message Condition="!Exists('$(_RepoCtxConfigFile)')" Importance="high"
+             Text="repoctx: no repoctx.config.json found - running 'repoctx init $(_RepoCtxAgentsFlag)' in $(RepoCtxRoot)" />
+    <Exec Condition="!Exists('$(_RepoCtxConfigFile)')"
+          Command="$(RepoCtxCommand) init $(_RepoCtxAgentsFlag)"
+          WorkingDirectory="$(RepoCtxRoot)"
+          ContinueOnError="WarnAndContinue"
+          IgnoreStandardErrorWarningFormat="true" />
+    <!-- Every build: incremental index (content-hash diff; cheap when
+         nothing changed). Failures warn, never break the build. -->
+    <Exec Condition="'$(RepoCtxAutoIndex)' == 'true' and Exists('$(_RepoCtxConfigFile)')"
+          Command="$(RepoCtxCommand) index"
+          WorkingDirectory="$(RepoCtxRoot)"
+          ContinueOnError="WarnAndContinue"
+          IgnoreStandardErrorWarningFormat="true"
+          StandardOutputImportance="low" />
+    <CallTarget Condition="'$(RepoCtxAutoShim)' == 'true'"
+                Targets="RepoCtxShim"
+                ContinueOnError="WarnAndContinue" />
+    <CallTarget Condition="'$(RepoCtxAutoMcp)' == 'true'"
+                Targets="RepoCtxMcpConfig"
+                ContinueOnError="WarnAndContinue" />
+  </Target>
+
+</Project>

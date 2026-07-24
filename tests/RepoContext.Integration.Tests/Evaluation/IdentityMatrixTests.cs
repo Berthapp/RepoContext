@@ -157,6 +157,37 @@ public sealed class IdentityMatrixTests
             ContextOutput.Render(repeated, OutputFormat.Json));
     }
 
+    [Fact]
+    public void UnmatchedSessionHistory_DoesNotChurnEvidenceOrRepresentationIdentity()
+    {
+        using var repo = new EvalRepo();
+        var options = new ContextOptions { Top = 3, Detail = ContextDetail.Slices };
+        ContextResult baseline = Run(repo, options);
+        string unrelatedReceipt = Receipt.For(
+            "src/Unrelated/NeverIndexed.cs",
+            new string('a', 64),
+            "slices",
+            EvidenceUnitKind.Span,
+            1,
+            1,
+            "NeverIndexed",
+            "irrelevant evidence");
+
+        ContextResult withHistory = Run(repo, options with
+        {
+            Seen = [unrelatedReceipt],
+            Known = new Dictionary<string, string>(StringComparer.Ordinal)
+            {
+                ["src/Unrelated/NeverIndexed.cs"] = "aaaaaaaaaaaa",
+            },
+        });
+
+        Assert.Equal(baseline.FullEvidenceId, withHistory.FullEvidenceId);
+        Assert.Equal(
+            ContextOutput.Render(baseline, OutputFormat.Json),
+            ContextOutput.Render(withHistory, OutputFormat.Json));
+    }
+
     /// <summary>
     /// The rendered format changes the representation identity but never the
     /// evidence identity behind it.
@@ -244,6 +275,10 @@ public sealed class IdentityMatrixTests
         });
 
         Assert.Equal(0, withStranger.ReusedCount);
+        Assert.Equal(baseline.FullEvidenceId, withStranger.FullEvidenceId);
+        Assert.Equal(
+            ContextOutput.Render(baseline, OutputFormat.Json),
+            ContextOutput.Render(withStranger, OutputFormat.Json));
         Assert.Equal(
             baseline.Items.SelectMany(i => i.Spans ?? []).Select(s => s.Receipt),
             withStranger.Items.SelectMany(i => i.Spans ?? []).Select(s => s.Receipt));
@@ -261,6 +296,7 @@ public sealed class IdentityMatrixTests
 
         Assert.Equal(0, withGarbage.ReusedCount);
         Assert.Equal(baseline.ContentTokens, withGarbage.ContentTokens);
+        Assert.Equal(baseline.FullEvidenceId, withGarbage.FullEvidenceId);
     }
 
     /// <summary>

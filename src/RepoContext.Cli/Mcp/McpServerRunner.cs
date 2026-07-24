@@ -17,18 +17,15 @@ public static class McpServerRunner
     /// substitute that can drift.
     /// </summary>
     public const string Instructions =
-        "RepoContext serves compact, explainable, deterministic context from a local "
-        + "repository index. Start with one repoctx.get_context call using detail='slices' "
-        + "and responseBudgetTokens=2000; use 'outline' to survey more files or 'paths' "
-        + "when only locations are needed. Escalate only for a concrete gap: search when "
-        + "a needed file is missing, outline when a needed symbol was not delivered, and "
-        + "related_files for dependency or impact questions. Echo returned evidence "
-        + "receipts through seen to suppress exactly those pointers, spans, or symbols. Use known "
-        + "path@hash only when you independently hold the entire file; never derive it "
-        + "from a slice or outline hash. After edits call get_changes and re-index when "
-        + "stale. Stop once no evidence needed for the task is missing. Processing is deterministic, "
-        + "offline, and local; successful calls may append aggregate counts to the local "
-        + "usage ledger.";
+        "Start with repoctx.get_context(detail='slices', responseBudgetTokens=2000); "
+        + "use outline for breadth or paths for locations. Escalate only on a gap: search "
+        + "for missing files/symbols, get_outline for a missing symbol in a known file, "
+        + "get_related_files for dependencies/impact. Reuse receipts via seen or session. "
+        + "Set known=path@hash only after a full-file read. stripComments is lossy. "
+        + "get_context already recalls matching memories; call memory_search only for a "
+        + "concrete prior-knowledge gap, memory_add only for durable findings. After edits "
+        + "call get_changes(patch=true), then run repoctx index if stale. Stop when evidence "
+        + "is sufficient. All processing is local, offline, deterministic.";
 
     /// <summary>
     /// Runs the server until the client closes stdin or cancellation is

@@ -1,7 +1,7 @@
 namespace RepoContext.Core.Context;
 
 /// <summary>
-/// The shared format-aware token-cost oracle (Q3, ADR 0013). Packing and
+/// The shared format-aware token-cost oracle (Q3, ADR 0016). Packing and
 /// rendering must agree on what a response costs, so the packer does not
 /// estimate: it asks the real renderer to serialize a tentative result and
 /// tokenizes the exact surface boundary the caller will emit.
@@ -23,9 +23,10 @@ namespace RepoContext.Core.Context;
 public interface IResponseCostModel
 {
     /// <summary>
-    /// Exact tokens of the model-visible response for <paramref name="result"/>
+    /// Tokens of the exact model-visible response for <paramref name="result"/>
     /// at this model's surface boundary — CLI stdout including its trailing
-    /// newline, or the MCP text content block.
+    /// newline, or the MCP text content block — after applying the configured
+    /// deterministic tokenizer calibration profile.
     /// </summary>
     int Measure(ContextResult result);
 

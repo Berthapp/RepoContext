@@ -16,7 +16,7 @@ namespace RepoContext.Core.Context;
 /// budgeting. Every result carries machine-readable reasons. Deterministic.
 /// </summary>
 /// <remarks>
-/// Release 1 reshaped the tail of this pipeline (ADR 0012/0013): a candidate now
+/// Release 1 reshaped the tail of this pipeline (ADR 0015/0016): a candidate now
 /// retains several pieces of evidence rather than one best range, evidence is
 /// emitted as independently reusable units each carrying its own receipt, reused
 /// units are acknowledged without consuming a result slot, and budgets are
@@ -33,6 +33,11 @@ public sealed class ContextEngine
     private const int PreambleFallbackLines = 20;
     private const int ItemEnvelopeOverhead = 40;
     private const int SymbolFramingTokens = 26;
+    private const int MaxContextMemories = 3;
+    private const int MemoryBudgetDivisor = 5;
+    private const int MemoryEnvelopeOverhead = 24;
+    private const double MemoryTermWeight = 0.7;
+    private const double MemoryOverlapWeight = 0.3;
 
     /// <summary>Per-file, per-channel evidence cap; stops one repetitive file starving the rest.</summary>
     private const int MaxHitsPerFilePerChannel = 8;
@@ -41,11 +46,13 @@ public sealed class ContextEngine
 
     private readonly IndexStore _store;
     private readonly RepoctxConfig _config;
+    private readonly TokenScale _scale;
 
     public ContextEngine(IndexStore store, RepoctxConfig config)
     {
         _store = store;
         _config = config;
+        _scale = TokenScale.From(config);
     }
 
     /// <summary>
@@ -75,7 +82,10 @@ public sealed class ContextEngine
         ScoreCandidates(candidates);
 
         List<Candidate> ordered = ApplyDiversity(candidates.Values);
-        return Pack(query, analyzed, ordered, options, fileByPath, candidates.Count, cost);
+        List<Memory.MemoryHit> memoryCandidates = SelectMemories(analyzed, ordered, options);
+        return Pack(
+            query, analyzed, ordered, options, fileByPath, candidates.Count,
+            memoryCandidates, cost);
     }
 
     private void GenerateCandidates(
@@ -282,7 +292,8 @@ public sealed class ContextEngine
     /// </remarks>
     private ContextResult Pack(
         string query, AnalyzedQuery analyzed, List<Candidate> ordered, ContextOptions options,
-        Dictionary<string, FileRow> fileByPath, int totalCandidates, IResponseCostModel? cost)
+        Dictionary<string, FileRow> fileByPath, int totalCandidates,
+        List<Memory.MemoryHit> memoryCandidates, IResponseCostModel? cost)
     {
         if (options.ResponseBudgetTokens is not null && cost is null)
         {
@@ -319,7 +330,7 @@ public sealed class ContextEngine
                 {
                     Path = c.Path,
                     Receipt = FileReceipt(row, options.Detail),
-                    AvoidedReadTokens = row.TokenCount,
+                    AvoidedReadTokens = _scale.Apply(row.TokenCount),
                 });
                 continue;
             }
@@ -327,78 +338,92 @@ public sealed class ContextEngine
             ContextItem? item = BuildItem(c, row, options, seen, reused);
             if (item is not null)
             {
-                prepared.Add(new PreparedCandidate(prepared.Count, item));
+                prepared.Add(new PreparedCandidate(prepared.Count, item, row.ContentHash));
             }
         }
 
-        var selected = new List<PreparedCandidate>();
-        int usedLegacy = 0;
-        int usedProjected = 0;
-
-        // Greedy best-fit in ranked order. Response admission measures the whole
-        // prospective final document: all candidates already exist in
-        // `prepared`, all reuse metadata is known, and omission reasons are
-        // derived from the proposed final set. Later candidates therefore cannot
-        // grow unmeasured metadata around an already accepted item.
-        foreach (PreparedCandidate candidate in prepared)
+        // Memory is deliberately admitted before file evidence: it is distilled
+        // knowledge at a fraction of a rediscovery's cost. Unlike the old legacy
+        // reserve alone, each admission is measured as part of the complete
+        // model-visible document, so optional memories can never overrun a hard
+        // response ceiling.
+        var memories = new List<Memory.MemoryHit>();
+        var rejectedMemories = new List<Memory.MemoryHit>();
+        OmissionTally emptyOmissions = ClassifyOmissions(
+            prepared, [], options, nonpositive, acknowledgedOrdinals: null);
+        foreach (Memory.MemoryHit memory in memoryCandidates)
         {
-            if (selected.Count >= options.Top)
+            var proposed = new List<Memory.MemoryHit>(memories.Count + 1);
+            proposed.AddRange(memories);
+            proposed.Add(memory);
+            if (TryComposeWithinResponseBudget(
+                    query, analyzed, options, [], reused, emptyOmissions,
+                    totalCandidates, proposed, cost, out _))
             {
-                continue;
+                memories.Add(memory);
             }
-
-            foreach (ContextItem item in CandidateVariants(candidate.Item))
+            else
             {
-                if (options.BudgetTokens is { } legacyBudget
-                    && usedLegacy + item.EstimatedTokens > legacyBudget)
-                {
-                    continue;
-                }
-
-                if (options.ProjectedReadBudgetTokens is { } readBudget
-                    && usedProjected + item.ProjectedReadTokens > readBudget)
-                {
-                    continue;
-                }
-
-                var chosen = new PreparedCandidate(candidate.Ordinal, item);
-                var proposed = new List<PreparedCandidate>(selected.Count + 1);
-                proposed.AddRange(selected);
-                proposed.Add(chosen);
-                OmissionTally proposedOmissions = ClassifyOmissions(
-                    prepared, proposed, options, nonpositive);
-                if (!TryComposeWithinResponseBudget(
-                        query, analyzed, options, proposed, reused, proposedOmissions,
-                        totalCandidates, cost, out _))
-                {
-                    continue;
-                }
-
-                selected.Add(chosen);
-                usedLegacy += item.EstimatedTokens;
-                usedProjected += item.ProjectedReadTokens;
-                break;
+                rejectedMemories.Add(memory);
             }
         }
 
-        OmissionTally omissions = ClassifyOmissions(prepared, selected, options, nonpositive);
+        int memoryTokens = memories.Sum(memory => memory.EstimatedTokens);
+        ContextOptions packingOptions = options.BudgetTokens is { } legacyBudget
+            ? options with { BudgetTokens = Math.Max(legacyBudget - memoryTokens, 0) }
+            : options;
+
+        List<PreparedCandidate> selected = SelectCandidates(
+            query, analyzed, options, packingOptions, prepared, reused, nonpositive,
+            totalCandidates, memories, seen, cost, out HashSet<int> acknowledgedOrdinals);
+
+        // Memories are optional acceleration, never a substitute for all source
+        // evidence. If their response/legacy reserve crowded every otherwise
+        // deliverable file out, drop them and repack once. This preserves main's
+        // cheap-memory preference whenever at least one source item still fits,
+        // while preventing a stale note from turning a code query into a
+        // memory-only false success.
+        bool sourceFitsNonResponseBudgets = options.Top > 0 && prepared.Any(candidate =>
+            CandidateVariants(candidate.Item, options)
+                .Any(item => FitsNonResponseBudgets(item, options)));
+        while (selected.Count == 0 && memories.Count > 0 && sourceFitsNonResponseBudgets)
+        {
+            Memory.MemoryHit dropped = memories[^1];
+            memories.RemoveAt(memories.Count - 1);
+            rejectedMemories.Add(dropped);
+            int remainingMemoryTokens = memories.Sum(memory => memory.EstimatedTokens);
+            packingOptions = options.BudgetTokens is { } originalLegacyBudget
+                ? options with
+                {
+                    BudgetTokens = Math.Max(originalLegacyBudget - remainingMemoryTokens, 0),
+                }
+                : options;
+            selected = SelectCandidates(
+                query, analyzed, options, packingOptions, prepared, reused, nonpositive,
+                totalCandidates, memories, seen, cost, out acknowledgedOrdinals);
+        }
+
+        OmissionTally omissions = ClassifyOmissions(
+            prepared, selected, packingOptions, nonpositive, acknowledgedOrdinals);
         bool finalFits = TryComposeWithinResponseBudget(
             query, analyzed, options, selected, reused, omissions,
-            totalCandidates, cost, out ContextResult result);
+            totalCandidates, memories, cost, out ContextResult result);
 
         if (options.ResponseBudgetTokens is { } budget)
         {
             IReadOnlyList<PreparedCandidate> independentlyDeliverable = prepared
+                .Where(c => !acknowledgedOrdinals.Contains(c.Ordinal))
                 .Select(c => (
                     c.Ordinal,
-                    Item: CandidateVariants(c.Item)
-                        .Where(item => FitsNonResponseBudgets(item, options))
+                    c.ContentHash,
+                    Item: CandidateVariants(c.Item, options)
+                        .Where(item => FitsNonResponseBudgets(item, packingOptions))
                         .OrderBy(ResponseSizeEstimate)
                         .ThenBy(item => item.StartLine)
                         .ThenBy(item => item.EndLine)
                         .FirstOrDefault()))
                 .Where(c => c.Item is not null)
-                .Select(c => new PreparedCandidate(c.Ordinal, c.Item!))
+                .Select(c => new PreparedCandidate(c.Ordinal, c.Item!, c.ContentHash))
                 .ToList();
 
             // Empty/no-match and reuse-only documents are still successful
@@ -407,17 +432,20 @@ public sealed class ContextEngine
             // success; report a bounded, actionable retry budget for a compact
             // useful singleton instead.
             bool usefulEvidenceWasRejected =
-                selected.Count == 0 && independentlyDeliverable.Count > 0 && options.Top > 0;
+                selected.Count == 0
+                && ((independentlyDeliverable.Count > 0 && options.Top > 0)
+                    || (memories.Count == 0 && rejectedMemories.Count > 0));
             if (!finalFits || usefulEvidenceWasRejected)
             {
                 int retryBudget = SuccessfulRetryBudget(
-                    query, analyzed, options, prepared, independentlyDeliverable,
-                    reused, nonpositive, totalCandidates, cost!);
+                    query, analyzed, options, packingOptions, prepared,
+                    independentlyDeliverable, reused, nonpositive, totalCandidates,
+                    memories, rejectedMemories, acknowledgedOrdinals, cost!);
                 ContextResult errorBasis = finalFits
                     ? result
                     : Compose(
                         query, analyzed, options, selected.Select(c => c.Item).ToList(),
-                        reused, omissions, totalCandidates, reusedListLimit: 0);
+                        reused, omissions, totalCandidates, reusedListLimit: 0, memories);
 
                 return errorBasis with
                 {
@@ -440,6 +468,87 @@ public sealed class ContextEngine
         return result;
     }
 
+    private List<PreparedCandidate> SelectCandidates(
+        string query,
+        AnalyzedQuery analyzed,
+        ContextOptions responseOptions,
+        ContextOptions packingOptions,
+        IReadOnlyList<PreparedCandidate> prepared,
+        List<ReusedUnit> reused,
+        int nonpositive,
+        int totalCandidates,
+        IReadOnlyList<Memory.MemoryHit> memories,
+        HashSet<string> seen,
+        IResponseCostModel? cost,
+        out HashSet<int> acknowledgedOrdinals)
+    {
+        var selected = new List<PreparedCandidate>();
+        acknowledgedOrdinals = [];
+        int usedLegacy = 0;
+        int usedProjected = 0;
+
+        // Greedy best-fit in ranked order. Response admission measures the whole
+        // prospective final document; later candidates cannot grow unmeasured
+        // metadata around an already accepted item.
+        foreach (PreparedCandidate candidate in prepared)
+        {
+            ContextItem? duplicate = DuplicatePointer(candidate, selected, responseOptions);
+            if (duplicate?.Receipt is { } duplicateReceipt && seen.Contains(duplicateReceipt))
+            {
+                reused.Add(new ReusedUnit
+                {
+                    Path = duplicate.Path,
+                    Receipt = duplicateReceipt,
+                });
+                acknowledgedOrdinals.Add(candidate.Ordinal);
+                continue;
+            }
+
+            if (selected.Count >= responseOptions.Top)
+            {
+                continue;
+            }
+
+            IEnumerable<ContextItem> variants = duplicate is null
+                ? CandidateVariants(candidate.Item, responseOptions)
+                : [duplicate];
+            foreach (ContextItem item in variants)
+            {
+                if (packingOptions.BudgetTokens is { } fileBudget
+                    && usedLegacy + item.EstimatedTokens > fileBudget)
+                {
+                    continue;
+                }
+
+                if (packingOptions.ProjectedReadBudgetTokens is { } readBudget
+                    && usedProjected + item.ProjectedReadTokens > readBudget)
+                {
+                    continue;
+                }
+
+                var chosen = candidate with { Item = item };
+                var proposed = new List<PreparedCandidate>(selected.Count + 1);
+                proposed.AddRange(selected);
+                proposed.Add(chosen);
+                OmissionTally proposedOmissions = ClassifyOmissions(
+                    prepared, proposed, packingOptions, nonpositive, acknowledgedOrdinals);
+                if (!TryComposeWithinResponseBudget(
+                        query, analyzed, responseOptions, proposed, reused, proposedOmissions,
+                        totalCandidates, memories, cost, out _))
+                {
+                    continue;
+                }
+
+                selected.Add(chosen);
+                usedLegacy += item.EstimatedTokens;
+                usedProjected += item.ProjectedReadTokens;
+                break;
+            }
+        }
+
+        return selected;
+    }
+
     /// <summary>
     /// Renders the complete prospective result and, when necessary, trims only
     /// the bounded reuse listing. The aggregate reuse count remains exact.
@@ -447,7 +556,8 @@ public sealed class ContextEngine
     private bool TryComposeWithinResponseBudget(
         string query, AnalyzedQuery analyzed, ContextOptions options,
         IReadOnlyList<PreparedCandidate> selected, List<ReusedUnit> reused,
-        OmissionTally omissions, int totalCandidates, IResponseCostModel? cost,
+        OmissionTally omissions, int totalCandidates,
+        IReadOnlyList<Memory.MemoryHit> memories, IResponseCostModel? cost,
         out ContextResult result)
     {
         int maxListed = Math.Min(Math.Max(options.MaxReusedListed, 0), reused.Count);
@@ -455,7 +565,7 @@ public sealed class ContextEngine
         {
             result = Compose(
                 query, analyzed, options, selected.Select(c => c.Item).ToList(),
-                reused, omissions, totalCandidates, listed);
+                reused, omissions, totalCandidates, listed, memories);
             if (options.ResponseBudgetTokens is not { } budget
                 || cost!.Measure(result) <= budget)
             {
@@ -465,7 +575,7 @@ public sealed class ContextEngine
 
         result = Compose(
             query, analyzed, options, selected.Select(c => c.Item).ToList(),
-            reused, omissions, totalCandidates, reusedListLimit: 0);
+            reused, omissions, totalCandidates, reusedListLimit: 0, memories);
         return false;
     }
 
@@ -473,11 +583,12 @@ public sealed class ContextEngine
     /// Computes omission metadata from a complete proposed selection. This makes
     /// response-cost measurement independent of when a candidate was visited.
     /// </summary>
-    private static OmissionTally ClassifyOmissions(
+    private OmissionTally ClassifyOmissions(
         IReadOnlyList<PreparedCandidate> prepared,
         IReadOnlyList<PreparedCandidate> selected,
         ContextOptions options,
-        int nonpositive)
+        int nonpositive,
+        IReadOnlySet<int>? acknowledgedOrdinals)
     {
         var selectedOrdinals = selected.Select(c => c.Ordinal).ToHashSet();
         var omissions = new OmissionTally { NonpositiveScore = nonpositive };
@@ -485,7 +596,8 @@ public sealed class ContextEngine
 
         foreach (PreparedCandidate candidate in prepared)
         {
-            if (selectedOrdinals.Contains(candidate.Ordinal))
+            if (selectedOrdinals.Contains(candidate.Ordinal)
+                || acknowledgedOrdinals?.Contains(candidate.Ordinal) == true)
             {
                 continue;
             }
@@ -507,7 +619,8 @@ public sealed class ContextEngine
                 int projectedBefore = selected
                     .Where(c => c.Ordinal < candidate.Ordinal)
                     .Sum(c => c.Item.ProjectedReadTokens);
-                IReadOnlyList<ContextItem> variants = CandidateVariants(candidate.Item).ToList();
+                IReadOnlyList<ContextItem> variants =
+                    CandidateVariantsFor(candidate, selected, options).ToList();
 
                 bool anyLegacyFit = variants.Any(item =>
                     options.BudgetTokens is not { } legacyBudget
@@ -570,7 +683,62 @@ public sealed class ContextEngine
     /// budget can still fit its best span. Every emitted variant remains source
     /// ordered and independently receipted.
     /// </summary>
-    private static IEnumerable<ContextItem> CandidateVariants(ContextItem item)
+    private IEnumerable<ContextItem> CandidateVariantsFor(
+        PreparedCandidate candidate,
+        IReadOnlyList<PreparedCandidate> selected,
+        ContextOptions options)
+    {
+        ContextItem? duplicate = DuplicatePointer(candidate, selected, options);
+        return duplicate is null
+            ? CandidateVariants(candidate.Item, options)
+            : [duplicate];
+    }
+
+    /// <summary>
+    /// When byte-identical content is already represented by an admitted item,
+    /// emit a tiny relationship pointer instead of paying for the same evidence
+    /// twice. The receipt is path-bound and also hashes the delivered
+    /// <c>duplicate_of</c> target; it never borrows the first path's receipt.
+    /// </summary>
+    private static ContextItem? DuplicatePointer(
+        PreparedCandidate candidate,
+        IReadOnlyList<PreparedCandidate> selected,
+        ContextOptions options)
+    {
+        PreparedCandidate? original = selected.FirstOrDefault(item =>
+            string.Equals(item.ContentHash, candidate.ContentHash, StringComparison.Ordinal));
+        if (original is null)
+        {
+            return null;
+        }
+
+        ContextItem item = candidate.Item;
+        string receipt = Receipt.For(
+            item.Path,
+            candidate.ContentHash,
+            DetailLabel(options.Detail),
+            EvidenceUnitKind.Pointer,
+            0,
+            0,
+            string.Empty,
+            Canonical.JoinRecords(["duplicate_of", Canonical.NormalizePath(original.Item.Path)]));
+        return item with
+        {
+            DuplicateOf = original.Item.Path,
+            Symbols = null,
+            SymbolsOmitted = null,
+            Spans = null,
+            SpansOmitted = null,
+            Snippet = null,
+            Receipt = receipt,
+            Stripped = false,
+            ContentTokens = 0,
+            ProjectedReadTokens = 0,
+            EstimatedTokens = 0,
+        };
+    }
+
+    private IEnumerable<ContextItem> CandidateVariants(ContextItem item, ContextOptions options)
     {
         yield return item;
         if (item.Spans is { Count: > 1 } spans)
@@ -583,7 +751,7 @@ public sealed class ContextEngine
                     .OrderBy(span => span.StartLine)
                     .ThenBy(span => span.EndLine)
                     .ToList();
-                yield return SpanVariant(item, spans, selected);
+                yield return SpanVariant(item, spans, selected, options);
             }
 
             // Prefixes preserve marginal relevance when several spans fit. Also
@@ -594,7 +762,7 @@ public sealed class ContextEngine
                 .ThenBy(span => span.StartLine)
                 .ThenBy(span => span.EndLine))
             {
-                yield return SpanVariant(item, spans, [span]);
+                yield return SpanVariant(item, spans, [span], options);
             }
 
             yield break;
@@ -627,10 +795,16 @@ public sealed class ContextEngine
         }
     }
 
-    private static ContextItem SpanVariant(
-        ContextItem item, IReadOnlyList<ContextSpan> all, List<ContextSpan> selected)
+    private ContextItem SpanVariant(
+        ContextItem item,
+        IReadOnlyList<ContextSpan> all,
+        List<ContextSpan> selected,
+        ContextOptions options)
     {
-        int contentTokens = selected.Sum(span => JsonTextTokens(span.Text));
+        int rawContentTokens = selected.Sum(span => options.SerializedCharging
+            ? JsonTextTokens(span.Text)
+            : Tokens.Count(span.Text));
+        int contentTokens = _scale.Apply(rawContentTokens);
         bool single = selected.Count == 1;
         return item with
         {
@@ -640,15 +814,17 @@ public sealed class ContextEngine
             SpansOmitted = (item.SpansOmitted ?? 0) + all.Count - selected.Count,
             Snippet = single ? selected[0].Text : null,
             Receipt = single ? selected[0].Receipt : null,
+            Stripped = selected.Any(span => span.Stripped),
             ContentTokens = contentTokens,
-            EstimatedTokens = contentTokens + EnvelopeTokens(item),
+            EstimatedTokens = _scale.Apply(rawContentTokens + EnvelopeTokens(item)),
         };
     }
 
-    private static ContextItem SymbolVariant(
+    private ContextItem SymbolVariant(
         ContextItem item, IReadOnlyList<OutlineSymbol> all, List<OutlineSymbol> selected)
     {
-        int contentTokens = OutlineTokens(selected);
+        int rawContentTokens = OutlineTokens(selected);
+        int contentTokens = _scale.Apply(rawContentTokens);
         bool single = selected.Count == 1;
         return item with
         {
@@ -656,8 +832,9 @@ public sealed class ContextEngine
             SymbolsOmitted = (item.SymbolsOmitted ?? 0) + all.Count - selected.Count,
             Receipt = single ? selected[0].Receipt : null,
             ContentTokens = contentTokens,
-            EstimatedTokens = contentTokens + (selected.Count * SymbolFramingTokens)
-                + EnvelopeTokens(item),
+            EstimatedTokens = _scale.Apply(
+                rawContentTokens + (selected.Count * SymbolFramingTokens)
+                + EnvelopeTokens(item)),
         };
     }
 
@@ -679,9 +856,13 @@ public sealed class ContextEngine
     /// </summary>
     private int SuccessfulRetryBudget(
         string query, AnalyzedQuery analyzed, ContextOptions options,
+        ContextOptions packingOptions,
         IReadOnlyList<PreparedCandidate> all,
         IReadOnlyList<PreparedCandidate> independentlyDeliverable,
         List<ReusedUnit> reused, int nonpositive, int totalCandidates,
+        IReadOnlyList<Memory.MemoryHit> memories,
+        IReadOnlyList<Memory.MemoryHit> rejectedMemories,
+        IReadOnlySet<int> acknowledgedOrdinals,
         IResponseCostModel cost)
     {
         IReadOnlyList<PreparedCandidate> selection =
@@ -692,7 +873,17 @@ public sealed class ContextEngine
                     .First()]
                 : [];
 
-        OmissionTally omissions = ClassifyOmissions(all, selection, options, nonpositive);
+        IReadOnlyList<Memory.MemoryHit> retryMemories = selection.Count > 0
+            ? []
+            : memories.Count > 0
+                ? memories
+                : rejectedMemories
+                .OrderBy(memory => memory.EstimatedTokens)
+                .ThenBy(memory => memory.Entry.Id, StringComparer.Ordinal)
+                .Take(1)
+                .ToList();
+        OmissionTally omissions = ClassifyOmissions(
+            all, selection, packingOptions, nonpositive, acknowledgedOrdinals);
         int proposed = Math.Max(options.ResponseBudgetTokens ?? 1, 1);
 
         // Measured cost normally converges in one or two steps. Keep proposals
@@ -702,7 +893,7 @@ public sealed class ContextEngine
             ContextOptions retryOptions = options with { ResponseBudgetTokens = proposed };
             ContextResult candidate = Compose(
                 query, analyzed, retryOptions, selection.Select(c => c.Item).ToList(),
-                reused, omissions, totalCandidates, reusedListLimit: 0);
+                reused, omissions, totalCandidates, reusedListLimit: 0, retryMemories);
             int measured = cost.Measure(candidate);
             if (measured <= proposed)
             {
@@ -726,7 +917,7 @@ public sealed class ContextEngine
             ContextOptions retryOptions = options with { ResponseBudgetTokens = proposed };
             ContextResult candidate = Compose(
                 query, analyzed, retryOptions, selection.Select(c => c.Item).ToList(),
-                reused, omissions, totalCandidates, reusedListLimit: 0);
+                reused, omissions, totalCandidates, reusedListLimit: 0, retryMemories);
             if (cost.Measure(candidate) <= proposed)
             {
                 return proposed;
@@ -740,12 +931,14 @@ public sealed class ContextEngine
     private ContextResult Compose(
         string query, AnalyzedQuery analyzed, ContextOptions options, List<ContextItem> items,
         List<ReusedUnit> reused, OmissionTally omissions, int totalCandidates,
-        int reusedListLimit)
+        int reusedListLimit, IReadOnlyList<Memory.MemoryHit> memories)
     {
-        List<ReusedUnit> listed = reused
+        List<ReusedUnit> orderedReused = reused
             .OrderBy(r => r.Path, StringComparer.Ordinal)
             .ThenBy(r => r.StartLine ?? 0)
             .ThenBy(r => r.Receipt, StringComparer.Ordinal)
+            .ToList();
+        List<ReusedUnit> listed = orderedReused
             .Take(Math.Max(reusedListLimit, 0))
             .ToList();
 
@@ -758,7 +951,7 @@ public sealed class ContextEngine
             analysisState,
             CanonicalQuery(query, analyzed),
             options.CanonicalForm(),
-            EvidenceRecords(items, listed));
+            EvidenceRecords(items, orderedReused, memories));
 
         return new ContextResult
         {
@@ -772,11 +965,13 @@ public sealed class ContextEngine
             EvidenceId = Hashes.Short(evidenceId),
             FullEvidenceId = evidenceId,
             Detail = options.Detail,
+            TokenProfile = _scale.Label,
             Top = options.Top,
             BudgetTokens = options.BudgetTokens,
             ResponseBudgetTokens = options.ResponseBudgetTokens,
             ProjectedReadBudgetTokens = options.ProjectedReadBudgetTokens,
             Items = items,
+            Memories = memories,
             Reused = listed,
             ReusedCount = reused.Count,
             ReusedFilesCount = reused.Select(r => r.Path).Distinct(StringComparer.Ordinal).Count(),
@@ -786,7 +981,8 @@ public sealed class ContextEngine
             TotalCandidates = totalCandidates,
             Omitted = omissions.Deliverable,
             Omissions = omissions.ToReasons(),
-            EstimatedTokens = items.Sum(i => i.EstimatedTokens),
+            EstimatedTokens = items.Sum(i => i.EstimatedTokens)
+                + memories.Sum(memory => memory.EstimatedTokens),
             ContentTokens = items.Sum(i => i.ContentTokens),
             ProjectedReadTokens = items.Sum(i => i.ProjectedReadTokens),
         };
@@ -804,14 +1000,18 @@ public sealed class ContextEngine
             query);
 
     private static IEnumerable<string> EvidenceRecords(
-        IReadOnlyList<ContextItem> items, IReadOnlyList<ReusedUnit> reused)
+        IReadOnlyList<ContextItem> items,
+        IReadOnlyList<ReusedUnit> reused,
+        IReadOnlyList<Memory.MemoryHit> memories)
     {
         foreach (ContextItem item in items)
         {
             yield return Canonical.Hash(
-                "item.v1",
+                "item.v2",
                 Canonical.NormalizePath(item.Path),
                 Canonical.JoinRecords(item.Reasons),
+                item.DuplicateOf is null ? string.Empty : Canonical.NormalizePath(item.DuplicateOf),
+                item.Stripped ? "stripped" : "verbatim",
                 Canonical.JoinRecords(UnitReceipts(item)));
         }
 
@@ -821,6 +1021,29 @@ public sealed class ContextEngine
                 "reused.v1",
                 Canonical.NormalizePath(unit.Path),
                 unit.Receipt);
+        }
+
+        foreach (Memory.MemoryHit memory in memories)
+        {
+            yield return Canonical.Hash(
+                "memory.v1",
+                memory.Entry.Id,
+                memory.Entry.Kind,
+                memory.Entry.Text,
+                memory.Entry.Session ?? string.Empty,
+                memory.Entry.Created,
+                Canonical.JoinRecords(memory.Entry.Files
+                    .OrderBy(file => file.Key, StringComparer.Ordinal)
+                    .Select(file => Canonical.JoinRecords(
+                    [
+                        Canonical.NormalizePath(file.Key),
+                        file.Value,
+                    ]))),
+                Canonical.JoinRecords(memory.Entry.Tags.Order(StringComparer.Ordinal)),
+                memory.Score.ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+                Canonical.JoinRecords(memory.Reasons),
+                memory.Stale ? "stale" : "current",
+                Canonical.JoinRecords(memory.StaleFiles.Order(StringComparer.Ordinal)));
         }
     }
 
@@ -906,7 +1129,7 @@ public sealed class ContextEngine
         };
     }
 
-    private static ContextItem? BuildPointerItem(
+    private ContextItem? BuildPointerItem(
         FileRow row, ContextItem shell, ContextOptions options,
         HashSet<string> seen, List<ReusedUnit> reused)
     {
@@ -920,8 +1143,8 @@ public sealed class ContextEngine
         return shell with
         {
             Receipt = receipt,
-            EstimatedTokens = row.TokenCount,
-            ProjectedReadTokens = row.TokenCount,
+            EstimatedTokens = _scale.Apply(row.TokenCount),
+            ProjectedReadTokens = _scale.Apply(row.TokenCount),
             ContentTokens = 0,
         };
     }
@@ -972,16 +1195,18 @@ public sealed class ContextEngine
             return null;
         }
 
+        int rawContentTokens = OutlineTokens(delivered);
         return shell with
         {
             Symbols = delivered,
             SymbolsOmitted = cut > 0 ? cut : null,
             Receipt = delivered.Count == 1 ? delivered[0].Receipt : null,
-            ContentTokens = OutlineTokens(delivered),
+            ContentTokens = _scale.Apply(rawContentTokens),
             ProjectedReadTokens = 0,
-            EstimatedTokens = OutlineTokens(delivered) + (delivered.Count * SymbolFramingTokens)
-                + EnvelopeTokens(shell),
-            FileTokens = row.TokenCount,
+            EstimatedTokens = _scale.Apply(
+                rawContentTokens + (delivered.Count * SymbolFramingTokens)
+                + EnvelopeTokens(shell)),
+            FileTokens = _scale.Apply(row.TokenCount),
         };
     }
 
@@ -1023,7 +1248,10 @@ public sealed class ContextEngine
             return null;
         }
 
-        int contentTokens = delivered.Sum(s => JsonTextTokens(s.Text));
+        int rawContentTokens = delivered.Sum(span => options.SerializedCharging
+            ? JsonTextTokens(span.Text)
+            : Tokens.Count(span.Text));
+        int contentTokens = _scale.Apply(rawContentTokens);
         bool single = delivered.Count == 1;
 
         return shell with
@@ -1035,10 +1263,11 @@ public sealed class ContextEngine
             Snippet = single ? delivered[0].Text : null,
             Spans = delivered,
             Receipt = single ? delivered[0].Receipt : null,
+            Stripped = delivered.Any(span => span.Stripped),
             ContentTokens = contentTokens,
             ProjectedReadTokens = 0,
-            EstimatedTokens = contentTokens + EnvelopeTokens(shell),
-            FileTokens = row.TokenCount,
+            EstimatedTokens = _scale.Apply(rawContentTokens + EnvelopeTokens(shell)),
+            FileTokens = _scale.Apply(row.TokenCount),
         };
     }
 
@@ -1071,16 +1300,20 @@ public sealed class ContextEngine
                 continue;
             }
 
+            (string text, bool stripped) = options.StripComments
+                ? CommentStripper.Strip(slice.Text)
+                : (slice.Text, false);
             accepted.Add(new ContextSpan
             {
                 StartLine = slice.StartLine,
                 EndLine = slice.EndLine,
-                Text = slice.Text,
+                Text = text,
                 Symbol = symbol,
+                Stripped = stripped,
                 SelectionRank = accepted.Count,
                 Receipt = Receipt.For(
                     row.Path, row.ContentHash, DetailLabel(options.Detail), EvidenceUnitKind.Span,
-                    slice.StartLine, slice.EndLine, symbol ?? string.Empty, slice.Text),
+                    slice.StartLine, slice.EndLine, symbol ?? string.Empty, text),
             });
         }
 
@@ -1098,6 +1331,103 @@ public sealed class ContextEngine
 
     private static string DetailLabel(ContextDetail detail) =>
         detail.ToString().ToLowerInvariant();
+
+    /// <summary>
+    /// Picks the agent memories worth folding into this bundle (ADR 0013):
+    /// scored 70 % on query-term overlap (via <see cref="Memory.MemoryEngine.Match"/>)
+    /// and 30 % on linkage to the bundle's own candidates, capped at
+    /// <see cref="MaxContextMemories"/> items inside a reserve of at most a
+    /// fifth of the legacy charged-work budget. Exact response-budget admission
+    /// is performed later against the fully rendered document.
+    /// </summary>
+    private List<Memory.MemoryHit> SelectMemories(
+        AnalyzedQuery analyzed, List<Candidate> ordered, ContextOptions options)
+    {
+        if (options.Memories is not { Count: > 0 } entries)
+        {
+            return [];
+        }
+
+        double maxAdjusted = Max(ordered.Select(c => c.AdjustedScore));
+        var scoredMemories = new List<(Memory.MemoryEntry Entry, double Score, List<string> Reasons)>();
+        foreach (Memory.MemoryEntry entry in entries)
+        {
+            (double termScore, List<string> reasons) = Memory.MemoryEngine.Match(entry, analyzed.Terms);
+
+            double overlap = 0;
+            string? overlapPath = null;
+            foreach (Candidate c in ordered)
+            {
+                if (c.AdjustedScore > 0 && entry.Files.ContainsKey(c.Path))
+                {
+                    double strength = maxAdjusted > 0 ? c.AdjustedScore / maxAdjusted : 0;
+                    if (strength > overlap)
+                    {
+                        overlap = strength;
+                        overlapPath = c.Path;
+                    }
+                }
+            }
+
+            double score = MemoryTermWeight * termScore + MemoryOverlapWeight * overlap;
+            if (score <= 0)
+            {
+                continue;
+            }
+
+            if (overlapPath is not null)
+            {
+                reasons.Add("linked:" + overlapPath);
+            }
+
+            scoredMemories.Add((entry, score, reasons));
+        }
+
+        int reserve = options.BudgetTokens is { } budget ? budget / MemoryBudgetDivisor : int.MaxValue;
+        var picked = new List<Memory.MemoryHit>();
+        int used = 0;
+        foreach ((Memory.MemoryEntry entry, double score, List<string> reasons) in scoredMemories
+            .OrderByDescending(m => m.Score)
+            .ThenBy(m => m.Entry.Id, StringComparer.Ordinal))
+        {
+            if (picked.Count >= MaxContextMemories)
+            {
+                break;
+            }
+
+            int contentTokens = options.SerializedCharging
+                ? JsonTextTokens(entry.Text)
+                : Tokens.Count(entry.Text);
+            int cost = _scale.Apply(contentTokens + MemoryEnvelopeTokens(entry, reasons));
+            if (used + cost > reserve)
+            {
+                continue;
+            }
+
+            (bool stale, IReadOnlyList<string> staleFiles) = Memory.MemoryEngine.Staleness(entry, _store);
+            picked.Add(new Memory.MemoryHit
+            {
+                Entry = entry,
+                Score = Math.Round(score, 4, MidpointRounding.AwayFromZero),
+                Reasons = reasons,
+                Stale = stale,
+                StaleFiles = staleFiles,
+                EstimatedTokens = cost,
+            });
+            used += cost;
+        }
+
+        return picked;
+    }
+
+    /// <summary>
+    /// The framing a memory item adds to the response: id, kind, reasons and
+    /// the linked path@hash pairs, plus a flat allowance for field names.
+    /// </summary>
+    private static int MemoryEnvelopeTokens(Memory.MemoryEntry entry, IReadOnlyList<string> reasons) =>
+        MemoryEnvelopeOverhead
+        + Tokens.Count(string.Join(',', reasons))
+        + entry.Files.Keys.Sum(p => Tokens.Count(p) + 8);
 
     /// <summary>The response cost of an outline: its signatures and doc lines.</summary>
     private static int OutlineTokens(IReadOnlyList<OutlineSymbol> symbols) =>
@@ -1196,7 +1526,7 @@ public sealed class ContextEngine
     }
 
     /// <summary>A ranked, fully materialized candidate with a stable pass-local identity.</summary>
-    private sealed record PreparedCandidate(int Ordinal, ContextItem Item);
+    private sealed record PreparedCandidate(int Ordinal, ContextItem Item, string ContentHash);
 
     private sealed class Candidate
     {

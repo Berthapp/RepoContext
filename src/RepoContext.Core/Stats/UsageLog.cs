@@ -124,11 +124,7 @@ public static class UsageLog
         record.Served >= 0 &&
         record.Replaced >= 0 &&
         record.Files is null or >= 0 &&
-        record.Unchanged is null or >= 0 &&
-        (record.Unchanged is null ||
-            record.Unchanged is { } unchanged &&
-            record.Files is { } files &&
-            unchanged <= files);
+        record.Unchanged is null or >= 0;
 
     /// <summary>
     /// A stable, path-scoped mutex name lets independent repoctx processes

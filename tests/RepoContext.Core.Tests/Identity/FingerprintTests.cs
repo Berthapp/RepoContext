@@ -3,7 +3,7 @@ using RepoContext.Core.Identity;
 namespace RepoContext.Core.Tests.Identity;
 
 /// <summary>
-/// The Q4 fingerprint contract (ADR 0012). Each test pins one property of the
+/// The Q4 fingerprint contract (ADR 0015). Each test pins one property of the
 /// canonical byte layout, so a change to the layout has to be a deliberate edit
 /// here rather than a silent identity drift in the field.
 /// </summary>

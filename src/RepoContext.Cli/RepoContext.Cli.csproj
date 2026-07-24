@@ -15,7 +15,7 @@
     <PackageId>RepoContext.Tool</PackageId>
     <!-- Shown in the NuGet UI. Says explicitly how to install: as a DotnetTool
          package it cannot be a PackageReference (NU1212/NU1213 by design). -->
-    <Description>Local-first, explainable project memory for AI coding agents. A .NET CLI tool (command: repoctx) - install with 'dotnet tool install --global RepoContext.Tool'; not a library, cannot be added to a project as a PackageReference.</Description>
+    <Description>Local-first, explainable project memory for AI coding agents. A .NET CLI tool (command: repoctx) - install with 'dotnet tool install --global RepoContext.Tool'; not a library, cannot be added to a project as a PackageReference. If tool installation is blocked in your environment, add the RepoContext.MSBuild package as a PackageReference instead.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageTags>ai;agent;context;code-search;tree-sitter;cli</PackageTags>
     <!-- Shown on the NuGet.org listing page. -->

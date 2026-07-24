@@ -94,8 +94,8 @@ public sealed class WorkflowSimulator
     public const int MaxSteps = 5;
 
     /// <summary>
-    /// Amortised MCP session overhead: server instructions plus the five tool
-    /// definitions, counted once per session.
+    /// Amortised MCP session overhead: server instructions plus all advertised
+    /// tool definitions, counted once per session.
     /// </summary>
     private static readonly Lazy<int> SessionOverhead = new(() =>
         Tokens.Count(McpSessionFixture.InstructionsAndToolSchemas));

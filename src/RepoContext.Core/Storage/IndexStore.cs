@@ -27,7 +27,7 @@ public static class MetaKeys
     /// <summary>
     /// Catch-all fingerprint of every index-time producer (scanner, decoder,
     /// parser, chunker, tokenizer, graph) whose output is stored on disk (Q4,
-    /// ADR 0012). Query commands reject an index whose stored value is stale, the
+    /// ADR 0015). Query commands reject an index whose stored value is stale, the
     /// same way an outdated on-disk schema is rejected.
     /// </summary>
     public const string AnalysisProducerVersion = "analysis_producer_version";

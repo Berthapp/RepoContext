@@ -2,7 +2,7 @@ namespace RepoContext.Core.Identity;
 
 /// <summary>
 /// Version stamps for every deterministic producer whose behaviour can change
-/// the analysed result or a reuse receipt (Q4, ADR 0012). These are bumped by
+/// the analysed result or a reuse receipt (Q4, ADR 0015). These are bumped by
 /// hand whenever the corresponding logic changes in a way that would make a
 /// previously computed fingerprint or receipt no longer describe the same
 /// evidence — for example a parser upgrade, a chunker change, a tokenizer swap,
@@ -35,14 +35,14 @@ public static class ProducerVersions
     /// <summary>Import/test graph construction (ADR 0006).</summary>
     public const int Graph = 1;
 
-    /// <summary>Canonical indexed content-state fingerprint layout (ADR 0012).</summary>
+    /// <summary>Canonical indexed content-state fingerprint layout (ADR 0015).</summary>
     public const int StateFingerprint = 2;
 
     /// <summary>Weighted ranking + diversity + vendor penalty formula (ADR 0006).</summary>
     public const int Ranking = 1;
 
     /// <summary>
-    /// Evidence selection and receipt canonicalisation (Q1/Q2, ADR 0012). Bumped
+    /// Evidence selection and receipt canonicalisation (Q1/Q2, ADR 0015). Bumped
     /// when the delivered evidence for the same query/content would change, which
     /// must invalidate outstanding receipts even though the source is unchanged.
     /// </summary>

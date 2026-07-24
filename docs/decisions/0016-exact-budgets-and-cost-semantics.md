@@ -1,4 +1,4 @@
-# ADR 0013 — Exact hard budgets and explicit cost semantics
+# ADR 0016 — Exact hard budgets and explicit cost semantics
 
 - **Status:** accepted
 - **Date:** 2026-07-23
@@ -37,7 +37,7 @@ The final set is rendered once more and measured again.
 This terminates and has no self-referential fixed point, because the measured
 document never contains its own token count (exact totals are recorded
 out-of-band after rendering) and `representation_id` is hashed with its own
-field omitted (ADR 0012). Computing an actionable retry value is a separate
+field omitted (ADR 0015). Computing an actionable retry value is a separate
 bounded increasing calculation because the echoed budget participates in result
 identity.
 

@@ -13,14 +13,15 @@ namespace RepoContext.Cli.Output;
 /// </summary>
 public static class StatsOutput
 {
-    public static string Render(UsageReport report, OutputFormat format) => format switch
-    {
-        OutputFormat.Json => RenderJson(report),
-        OutputFormat.Md => RenderMarkdown(report),
-        _ => RenderText(report),
-    };
+    public static string Render(UsageReport report, OutputFormat format, TokenPricing pricing = default) =>
+        format switch
+        {
+            OutputFormat.Json => RenderJson(report, pricing),
+            OutputFormat.Md => RenderMarkdown(report, pricing),
+            _ => RenderText(report, pricing),
+        };
 
-    private static string RenderText(UsageReport report)
+    private static string RenderText(UsageReport report, TokenPricing pricing)
     {
         if (report.Totals.Calls == 0)
         {
@@ -30,12 +31,16 @@ public static class StatsOutput
         }
 
         var sb = new StringBuilder();
-        sb.Append("Token savings (o200k counts, ")
+        sb.Append("Token savings (per-call calibrated counts, ")
           .Append(report.FirstDay).Append(" to ").Append(report.LastDay).Append("):\n\n");
         sb.Append($"  calls            {N(report.Totals.Calls),12}\n");
         sb.Append($"  response tokens  {N(report.Totals.ServedTokens),12}\n");
         sb.Append($"  reads replaced   {N(report.Totals.ReplacedTokens),12}\n");
         sb.Append($"  net saved        {N(report.Totals.SavedTokens),12}{PercentSuffix(report.Totals)}\n");
+        if (pricing.Format(report.Totals.SavedTokens) is { } money)
+        {
+            sb.Append($"  net saved ($)    {money,12}  (at {pricing.Format(1_000_000)}/M input tokens)\n");
+        }
 
         sb.Append("\n  By command:\n");
         sb.Append($"    {"command",-12} {"calls",6} {"served",12} {"replaced",12} {"saved",12}\n");
@@ -58,7 +63,7 @@ public static class StatsOutput
         sb.Append($"    {label,-12} {N(bucket.Calls),6} {N(bucket.ServedTokens),12} " +
                   $"{N(bucket.ReplacedTokens),12} {N(bucket.SavedTokens),12}\n");
 
-    private static string RenderMarkdown(UsageReport report)
+    private static string RenderMarkdown(UsageReport report, TokenPricing pricing)
     {
         if (report.Totals.Calls == 0)
         {
@@ -69,13 +74,18 @@ public static class StatsOutput
 
         var sb = new StringBuilder();
         sb.Append("# Token savings\n\n");
-        sb.Append("_o200k counts, ").Append(report.FirstDay).Append(" to ")
+        sb.Append("_Per-call calibrated counts, ").Append(report.FirstDay).Append(" to ")
           .Append(report.LastDay).Append("._\n\n");
         sb.Append("- calls: **").Append(N(report.Totals.Calls)).Append("**\n");
         sb.Append("- response tokens: **").Append(N(report.Totals.ServedTokens)).Append("**\n");
         sb.Append("- reads replaced: **").Append(N(report.Totals.ReplacedTokens)).Append("**\n");
         sb.Append("- net saved: **").Append(N(report.Totals.SavedTokens)).Append("**")
           .Append(PercentSuffix(report.Totals)).Append('\n');
+        if (pricing.Format(report.Totals.SavedTokens) is { } money)
+        {
+            sb.Append("- net saved (money): **").Append(money)
+              .Append("** _(at ").Append(pricing.Format(1_000_000)).Append("/M input tokens)_\n");
+        }
 
         sb.Append("\n## By command\n\n");
         AppendMdTable(sb, "command", report.Commands.Select(c => (c.Command, c.Bucket)));
@@ -102,7 +112,7 @@ public static class StatsOutput
         }
     }
 
-    private static string RenderJson(UsageReport report)
+    private static string RenderJson(UsageReport report, TokenPricing pricing)
     {
         var doc = new StatsDocument
         {
@@ -112,6 +122,9 @@ public static class StatsOutput
             ServedTokens = report.Totals.ServedTokens,
             ReplacedTokens = report.Totals.ReplacedTokens,
             SavedTokens = report.Totals.SavedTokens,
+            Currency = pricing.Enabled ? pricing.Currency : null,
+            SavedCost = pricing.Enabled ? Round(report.Totals.SavedTokens, pricing) : null,
+            InputPerMtok = pricing.Enabled ? pricing.InputPerMtok : null,
             FirstDay = report.FirstDay,
             LastDay = report.LastDay,
             Commands = report.Commands.Select(c => new StatsRow
@@ -137,6 +150,10 @@ public static class StatsOutput
 
     /// <summary>Culture-invariant thousands formatting (determinism).</summary>
     private static string N(long value) => value.ToString("N0", CultureInfo.InvariantCulture);
+
+    /// <summary>Money value of tokens, rounded to cents for the JSON contract.</summary>
+    private static double Round(long tokens, TokenPricing pricing) =>
+        Math.Round(tokens / 1_000_000.0 * (pricing.InputPerMtok ?? 0), 2, MidpointRounding.AwayFromZero);
 
     /// <summary>Net savings as a share of the replaced reads, when measurable.</summary>
     private static string PercentSuffix(UsageBucket totals)
@@ -165,6 +182,15 @@ public static class StatsOutput
 
         /// <summary>Replaced reads minus response cost; negative means net overhead so far.</summary>
         public long SavedTokens { get; init; }
+
+        /// <summary>Currency of <see cref="SavedCost"/>; absent when pricing is unset.</summary>
+        public string? Currency { get; init; }
+
+        /// <summary>Money value of the net saving at the input rate; absent when pricing is unset.</summary>
+        public double? SavedCost { get; init; }
+
+        /// <summary>The configured input price per million tokens; absent when pricing is unset.</summary>
+        public double? InputPerMtok { get; init; }
 
         public string? FirstDay { get; init; }
 

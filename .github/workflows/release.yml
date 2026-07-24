@@ -14,7 +14,7 @@ env:
 
 jobs:
   pack-tool:
-    name: Pack global tool
+    name: Pack NuGet packages
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -50,9 +50,16 @@ jobs:
         run: >
           dotnet pack src/RepoContext.Cli/RepoContext.Cli.csproj
           -c Release -p:TrimTreeSitterGrammars=true -o artifacts/nupkg
+      # The PackageReference distribution (ADR 0014): same CLI, delivered by
+      # plain NuGet restore for environments that block `dotnet tool install`.
+      # Grammar trimming is forced inside this project's pack target.
+      - name: Pack MSBuild package
+        run: >
+          dotnet pack src/RepoContext.MSBuild/RepoContext.MSBuild.csproj
+          -c Release -o artifacts/nupkg
       - uses: actions/upload-artifact@v7
         with:
-          name: repoctx-tool-nupkg
+          name: repoctx-nupkgs
           path: artifacts/nupkg/*.nupkg
       # Publish to NuGet.org only for tag builds, and only when the NUGET_USER
       # secret is configured. Trusted Publishing: exchange the GitHub OIDC

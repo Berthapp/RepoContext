@@ -13,17 +13,17 @@ namespace RepoContext.Cli.Output;
 /// included. This is the single source of truth for the context wire shape:
 /// the CLI, the MCP server and the Q3 cost oracle all render through it, so a
 /// budget measured during packing is measured against the bytes that are
-/// actually emitted (ADR 0013).
+/// actually emitted (ADR 0016).
 /// </summary>
 public static class ContextOutput
 {
     public static string Render(
         ContextResult result, OutputFormat format, string surface = Surfaces.Core) => format switch
-    {
-        OutputFormat.Json => RenderJson(result, surface),
-        OutputFormat.Md => RenderMarkdown(result, surface),
-        _ => RenderText(result, surface),
-    };
+        {
+            OutputFormat.Json => RenderJson(result, surface),
+            OutputFormat.Md => RenderMarkdown(result, surface),
+            _ => RenderText(result, surface),
+        };
 
     private static string RenderMarkdown(ContextResult result, string surface)
     {
@@ -43,6 +43,16 @@ public static class ContextOutput
                 sb.Append($" · ~{item.ProjectedReadTokens} projected read tokens");
             }
 
+            if (item.DuplicateOf is { } dupMd)
+            {
+                sb.Append(" · **duplicate of** `").Append(dupMd).Append('`');
+            }
+
+            if (item.Stripped)
+            {
+                sb.Append(" · comments stripped");
+            }
+
             sb.Append(" · hash `").Append(item.Hash).Append("`\n");
             sb.Append("- reasons: ").Append(string.Join(", ", item.Reasons)).Append('\n');
             if (item.Receipt is { Length: > 0 } receipt)
@@ -55,11 +65,24 @@ public static class ContextOutput
             sb.Append('\n');
         }
 
+        AppendMemoriesMd(sb, result);
         AppendReusedMd(sb, result);
-        sb.Append($"_Budget: {result.Items.Count} file(s) · ~{result.ContentTokens} content tokens");
+        sb.Append($"_Budget: {result.Items.Count} file(s)");
+        if (result.Memories.Count > 0)
+        {
+            sb.Append($" + {result.Memories.Count} memory item(s)");
+        }
+
+        sb.Append($" · ~{result.EstimatedTokens} estimated tokens")
+          .Append($" · ~{result.ContentTokens} content tokens");
         if (result.ProjectedReadTokens > 0)
         {
             sb.Append($" · ~{result.ProjectedReadTokens} projected read tokens");
+        }
+
+        if (result.TokenProfile is { } mdProfile)
+        {
+            sb.Append(" (").Append(mdProfile).Append("-calibrated)");
         }
 
         if (result.Omitted > 0)
@@ -74,6 +97,50 @@ public static class ContextOutput
           .Append(RepresentationDisplayId(result, "md", surface, body))
           .Append("`._\n");
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Renders the bundle's memory section (ADR 0013) — distilled agent
+    /// knowledge recalled for this task, each entry explained and stale-flagged.
+    /// Omitted entirely when no memory matched, so bundles without memories
+    /// are byte-identical to earlier versions.
+    /// </summary>
+    private static void AppendMemoriesMd(StringBuilder sb, ContextResult result)
+    {
+        if (result.Memories.Count == 0)
+        {
+            return;
+        }
+
+        sb.Append("### Memory\n");
+        foreach (Core.Memory.MemoryHit hit in result.Memories)
+        {
+            sb.Append("- `").Append(hit.Entry.Id).Append("` **").Append(hit.Entry.Kind)
+              .Append($"** ({hit.Score:F4} · ~{hit.EstimatedTokens} tokens");
+            if (hit.Stale)
+            {
+                sb.Append(" · **stale**");
+            }
+
+            sb.Append(")  \n  ").Append(hit.Entry.Text.Replace("\n", "\n  ")).Append('\n');
+            var details = new List<string>();
+            if (hit.Entry.Files.Count > 0)
+            {
+                details.Add("files: " + string.Join(", ", hit.Entry.Files.Keys.Select(p => $"`{p}`")));
+            }
+
+            if (hit.Reasons.Count > 0)
+            {
+                details.Add("reasons: " + string.Join(", ", hit.Reasons));
+            }
+
+            if (details.Count > 0)
+            {
+                sb.Append("  ").Append(string.Join(" · ", details)).Append('\n');
+            }
+        }
+
+        sb.Append('\n');
     }
 
     private static void AppendSymbolsMd(StringBuilder sb, ContextItem item)
@@ -179,8 +246,11 @@ public static class ContextOutput
         int i = 1;
         foreach (ContextItem item in result.Items)
         {
+            string marker = item.DuplicateOf is { } dup ? "  duplicate-of:" + dup
+                : item.Stripped ? "  stripped"
+                : string.Empty;
             sb.Append(FormattableString.Invariant(
-                $"{i,3}. {item.Path,-46} {item.Score,7:F4}  {item.Kind,-6}  ~{item.ContentTokens}c/{item.ProjectedReadTokens}r tokens  {item.Hash}\n"));
+                $"{i,3}. {item.Path,-46} {item.Score,7:F4}  {item.Kind,-6}  ~{item.ContentTokens}c/{item.ProjectedReadTokens}r tokens  {item.Hash}{marker}\n"));
             sb.Append("      reasons: ").Append(string.Join(", ", item.Reasons)).Append('\n');
             if (item.Receipt is { Length: > 0 } receipt)
             {
@@ -237,7 +307,53 @@ public static class ContextOutput
             sb.Append($"     reused: {unit.Path}{range}  receipt: {unit.Receipt}\n");
         }
 
-        sb.Append($"\nBudget: {result.Items.Count} file(s) · ~{result.ContentTokens} content tokens");
+        if (result.Memories.Count > 0)
+        {
+            sb.Append("\nMemory:\n");
+            int m = 1;
+            foreach (Core.Memory.MemoryHit hit in result.Memories)
+            {
+                string staleMarker = hit.Stale ? "  stale" : string.Empty;
+                sb.Append($"  M{m}. {hit.Entry.Id}  {hit.Entry.Kind,-10}  {hit.Score,6:F4}  " +
+                          $"~{hit.EstimatedTokens} tokens{staleMarker}\n");
+                foreach (string line in hit.Entry.Text.Split('\n'))
+                {
+                    sb.Append("      ").Append(line).Append('\n');
+                }
+
+                var details = new List<string>();
+                if (hit.Entry.Files.Count > 0)
+                {
+                    details.Add("files: " + string.Join(", ", hit.Entry.Files.Keys));
+                }
+
+                if (hit.Reasons.Count > 0)
+                {
+                    details.Add("reasons: " + string.Join(", ", hit.Reasons));
+                }
+
+                if (hit.StaleFiles.Count > 0)
+                {
+                    details.Add("stale: " + string.Join(", ", hit.StaleFiles));
+                }
+
+                if (details.Count > 0)
+                {
+                    sb.Append("      ").Append(string.Join(" · ", details)).Append('\n');
+                }
+
+                m++;
+            }
+        }
+
+        sb.Append($"\nBudget: {result.Items.Count} file(s)");
+        if (result.Memories.Count > 0)
+        {
+            sb.Append($" + {result.Memories.Count} memory item(s)");
+        }
+
+        sb.Append($" · ~{result.EstimatedTokens} estimated tokens")
+          .Append($" · ~{result.ContentTokens} content tokens");
         if (result.ProjectedReadTokens > 0)
         {
             sb.Append($" · ~{result.ProjectedReadTokens} projected read tokens");
@@ -246,6 +362,11 @@ public static class ContextOutput
         if (result.ReusedCount > 0)
         {
             sb.Append($" · {result.ReusedCount} reused");
+        }
+
+        if (result.TokenProfile is { } profile)
+        {
+            sb.Append(" (").Append(profile).Append("-calibrated)");
         }
 
         if (result.Omitted > 0)
@@ -310,7 +431,7 @@ public static class ContextOutput
             string.IsNullOrEmpty(result.FullEvidenceId) ? result.EvidenceId : result.FullEvidenceId,
             RepoContextInfo.SchemaVersion,
             format,
-            profile: "default",
+            profile: result.TokenProfile ?? "o200k",
             encoding: "utf-8",
             surface,
             canonicalBody: body));
@@ -330,6 +451,7 @@ public static class ContextOutput
             Detail = result.Detail.ToString().ToLowerInvariant(),
             Top = result.Top,
             Budgets = BuildBudgets(result),
+            TokenProfile = result.TokenProfile,
             Count = result.Items.Count,
             ReusedCount = result.ReusedCount,
             ReusedOmitted = result.ReusedOmitted > 0 ? result.ReusedOmitted : null,
@@ -347,6 +469,9 @@ public static class ContextOutput
                 Symbol = r.Symbol,
                 Receipt = r.Receipt,
             }).ToList(),
+            Memories = result.Memories.Count > 0
+                ? result.Memories.Select(MemoryDto.From).ToList()
+                : null,
         };
 
     private static OmissionsDto? BuildOmissions(OmissionReasons omissions) =>
@@ -395,6 +520,8 @@ public static class ContextOutput
             FileTokens = item.FileTokens,
             Hash = item.Hash,
             Receipt = item.Receipt,
+            DuplicateOf = item.DuplicateOf,
+            Stripped = item.Stripped ? true : null,
             Reasons = item.Reasons,
             Symbols = item.Symbols?.Select(s => new ContextSymbolDto
             {
@@ -450,6 +577,9 @@ public static class ContextOutput
 
         public BudgetsDto? Budgets { get; init; }
 
+        /// <summary>Active token-calibration label (absent for raw o200k counts).</summary>
+        public string? TokenProfile { get; init; }
+
         public int Count { get; init; }
 
         public int ReusedCount { get; init; }
@@ -471,6 +601,9 @@ public static class ContextOutput
         public required IReadOnlyList<ContextItemDto> Results { get; init; }
 
         public required IReadOnlyList<ReusedUnitDto> Reused { get; init; }
+
+        /// <summary>Relevant agent memories folded into the bundle (absent when none — ADR 0013).</summary>
+        public IReadOnlyList<MemoryDto>? Memories { get; init; }
     }
 
     private sealed record OmissionsDto
@@ -539,6 +672,12 @@ public static class ContextOutput
 
         /// <summary>Convenience alias; present only when the item has a single unit.</summary>
         public string? Receipt { get; init; }
+
+        /// <summary>Another bundle item with byte-identical content; read that one.</summary>
+        public string? DuplicateOf { get; init; }
+
+        /// <summary>Present (true) when the slice was comment-stripped (lines approximate).</summary>
+        public bool? Stripped { get; init; }
 
         public required IReadOnlyList<string> Reasons { get; init; }
 

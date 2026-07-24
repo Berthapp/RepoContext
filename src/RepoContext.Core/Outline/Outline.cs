@@ -1,3 +1,4 @@
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Storage;
 using RepoContext.Core.Context;
 using RepoContext.Core.Identity;
@@ -56,11 +57,12 @@ public static class Outline
     private const int MaxDocLength = 140;
 
     /// <summary>
-    /// Returns the outline of a file, or null if it is not indexed. Standalone
-    /// outlines stay source ordered and query-blind in Release 1; a later
-    /// <c>--focus</c> can opt into the query-aware selector below.
+    /// Returns the outline of a file, or null if it is not indexed. The
+    /// full-read token cost is reported through <paramref name="scale"/>
+    /// (query-time calibration). Standalone outlines stay source ordered and
+    /// query-blind; query-aware selection remains an explicit context concern.
     /// </summary>
-    public static OutlineResult? Query(IndexStore store, string relativePath)
+    public static OutlineResult? Query(IndexStore store, string relativePath, TokenScale scale = default)
     {
         if (store.FindFile(relativePath) is not { } file)
         {
@@ -83,7 +85,7 @@ public static class Outline
             })
             .ToList();
         return new OutlineResult(
-            file.Path, file.Kind, file.Language, file.LineCount, file.TokenCount,
+            file.Path, file.Kind, file.Language, file.LineCount, scale.Apply(file.TokenCount),
             Hashes.Short(file.ContentHash), symbols);
     }
 

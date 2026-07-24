@@ -1,4 +1,4 @@
-# ADR 0012 — State identity, evidence units and reuse receipts
+# ADR 0015 — State identity, evidence units and reuse receipts
 
 - **Status:** accepted
 - **Date:** 2026-07-23

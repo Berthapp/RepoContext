@@ -1,5 +1,6 @@
 using System.Text.Json;
 using RepoContext.Core.Identity;
+using RepoContext.Core.Indexing;
 
 namespace RepoContext.Core.Configuration;
 
@@ -23,24 +24,33 @@ public static class ConfigStore
         File.WriteAllText(path, Serialize(config) + "\n");
 
     /// <summary>
-    /// A stable semantic hash of the complete effective configuration. Map keys
-    /// are ordinally sorted so construction/insertion order cannot move Q4
-    /// identities.
+    /// A stable semantic hash of the complete effective analysis configuration.
+    /// Map keys are ordinally sorted so construction/insertion order cannot move
+    /// Q4 identities. Pricing is deliberately excluded because it changes only
+    /// the local stats view, never selection, budgets, receipts or output.
     /// </summary>
-    public static string ComputeHash(RepoctxConfig config) => Canonical.Hash(
-        "effective_config.v1",
-        ComputeIndexHash(config),
-        Invariant(config.Ranking.Weights.Fts),
-        Invariant(config.Ranking.Weights.Symbol),
-        Invariant(config.Ranking.Weights.Graph),
-        Invariant(config.Ranking.Weights.Path),
-        Canonical.JoinRecords(config.Ranking.Synonyms
-            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
-            .Select(pair => Canonical.JoinRecords(
-            [
-                pair.Key,
-                Canonical.JoinRecords(pair.Value),
-            ]))));
+    public static string ComputeHash(RepoctxConfig config)
+    {
+        TokenScale scale = TokenScale.From(config);
+        double effectiveFactor = scale.IsIdentity ? 1.0 : scale.Factor;
+
+        return Canonical.Hash(
+            "effective_config.v2",
+            ComputeIndexHash(config),
+            Invariant(config.Ranking.Weights.Fts),
+            Invariant(config.Ranking.Weights.Symbol),
+            Invariant(config.Ranking.Weights.Graph),
+            Invariant(config.Ranking.Weights.Path),
+            Canonical.JoinRecords(config.Ranking.Synonyms
+                .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+                .Select(pair => Canonical.JoinRecords(
+                [
+                    pair.Key,
+                    Canonical.JoinRecords(pair.Value),
+                ]))),
+            scale.Label ?? "o200k",
+            Invariant(effectiveFactor));
+    }
 
     /// <summary>
     /// Stable hash of only the configuration that determines the indexed corpus.

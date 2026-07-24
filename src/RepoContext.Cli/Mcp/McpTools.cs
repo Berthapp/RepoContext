@@ -8,6 +8,7 @@ using RepoContext.Core.Context;
 using RepoContext.Core.Graph;
 using RepoContext.Core.Identity;
 using RepoContext.Core.Indexing;
+using RepoContext.Core.Memory;
 using RepoContext.Core.Query;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
@@ -15,11 +16,13 @@ using RepoContext.Core.Storage;
 namespace RepoContext.Cli.Mcp;
 
 /// <summary>
-/// The MCP tools exposed by <c>repoctx mcp</c> (M5 + M6, product doc §11,
-/// ADR 0008/0010). Each tool is a thin query wrapper over the same
-/// deterministic query engines the CLI uses and returns the identical JSON
-/// contract as <c>--format json</c> (same <c>schema_version</c>, same fields).
-/// Tools never mutate the index.
+/// The MCP tools exposed by <c>repoctx mcp</c> (M5 + M6 + M9, product doc §11,
+/// ADR 0008/0010/0013). Each tool is a thin wrapper over the same
+/// deterministic engines the CLI uses and returns the identical JSON contract
+/// as <c>--format json</c> (same <c>schema_version</c>, same fields). Tools
+/// never mutate the index; <c>memory_add</c> appends to the separate agent
+/// memory store (curation via <c>memory rm</c> stays CLI-only, under human
+/// supervision).
 /// </summary>
 /// <remarks>
 /// Tool handlers resolve the index per call from the current working directory
@@ -39,43 +42,47 @@ public static class McpTools
             McpServerTool.Create(
                 (Func<string, int, bool, CallToolResult>)Search,
                 Describe("repoctx.search",
-                    "Full-text (BM25) search across the indexed repository. Returns a JSON "
-                    + "document (schema_version, results[] with path, score, kind, lines and "
-                    + "machine-readable reasons). Use for finding files or symbols by term.")),
+                    "Find indexed files or symbols by term; returns ranked paths, lines, "
+                    + "scores, kinds, and reasons.")),
             McpServerTool.Create(
-                (Func<string, int, int?, int?, int?, string, string[]?, string[]?, CallToolResult>)GetContext,
+                (Func<string, int, int?, int?, int?, string, string[]?, string[]?, string?, bool, bool,
+                    CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
-                    "Ranked, explained context bundle for a natural-language task, packed into a "
-                    + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
-                    + "costs; 'outline' adds symbol skeletons; 'slices' embeds the matching source "
-                    + "spans and can avoid a full-file read. Echo a 'receipt' from earlier evidence "
-                    + "via 'seen' to skip exactly that pointer, span, or symbol; pass path@hash as 'known' only "
-                    + "for files you hold in full. Prefer this over reading files.")),
+                    "Primary context tool. Ranks task-relevant files under response/read budgets. "
+                    + "detail: paths=locations, outline=symbols, slices=source spans. Reuse evidence "
+                    + "via seen receipts or session; known=path@hash requires a full-file read. "
+                    + "stripComments is lossy; matching memories are included by default.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
                 Describe("repoctx.get_related_files",
-                    "List the files related to a given file: its imports, dependents and linked "
-                    + "tests. Returns a JSON document (schema_version, results[] with path, relation "
-                    + "and reasons).")),
+                    "Return imports, dependents, and linked tests for a file, with reasons.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetOutline,
                 Describe("repoctx.get_outline",
-                    "A file's skeleton: symbols with signatures, lines and doc summaries, plus its "
-                    + "content hash and exact full-read token cost. Use the compact skeleton to "
-                    + "decide whether (and which part of) a file is worth reading.")),
+                    "Return a file's symbols, signatures, lines, docs, hash, and full-read "
+                    + "token cost.")),
             McpServerTool.Create(
-                (Func<CallToolResult>)GetChanges,
+                (Func<bool, CallToolResult>)GetChanges,
                 Describe("repoctx.get_changes",
-                    "Diff the working tree against the index: added/modified/deleted files plus the "
-                    + "indexed files that import or test them. Use after editing to learn what is "
-                    + "stale (then re-run 'repoctx index') instead of re-reading everything.")),
+                    "Return added/modified/deleted files and affected importers/tests. patch=true "
+                    + "includes delta hunks. Use after edits; re-index if stale.")),
+            McpServerTool.Create(
+                (Func<string, string, string[]?, string[]?, string?, CallToolResult>)MemoryAdd,
+                Describe("repoctx.memory_add",
+                    "Store a durable 1-2 sentence insight. Link affected files so changed hashes "
+                    + "mark it stale; kinds: note, decision, constraint.")),
+            McpServerTool.Create(
+                (Func<string?, int, string?, string?, string?, bool, CallToolResult>)MemorySearch,
+                Describe("repoctx.memory_search",
+                    "Search local memories by term/tag/path with reasons and stale flags; omit "
+                    + "query to list. get_context already includes matches.")),
         };
     }
 
     private static CallToolResult Search(
-        [Description("The text to search for.")] string query,
-        [Description("Maximum number of results (default 10).")] int top = 10,
-        [Description("Restrict the search to symbols (classes, functions, ...).")] bool symbols = false)
+        [Description("Text to find.")] string query,
+        [Description("Maximum results.")] int top = 10,
+        [Description("Search symbols only.")] bool symbols = false)
     {
         if (top <= 0)
         {
@@ -102,25 +109,32 @@ public static class McpTools
 
         IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols);
         string rendered = SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json);
-        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered,
+            scale: TokenScale.From(config));
         return Ok(rendered);
     }
 
     private static CallToolResult GetContext(
-        [Description("A natural-language description of what you want to do.")] string task,
-        [Description("Maximum number of new files (default 8); reused units never consume a slot.")]
+        [Description("Task to gather context for.")] string task,
+        [Description("Maximum new files; reused evidence consumes no slot.")]
         int top = 8,
-        [Description("Compatibility 'charged work' cap (real BPE counts).")] int? budgetTokens = null,
-        [Description("Hard ceiling on the exact serialized response.")] int? responseBudgetTokens = null,
-        [Description("Hard ceiling on full-file reads implied by delivered pointers.")]
+        [Description("Compatibility charged-work token cap.")]
+        int? budgetTokens = null,
+        [Description("Hard exact-response token cap.")]
+        int? responseBudgetTokens = null,
+        [Description("Hard projected full-read token cap.")]
         int? projectedReadBudgetTokens = null,
-        [Description("Per-file detail: 'paths', 'outline' or 'slices'.")] string detail = "paths",
-        [Description("Files whose FULL content you already hold, each as path@hash. Never derive "
-            + "this from a slice or outline.")]
+        [Description("Detail: paths, outline, or slices.")] string detail = "paths",
+        [Description("Whole files held as path@hash; never use a slice/outline hash.")]
         string[]? known = null,
-        [Description("Receipts from evidence you already received; only those exact pointers, "
-            + "spans, or symbols are suppressed.")]
-        string[]? seen = null)
+        [Description("Exact evidence receipts already held.")]
+        string[]? seen = null,
+        [Description("Local reuse-state name (1-64 characters: A-Za-z0-9._-).")]
+        string? session = null,
+        [Description("Lossy removal of full-line comments and blank runs from slices.")]
+        bool stripComments = false,
+        [Description("Include relevant local memories.")]
+        bool includeMemory = true)
     {
         if (top <= 0)
         {
@@ -176,9 +190,32 @@ public static class McpTools
             }
         }
 
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
         if (Locate() is not { } layout)
         {
             return NoIndex();
+        }
+
+        if (session is not null)
+        {
+            SessionState state = SessionStore.LoadState(layout, session);
+            var merged = new Dictionary<string, string>(
+                state.Known, StringComparer.Ordinal);
+            foreach ((string path, string hash) in knownMap ?? new Dictionary<string, string>())
+            {
+                merged[path] = hash;
+            }
+
+            knownMap = merged;
+            seenReceipts = state.Seen.Concat(seenReceipts)
+                .Where(Receipt.IsWellFormed)
+                .Distinct(StringComparer.Ordinal)
+                .OrderBy(receipt => receipt, StringComparer.Ordinal)
+                .ToArray();
         }
 
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
@@ -188,6 +225,8 @@ public static class McpTools
             return outdated;
         }
 
+        TokenScale scale = TokenScale.From(config);
+        var costModel = ContextCostModel.ForMcpText(scale);
         var engine = new ContextEngine(store, config);
         ContextResult result = engine.Run(task ?? string.Empty, new ContextOptions
         {
@@ -198,7 +237,12 @@ public static class McpTools
             Detail = detailLevel.Value,
             Known = knownMap,
             Seen = seenReceipts,
-        }, responseBudgetTokens is null ? null : ContextCostModel.ForMcpText());
+            StripComments = stripComments,
+            SerializedCharging = true,
+            Memories = includeMemory
+                ? Commands.ContextCommand.VisibleMemories(layout, session)
+                : null,
+        }, responseBudgetTokens is null ? null : costModel);
 
         if (result.Shortfall is { } shortfall)
         {
@@ -211,14 +255,21 @@ public static class McpTools
 
         string rendered = ContextOutput.Render(result, OutputFormat.Json, Surfaces.McpText);
         UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
-            UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
+            UsageMeter.ReplacedTokens(result,
+                path => store.FindFile(path) is { } f ? scale.Apply(f.TokenCount) : null),
             files: result.Items.Count,
-            unchanged: result.ReusedFilesCount);
+            unchanged: result.ReusedFilesCount,
+            scale: scale);
+        if (session is not null)
+        {
+            SessionStore.Save(layout, session, result, knownMap, seenReceipts);
+        }
+
         return Ok(rendered);
     }
 
     private static CallToolResult GetRelatedFiles(
-        [Description("The file (repo-relative or absolute path) to find related files for.")] string file)
+        [Description("Repository file path.")] string file)
     {
         if (Locate() is not { } layout)
         {
@@ -245,12 +296,13 @@ public static class McpTools
         }
 
         string rendered = RelatedOutput.Render(result, OutputFormat.Json);
-        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "related", UsageSources.Mcp, rendered,
+            scale: TokenScale.From(config));
         return Ok(rendered);
     }
 
     private static CallToolResult GetOutline(
-        [Description("The file (repo-relative or absolute path) to outline.")] string file)
+        [Description("Repository file path.")] string file)
     {
         if (Locate() is not { } layout)
         {
@@ -270,7 +322,8 @@ public static class McpTools
             return outdated;
         }
 
-        Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative);
+        TokenScale scale = TokenScale.From(config);
+        Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative, scale);
         if (result is null)
         {
             return Fail($"File not found in index: {relative}");
@@ -278,11 +331,13 @@ public static class McpTools
 
         string rendered = OutlineOutput.Render(result, OutputFormat.Json);
         UsageRecorder.Record(layout, "outline", UsageSources.Mcp, rendered,
-            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1);
+            replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1, scale: scale);
         return Ok(rendered);
     }
 
-    private static CallToolResult GetChanges()
+    private static CallToolResult GetChanges(
+        [Description("Include working-tree delta hunks.")]
+        bool patch = false)
     {
         if (Locate() is not { } layout)
         {
@@ -296,9 +351,190 @@ public static class McpTools
             return outdated;
         }
 
-        ChangedResult result = ChangeDetector.Run(layout, config, store);
+        TokenScale scale = TokenScale.From(config);
+        ChangedResult result = ChangeDetector.Run(layout, config, store, patch, scale);
         string rendered = ChangedOutput.Render(result, OutputFormat.Json);
-        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered);
+        UsageRecorder.Record(layout, "changed", UsageSources.Mcp, rendered,
+            replacedTokens: UsageMeter.PatchReplacedTokens(result),
+            scale: scale);
+        return Ok(rendered);
+    }
+
+    private static CallToolResult MemoryAdd(
+        [Description("Distilled insight (1-2 sentences, maximum 2,000 characters).")]
+        string text,
+        [Description("Kind: note, decision, or constraint.")]
+        string kind = "note",
+        [Description("Linked repository files for stale detection.")]
+        string[]? files = null,
+        [Description("Lowercase recall tags.")] string[]? tags = null,
+        [Description("Optional short-term session scope.")]
+        string? session = null)
+    {
+        if (!MemoryKinds.IsValid(kind))
+        {
+            return Fail("kind must be 'note', 'decision' or 'constraint'.");
+        }
+
+        string trimmed = (text ?? string.Empty).Trim();
+        if (trimmed.Length == 0)
+        {
+            return Fail("text must not be empty.");
+        }
+
+        if (trimmed.Length > MemoryStore.MaxTextLength)
+        {
+            return Fail($"text exceeds {MemoryStore.MaxTextLength} characters — distill it.");
+        }
+
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
+        var tagList = new List<string>();
+        foreach (string input in tags ?? [])
+        {
+            string t = (input ?? string.Empty).Trim().ToLowerInvariant();
+            if (t.Length is 0 or > 32 || !t.All(c => char.IsAsciiLetterOrDigit(c) || c is '-' or '_'))
+            {
+                return Fail($"Invalid tag '{input}'. Use 1-32 characters from a-z, 0-9, '-', '_'.");
+            }
+
+            if (!tagList.Contains(t, StringComparer.Ordinal))
+            {
+                tagList.Add(t);
+            }
+        }
+
+        if (tagList.Count > MemoryStore.MaxTags)
+        {
+            return Fail($"At most {MemoryStore.MaxTags} tags per memory.");
+        }
+
+        if (files is { Length: > MemoryStore.MaxFiles })
+        {
+            return Fail($"At most {MemoryStore.MaxFiles} file links per memory.");
+        }
+
+        if (Locate() is not { } layout)
+        {
+            return NoIndex();
+        }
+
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+        using IndexStore store = IndexStore.Open(layout.DatabasePath);
+        if (OutdatedIndex(store, config) is { } outdated)
+        {
+            return outdated;
+        }
+
+        var links = new SortedDictionary<string, string>(StringComparer.Ordinal);
+        foreach (string input in files ?? [])
+        {
+            string? relative = layout.ToRelativePath(input ?? string.Empty, Directory.GetCurrentDirectory());
+            if (relative is null)
+            {
+                return Fail($"Path is outside the repository: {input}");
+            }
+
+            if (store.FindFile(relative) is not { } row)
+            {
+                return Fail($"File not found in index: {relative}");
+            }
+
+            links[relative] = Hashes.Short(row.ContentHash);
+        }
+
+        var entry = new MemoryEntry
+        {
+            Id = MemoryEntry.ComputeId(kind, trimmed, session, links.Keys),
+            Kind = kind,
+            Text = trimmed,
+            Files = links,
+            Tags = tagList,
+            Session = session,
+            Created = DateTime.UtcNow.ToString("yyyy-MM-dd"),
+        };
+
+        bool updated;
+        try
+        {
+            updated = MemoryStore.Add(layout, entry);
+        }
+        catch (Exception e) when (
+            e is InvalidOperationException or IOException
+                or UnauthorizedAccessException or TimeoutException)
+        {
+            return Fail(e.Message);
+        }
+
+        string rendered = MemoryOutput.RenderAdd(
+            entry, updated, MemoryStore.Load(layout).Count, OutputFormat.Json);
+        UsageRecorder.Record(layout, "memory", UsageSources.Mcp, rendered,
+            scale: TokenScale.From(config));
+        return Ok(rendered);
+    }
+
+    private static CallToolResult MemorySearch(
+        [Description("Recall text; omit to list.")] string? query = null,
+        [Description("Maximum entries.")] int top = 10,
+        [Description("Filter: note, decision, or constraint.")] string? kind = null,
+        [Description("Filter by linked repository file.")] string? file = null,
+        [Description("Include this session's short-term memories.")] string? session = null,
+        [Description("Return stale entries only.")]
+        bool stale = false)
+    {
+        if (top <= 0)
+        {
+            return Fail("top must be greater than zero.");
+        }
+
+        if (kind is not null && !MemoryKinds.IsValid(kind))
+        {
+            return Fail("kind must be 'note', 'decision' or 'constraint'.");
+        }
+
+        if (session is not null && !SessionStore.IsValidName(session))
+        {
+            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+        }
+
+        if (Locate() is not { } layout)
+        {
+            return NoIndex();
+        }
+
+        string? fileFilter = null;
+        if (file is { Length: > 0 })
+        {
+            fileFilter = layout.ToRelativePath(file, Directory.GetCurrentDirectory());
+            if (fileFilter is null)
+            {
+                return Fail("Path is outside the repository.");
+            }
+        }
+
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+        using IndexStore store = IndexStore.Open(layout.DatabasePath);
+        if (OutdatedIndex(store, config) is { } outdated)
+        {
+            return outdated;
+        }
+
+        MemoryQueryResult result = MemoryEngine.Search(MemoryStore.Load(layout), new MemoryQueryOptions
+        {
+            Query = query,
+            Top = top,
+            Kind = kind,
+            File = fileFilter,
+            Session = session,
+            StaleOnly = stale,
+        }, config, store);
+
+        string rendered = MemoryOutput.RenderSearch(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "memory", UsageSources.Mcp, rendered,
+            scale: TokenScale.From(config));
         return Ok(rendered);
     }
 

@@ -247,6 +247,7 @@
 
   /* Install / code blocks */
   .install-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .install-grid .panel-wide { grid-column: 1 / -1; }
   .panel {
     background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
     overflow: hidden; box-shadow: var(--shadow); display: flex; flex-direction: column;
@@ -435,8 +436,8 @@
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">install</span>
-        <h2>Two ways in.</h2>
-        <p>Have the .NET 10 runtime? Install the global tool. Otherwise grab a self-contained binary — no runtime required.</p>
+        <h2>Three ways in.</h2>
+        <p>Have the .NET 10 runtime? Install the global tool. Otherwise grab a self-contained binary — no runtime required. Tool installs blocked by policy? Add it as a plain NuGet package.</p>
       </div>
       <div class="install-grid">
         <div class="panel">
@@ -469,6 +470,24 @@ repoctx <span class="flag">--version</span></pre></div>
           <div class="code"><pre><span class="comment"># download for your platform, then</span>
 tar -xzf repoctx-linux-x64.tar.gz
 ./repoctx <span class="flag">--version</span></pre></div>
+        </div>
+        <div class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h3>Plain NuGet PackageReference</h3>
+              <p><code>dotnet tool install</code> blocked by company policy? <code>RepoContext.MSBuild</code> delivers the same CLI through the NuGet restore your build already runs — a development-only dependency, nothing ships with your app.</p>
+            </div>
+            <button class="copy-btn" type="button" data-copy="dotnet add package RepoContext.MSBuild" aria-label="Copy install command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span>copy</span>
+            </button>
+          </div>
+          <div class="code"><pre><span class="comment"># in exactly one project of the repository</span>
+dotnet add src/YourProject package RepoContext.MSBuild
+
+<span class="comment"># sets up init, index, local CLI payload, wrappers, and portable MCP config</span>
+dotnet build
+./.repoctx/bin/repoctx context "change the login logic"</pre></div>
         </div>
       </div>
     </div>
@@ -507,7 +526,7 @@ tar -xzf repoctx-linux-x64.tar.gz
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">commands</span>
-        <h2>Six commands, one contract.</h2>
+        <h2>Twelve commands, one contract.</h2>
         <p>Every command speaks <code>--format text</code>, <code>json</code> or <code>md</code>. The JSON is stable, snake_case and always carries <code>schema_version</code>.</p>
       </div>
       <div class="table-wrap">
@@ -520,8 +539,14 @@ tar -xzf repoctx-linux-x64.tar.gz
             <tr><td><code>index</code></td><td class="desc">Build or incrementally update the index (hash diff).</td><td><code>--full</code></td></tr>
             <tr><td><code>search</code></td><td class="desc">BM25 full-text search over content and symbols.</td><td><code>--symbols · --top</code></td></tr>
             <tr><td><code>related</code></td><td class="desc">A file's imports, dependents and linked tests.</td><td><code>--format</code></td></tr>
-            <tr><td><code>context</code></td><td class="desc">Ranked, explained, budgeted bundle for a task.</td><td><code>--budget-tokens · --snippets</code></td></tr>
+            <tr><td><code>context</code></td><td class="desc">Ranked, explained bundle under exact response and read budgets.</td><td><code>--response-budget-tokens · --detail</code></td></tr>
+            <tr><td><code>outline</code></td><td class="desc">A compact symbol skeleton before a full-file read.</td><td><code>--format</code></td></tr>
+            <tr><td><code>changed</code></td><td class="desc">Working-tree changes, impacted files, and optional delta hunks.</td><td><code>--patch</code></td></tr>
             <tr><td><code>architecture</code></td><td class="desc">LOC tree, language mix, centrality, entrypoints.</td><td><code>--format</code></td></tr>
+            <tr><td><code>prime</code></td><td class="desc">A cache-stable repository primer for unfamiliar work.</td><td><code>--files · --format</code></td></tr>
+            <tr><td><code>memory</code></td><td class="desc">Store and recall short agent-authored notes, decisions, and constraints.</td><td><code>add · search · rm</code></td></tr>
+            <tr><td><code>stats</code></td><td class="desc">Local token-savings and optional cost dashboard.</td><td><code>--format · --open</code></td></tr>
+            <tr><td><code>mcp</code></td><td class="desc">Serve the same deterministic tools over stdio.</td><td>—</td></tr>
           </tbody>
         </table>
       </div>
@@ -537,11 +562,15 @@ tar -xzf repoctx-linux-x64.tar.gz
       </div>
       <div class="mcp-grid">
         <div>
-          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a read-only server over stdio and exposes three tools — each returning the same deterministic JSON as the CLI.</p>
+          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a local, non-destructive server over stdio and exposes seven compact tools. Query calls may append aggregate counts to the local usage ledger.</p>
           <ul>
             <li><b>repoctx.search</b> — full-text and symbol search</li>
             <li><b>repoctx.get_context</b> — the ranked, budgeted bundle</li>
             <li><b>repoctx.get_related_files</b> — imports, dependents, tests</li>
+            <li><b>repoctx.get_outline</b> — compact symbol skeleton</li>
+            <li><b>repoctx.get_changes</b> — changes, impact, delta hunks</li>
+            <li><b>repoctx.memory_add</b> — retain a durable finding</li>
+            <li><b>repoctx.memory_search</b> — recall local knowledge</li>
           </ul>
         </div>
         <div class="panel">

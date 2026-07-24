@@ -36,7 +36,7 @@ public sealed record OmissionReasons
     /// <summary>
     /// Cut by the legacy <c>--budget-tokens</c> "charged work" cap. Reported
     /// separately from <see cref="ResponseBudget"/> because the two have
-    /// different cost bases during the compatibility window (ADR 0013).
+    /// different cost bases during the compatibility window (ADR 0016).
     /// </summary>
     public int BudgetTokens { get; init; }
 
@@ -93,7 +93,7 @@ public sealed record ContextOptions
     /// Never derive an entry here from a partial response. A slice or outline
     /// proves possession of a range, not of the file; that is what
     /// <see cref="Seen"/> receipts are for. An eventual rename to
-    /// <c>--known-file</c> is documented in ADR 0012.
+    /// <c>--known-file</c> is documented in ADR 0015.
     /// </remarks>
     public IReadOnlyDictionary<string, string>? Known { get; init; }
 
@@ -113,9 +113,37 @@ public sealed record ContextOptions
     public int MaxReusedListed { get; init; } = 20;
 
     /// <summary>
+    /// Whether embedded slices and memories are charged in their JSON-serialized
+    /// form. Text/Markdown surfaces deliver raw text and disable this so the
+    /// legacy charged-work budget remains faithful to the selected surface.
+    /// </summary>
+    public bool SerializedCharging { get; init; } = true;
+
+    /// <summary>
+    /// Opt-in lossy transform: strip full-line comments and collapse blank
+    /// runs in embedded slices. Items whose text was altered carry
+    /// <see cref="ContextItem.Stripped"/> so line ranges are known to be
+    /// approximate (ADR 0012).
+    /// </summary>
+    public bool StripComments { get; init; }
+
+    /// <summary>
+    /// Agent memories visible to this call — long-term entries plus the
+    /// active session's short-term ones (ADR 0013). Loaded by the caller (the
+    /// engine does no file I/O), so determinism holds: the memory store is
+    /// input exactly like <see cref="Known"/>. Relevant entries are folded
+    /// into the bundle; null or empty disables memory items.
+    /// </summary>
+    public IReadOnlyList<Memory.MemoryEntry>? Memories { get; init; }
+
+    /// <summary>
     /// The canonical option string used for <c>evidence_id</c>. Omitted and
     /// explicitly-defaulted options normalise to the same value here, so two
-    /// requests that mean the same thing share an identity (Q4).
+    /// requests that mean the same thing share an identity (Q4). Raw
+    /// <see cref="Known"/>, <see cref="Seen"/>, and memory inputs are
+    /// deliberately excluded: only their effective delivered/reused selections
+    /// belong to the identity, and those are hashed by the engine's evidence
+    /// records. Unmatched session history must not churn an unchanged result.
     /// </summary>
     public string CanonicalForm() => Canonical.JoinRecords(
     [
@@ -126,17 +154,8 @@ public sealed record ContextOptions
         $"read_budget={Invariant(ProjectedReadBudgetTokens)}",
         $"max_spans={MaxSpans}",
         $"max_reused_listed={MaxReusedListed}",
-        "known=" + (Known is null or { Count: 0 }
-            ? "-"
-            : Canonical.JoinRecords(Known
-                .OrderBy(k => k.Key, StringComparer.Ordinal)
-                .Select(k => Canonical.JoinRecords([Canonical.NormalizePath(k.Key), k.Value])))),
-        "seen=" + (Seen is null or { Count: 0 }
-            ? "-"
-            : Canonical.JoinRecords(Seen
-                .Where(Receipt.IsWellFormed)
-                .Distinct(StringComparer.Ordinal)
-                .OrderBy(s => s, StringComparer.Ordinal))),
+        $"serialized_charging={SerializedCharging}",
+        $"strip_comments={StripComments}",
     ]);
 
     private static string Invariant(int? value) =>
@@ -160,6 +179,9 @@ public sealed record ContextSpan
 
     /// <summary>The symbol this span was aligned to, when it was.</summary>
     public string? Symbol { get; init; }
+
+    /// <summary>Whether the delivered text was comment-stripped.</summary>
+    internal bool Stripped { get; init; }
 
     /// <summary>
     /// Internal marginal-relevance order used when a hard budget can fit only a
@@ -255,6 +277,15 @@ public sealed record ContextItem
     /// <summary>Full-file read tokens implied by this item; zero unless it is a pointer.</summary>
     public int ProjectedReadTokens { get; init; }
 
+    /// <summary>
+    /// Set when another bundle item carries byte-identical content (copied or
+    /// generated files): read that one instead — this item costs nothing.
+    /// </summary>
+    public string? DuplicateOf { get; init; }
+
+    /// <summary>True when the slice was comment-stripped (line ranges approximate).</summary>
+    public bool Stripped { get; init; }
+
     /// <summary>Symbol skeleton (outline detail); each entry carries its own receipt.</summary>
     public IReadOnlyList<OutlineSymbol>? Symbols { get; init; }
 
@@ -342,6 +373,20 @@ public sealed record ContextResult
     /// claims, including claims beyond the bounded listed prefix.
     /// </summary>
     public int ReusedReadTokens { get; init; }
+
+    /// <summary>
+    /// Active token-calibration label (profile name or <c>x&lt;factor&gt;</c>),
+    /// null when counts are raw o200k (ADR 0012).
+    /// </summary>
+    public string? TokenProfile { get; init; }
+
+    /// <summary>
+    /// Relevant agent memories folded into the bundle (ADR 0013): distilled
+    /// prior knowledge at a fraction of a re-discovery's cost, each with
+    /// reasons and a stale flag. Empty when none matched or memory was
+    /// disabled.
+    /// </summary>
+    public IReadOnlyList<Memory.MemoryHit> Memories { get; init; } = [];
 
     public required int TotalCandidates { get; init; }
 

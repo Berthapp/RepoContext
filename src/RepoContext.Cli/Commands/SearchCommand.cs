@@ -82,7 +82,8 @@ public static class SearchCommand
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(
-                layout, "search", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered));
+                layout, "search", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: Core.Indexing.TokenScale.From(config));
             return ExitCode.Success;
         });
 

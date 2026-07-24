@@ -21,8 +21,8 @@ public static class EvalReport
     public static string Render(EvalRepo repo)
     {
         var sb = new StringBuilder();
-        sb.Append("# RepoContext Release 1 candidate evaluation baseline\n\n");
-        sb.Append("Deterministic metrics over the candidate `eval-repo` corpus.\n");
+        sb.Append("# RepoContext Release 1 evaluation baseline\n\n");
+        sb.Append("Deterministic metrics over the frozen `eval-repo` corpus.\n");
         sb.Append("Token counts are exact `o200k_base` BPE counts of the rendered surface.\n\n");
 
         sb.Append("## Metric formulas\n\n");

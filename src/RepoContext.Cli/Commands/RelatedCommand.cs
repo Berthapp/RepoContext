@@ -71,7 +71,8 @@ public static class RelatedCommand
             string rendered = RelatedOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(
-                layout, "related", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered));
+                layout, "related", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: Core.Indexing.TokenScale.From(config));
             return ExitCode.Success;
         });
 

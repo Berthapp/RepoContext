@@ -14,6 +14,15 @@ public sealed record ChangedFile(string Path, string Status)
     public const string Added = "added";
     public const string Modified = "modified";
     public const string Deleted = "deleted";
+
+    /// <summary>Delta hunks vs the indexed content (<c>--patch</c>, modified files only).</summary>
+    public IReadOnlyList<PatchHunk>? Hunks { get; init; }
+
+    /// <summary>What receiving the hunks costs — compare with <see cref="FileTokens"/>.</summary>
+    public int? PatchTokens { get; init; }
+
+    /// <summary>The full re-read this patch replaces (indexed count, calibrated).</summary>
+    public int? FileTokens { get; init; }
 }
 
 /// <summary>An indexed file whose dependency or test links point at a change.</summary>
@@ -51,7 +60,9 @@ public sealed record ChangedResult(
 /// </summary>
 public static class ChangeDetector
 {
-    public static ChangedResult Run(RepoLayout layout, RepoctxConfig config, IndexStore store)
+    public static ChangedResult Run(
+        RepoLayout layout, RepoctxConfig config, IndexStore store,
+        bool patch = false, TokenScale scale = default)
     {
         Dictionary<string, FileRecord> existing = store.GetExistingFiles();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -76,7 +87,9 @@ public static class ChangeDetector
 
             if (record.ContentHash != hash)
             {
-                changed.Add(new ChangedFile(file.RelativePath, ChangedFile.Modified));
+                changed.Add(patch
+                    ? WithPatch(store, file, scale)
+                    : new ChangedFile(file.RelativePath, ChangedFile.Modified));
                 delta.Add((ChangedFile.Modified, file.RelativePath, hash));
             }
         }
@@ -121,6 +134,34 @@ public static class ChangeDetector
         {
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
+        };
+    }
+
+    /// <summary>
+    /// Attaches delta hunks to a modified file: the indexed text is
+    /// reconstructed from content chunks, the working-tree text read fresh,
+    /// and only the differing line ranges are carried — after editing, the
+    /// hunks replace a full re-read. Trailing newlines are normalized away on
+    /// both sides so representation differences never produce phantom hunks.
+    /// Files without content chunks (nothing to diff against) stay plain.
+    /// </summary>
+    private static ChangedFile WithPatch(IndexStore store, ScannedFile file, TokenScale scale)
+    {
+        var plain = new ChangedFile(file.RelativePath, ChangedFile.Modified);
+        if (store.FindFile(file.RelativePath) is not { } row
+            || store.GetSourceSlice(file.RelativePath, 1, int.MaxValue) is not { } indexed)
+        {
+            return plain;
+        }
+
+        string current = File.ReadAllText(file.AbsolutePath);
+        IReadOnlyList<PatchHunk> hunks = LineDiff.Hunks(
+            indexed.Text.TrimEnd('\n'), current.TrimEnd('\n'));
+        return plain with
+        {
+            Hunks = hunks,
+            PatchTokens = scale.Apply(LineDiff.PatchTokens(hunks)),
+            FileTokens = scale.Apply(row.TokenCount),
         };
     }
 
