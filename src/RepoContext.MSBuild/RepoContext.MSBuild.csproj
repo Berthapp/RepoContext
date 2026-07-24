@@ -23,7 +23,7 @@
     <!-- PrivateAssets=all by default in consumers: the package never flows
          to their published output or downstream dependents. -->
     <DevelopmentDependency>true</DevelopmentDependency>
-    <Description>Local-first, explainable project memory for AI coding agents, delivered as a regular NuGet package. Adds the repoctx CLI to a repository through a plain PackageReference and NuGet restore - no 'dotnet tool install' required (for environments where tool installation is blocked). Run it via 'dotnet msbuild -t:RepoCtx -p:RepoCtxArgs="..."' or generate stable wrapper scripts once with 'dotnet msbuild -t:RepoCtxShim'. Requires the .NET 10 runtime. If dotnet tools are allowed in your environment, prefer the RepoContext.Tool package instead.</Description>
+    <Description>Local-first, explainable project memory for AI coding agents, delivered as a regular NuGet package. Add it to exactly one project per repository through a plain PackageReference and NuGet restore - no 'dotnet tool install' required (for environments where tool installation is blocked). Run it via 'dotnet msbuild -t:RepoCtx -p:RepoCtxArgs="..."' or install the portable payload and stable wrapper scripts with 'dotnet msbuild -t:RepoCtxShim'. Requires the .NET 10 runtime. If dotnet tools are allowed in your environment, prefer the RepoContext.Tool package instead.</Description>
     <PackageLicenseExpression>Apache-2.0</PackageLicenseExpression>
     <PackageTags>ai;agent;context;code-search;tree-sitter;msbuild;cli</PackageTags>
     <PackageReadmeFile>README.md</PackageReadmeFile>

@@ -71,6 +71,56 @@ public class ConfigTests
         Assert.NotEqual(h1, ConfigStore.ComputeHash(changed));
     }
 
+    [Fact]
+    public void Hash_SortsSynonymMaps_AndSeparatesLiveFromIndexingConfig()
+    {
+        RepoctxConfig baseline = RepoctxConfig.CreateDefault();
+        RepoctxConfig first = baseline with
+        {
+            Ranking = baseline.Ranking with
+            {
+                Synonyms = new Dictionary<string, IReadOnlyList<string>>
+                {
+                    ["auth"] = ["login"],
+                    ["cache"] = ["memo"],
+                },
+            },
+        };
+        RepoctxConfig reverseInsertion = first with
+        {
+            Ranking = first.Ranking with
+            {
+                Synonyms = new Dictionary<string, IReadOnlyList<string>>
+                {
+                    ["cache"] = ["memo"],
+                    ["auth"] = ["login"],
+                },
+            },
+        };
+
+        Assert.Equal(ConfigStore.ComputeHash(first), ConfigStore.ComputeHash(reverseInsertion));
+        Assert.Equal(ConfigStore.ComputeIndexHash(baseline), ConfigStore.ComputeIndexHash(first));
+        Assert.NotEqual(ConfigStore.ComputeHash(baseline), ConfigStore.ComputeHash(first));
+    }
+
+    [Fact]
+    public void Hash_IncludesEffectiveTokenScale_ButNotStatsOnlyPricing()
+    {
+        RepoctxConfig baseline = RepoctxConfig.CreateDefault();
+        RepoctxConfig claude = baseline with
+        {
+            Tokens = new TokenOptions { Profile = "claude" },
+        };
+        RepoctxConfig priced = baseline with
+        {
+            Pricing = new PricingOptions { InputPerMtok = 5.0, Currency = "EUR" },
+        };
+
+        Assert.NotEqual(ConfigStore.ComputeHash(baseline), ConfigStore.ComputeHash(claude));
+        Assert.Equal(ConfigStore.ComputeIndexHash(baseline), ConfigStore.ComputeIndexHash(claude));
+        Assert.Equal(ConfigStore.ComputeHash(baseline), ConfigStore.ComputeHash(priced));
+    }
+
     [Theory]
     [InlineData("change the Login logic", new[] { "change", "the", "login", "logic" })]
     [InlineData("loginUser()", new[] { "loginuser" })]

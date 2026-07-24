@@ -1,4 +1,6 @@
 using RepoContext.Core;
+using RepoContext.Core.Configuration;
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Stats;
 
 namespace RepoContext.Core.Tests.Stats;
@@ -18,7 +20,7 @@ public class UsageRecorderTests : IDisposable
         {
             Environment.SetEnvironmentVariable(UsageRecorder.DisableVariable, null);
             UsageRecorder.Record(layout, "context", UsageSources.Cli,
-                rendered: "{\"schema_version\":2}", replacedTokens: 1234, files: 2, unchanged: 1);
+                rendered: "{\"schema_version\":3}", replacedTokens: 1234, files: 2, unchanged: 1);
 
             IReadOnlyList<UsageRecord> records = UsageLog.Read(UsageLog.PathFor(layout));
             UsageRecord record = Assert.Single(records);
@@ -51,6 +53,36 @@ public class UsageRecorderTests : IDisposable
         }
 
         Assert.False(File.Exists(UsageLog.PathFor(layout)));
+    }
+
+    [Fact]
+    public void Record_AcceptsReuseBeyondDeliveredFiles_AndAppliesScale()
+    {
+        RepoLayout layout = RepoLayout.For(_dir);
+        string? previous = Environment.GetEnvironmentVariable(UsageRecorder.DisableVariable);
+        try
+        {
+            Environment.SetEnvironmentVariable(UsageRecorder.DisableVariable, null);
+            UsageRecorder.Record(
+                layout, "context", UsageSources.Cli, rendered: "compact response",
+                files: 1, unchanged: 3,
+                scale: TokenScale.From(
+                    RepoctxConfig.CreateDefault() with
+                    {
+                        Tokens = new TokenOptions { Factor = 2.0 },
+                    }));
+
+            UsageRecord record = Assert.Single(
+                UsageLog.Read(UsageLog.PathFor(layout)));
+            Assert.Equal(1, record.Files);
+            Assert.Equal(3, record.Unchanged);
+            Assert.Equal(2 * Tokens.Count("compact response"), record.Served);
+        }
+        finally
+        {
+            Environment.SetEnvironmentVariable(
+                UsageRecorder.DisableVariable, previous);
+        }
     }
 
     public void Dispose()

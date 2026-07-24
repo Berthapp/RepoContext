@@ -26,6 +26,12 @@ public sealed partial class GraphBuilder
         _parser = parser;
     }
 
+    /// <summary>Source bytes read while rebuilding graph facts.</summary>
+    public long BytesRead { get; private set; }
+
+    /// <summary>Source files locally analyzed for imports/type references.</summary>
+    public int FilesAnalyzed { get; private set; }
+
     public int Rebuild()
     {
         IReadOnlyList<FileRow> files = _store.GetFiles();
@@ -47,10 +53,12 @@ public sealed partial class GraphBuilder
 
                 if (lang is SourceLanguage.TypeScript or SourceLanguage.Tsx or SourceLanguage.JavaScript)
                 {
+                    FilesAnalyzed++;
                     AddTsImportEdges(file, content, pathSet, idByPath, tx);
                 }
                 else if (lang == SourceLanguage.CSharp)
                 {
+                    FilesAnalyzed++;
                     AddCSharpImportEdges(file, content, typeDefs, tx);
                 }
             }
@@ -221,7 +229,10 @@ public sealed partial class GraphBuilder
     {
         try
         {
-            return File.ReadAllText(Path.Combine(_repoRoot, relativePath));
+            string path = Path.Combine(_repoRoot, relativePath);
+            string content = File.ReadAllText(path);
+            BytesRead += new FileInfo(path).Length;
+            return content;
         }
         catch (IOException)
         {

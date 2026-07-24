@@ -32,16 +32,29 @@ DotnetTool package type rejects by design (`NU1212`/`NU1213`).
   `AfterTargets="Build"`: the first build after adding the package runs
   `repoctx init --agents` (config, `.gitignore` entry, `CLAUDE.md` /
   `AGENTS.md`), every build runs an incremental `repoctx index`, and the
-  wrapper scripts are (re)written — `WriteOnlyWhenDifferent`, so they only
-  change when the package path does, which also self-heals them after a
-  package update. Guard rails: skipped for design-time builds
+  portable publish payload is copied to `.repoctx/bin/tool/`. A one-line
+  source stamp contains the immutable NuGet package path: an unchanged build
+  reads only that stamp, while a package-version change refreshes the local
+  payload. The wrapper scripts are `WriteOnlyWhenDifferent` and point at the
+  stable local assembly, so they do not churn when NuGet's package path
+  changes. Guard rails: skipped for design-time builds
   (`$(DesignTimeBuild)`); in multi-TFM projects only the outer build runs it
   (thin `buildMultiTargeting/` imports + a condition excluding inner per-TFM
   builds), so init/index never race in parallel inner builds; repoctx
   failures are `WarnAndContinue` — the package must never break a consumer's
   build. Opt-outs per property: `RepoCtxAutoSetup=false` (all),
   `RepoCtxAutoAgents=false` (init with `--no-agents`),
-  `RepoCtxAutoIndex=false`, `RepoCtxAutoShim=false`.
+  `RepoCtxAutoIndex=false`, `RepoCtxAutoShim=false`,
+  `RepoCtxAutoMcp=false`.
+- **One PackageReference per repository.** Multi-TFM concurrency is bounded
+  inside one project, but MSBuild offers no repository-wide critical section
+  across separate project builds. Referencing this repo-scoped setup package
+  from multiple projects in the same solution could run `init`, `index` and
+  the payload copy concurrently. Consumers must add it to exactly one project
+  (the README installation command and package comments call this out).
+  Building a custom MSBuild task solely to hold a cross-process lock would add
+  another executable component and loading surface; that is not justified
+  while the package has an explicit single-reference ownership model.
 - **Repository-root detection** (`_RepoCtxResolveRoot`, shared by all
   targets, override `-p:RepoCtxRoot=...`): the nearest directory at or above
   the project holding a `repoctx.config.json`, else `$(SolutionDir)` (Visual
@@ -51,22 +64,27 @@ DotnetTool package type rejects by design (`NU1212`/`NU1213`).
   directory.
 - **MCP config out of the box.** Auto-setup also writes `.vscode/mcp.json`
   (read by Copilot agent mode in VS Code and Visual Studio) registering the
-  repoctx MCP server via the workspace-relative wrapper path — but only when
-  no `mcp.json` exists yet: an existing file belongs to the user and is
-  never modified (no JSON merging in MSBuild), so other configured servers
-  cannot be clobbered. The file is committable; each teammate's first build
-  writes the git-ignored wrappers it points to. Opt-out
-  `RepoCtxAutoMcp=false`; explicit target `RepoCtxMcpConfig`.
-- **Three MSBuild targets for manual control**, auto-imported from `build/`:
+  repoctx MCP server as `dotnet exec
+  ${workspaceFolder}/.repoctx/bin/tool/repoctx.dll mcp`. Calling `dotnet`
+  directly is portable across Windows, macOS and Linux; it avoids the
+  unreliable choice between an extensionless POSIX shim and `repoctx.cmd`.
+  The config is written only when no `mcp.json` exists yet: an existing file
+  belongs to the user and is never modified (no JSON merging in MSBuild), so
+  other configured servers cannot be clobbered. The file is committable
+  (`.gitignore` explicitly allows it); each teammate's first build writes the
+  git-ignored payload it points to. Opt-out `RepoCtxAutoMcp=false`; explicit
+  target `RepoCtxMcpConfig`.
+- **Four MSBuild targets for manual control**, auto-imported from `build/`:
   - `RepoCtx` — runs the packaged CLI with `-p:RepoCtxArgs="..."` in the
     detected root, overridable via `-p:RepoCtxWorkingDirectory`.
+  - `RepoCtxInstall` — refreshes the portable publish payload at the stable
+    `.repoctx/bin/tool/` workspace path.
   - `RepoCtxShim` — writes the `repoctx` / `repoctx.cmd` wrapper scripts
     (default `.repoctx/bin/` under the detected root, git-ignored with the
-    rest of `.repoctx/`). The wrappers embed the absolute package path in
-    the NuGet cache, giving humans, agent instructions and MCP configs a
-    stable, quoting-free entry point.
+    rest of `.repoctx/`). The wrappers invoke the local portable assembly,
+    giving humans and agent instructions a stable, quoting-free entry point.
   - `RepoCtxMcpConfig` — writes the `.vscode/mcp.json` described above when
-    it is missing.
+    it is missing; it depends on `RepoCtxInstall`.
 - **Publish-into-pack.** The packaging project hooks
   `TargetsForTfmSpecificContentInPackage`, publishes the CLI into its own
   `obj/` and packs the result as `TfmSpecificPackageFile`. The MSBuild task
@@ -97,11 +115,17 @@ DotnetTool package type rejects by design (`NU1212`/`NU1213`).
   paths (`buildMultiTargeting//...`, error NU5129); the multi-targeting
   copies are therefore real files that just `<Import>` their `build/`
   siblings.
+- An MCP config generated by the original implementation pointed at the
+  extensionless POSIX shim. That path is not a reliable executable on
+  Windows. The config now invokes `dotnet` and passes the local portable
+  assembly to `exec`, while the `.cmd` and POSIX wrappers remain available
+  for interactive use.
 - Verified end-to-end on a net8.0 consumer and a `net8.0;netstandard2.0`
   multi-TFM consumer: restore from a local feed, first build auto-runs
-  `init --agents` + `index` + shims (exactly once for multi-TFM), later
-  builds re-index incrementally and stay silent, opt-out and design-time
-  conditions hold, `-t:RepoCtx`/`-t:RepoCtxShim` work explicitly, and
-  `search`/`outline`/`related` work through the wrapper — native SQLite and
-  tree-sitter libraries resolve from the package's `runtimes/` folder via
-  `repoctx.deps.json`.
+  `init --agents` + `index` + local payload + shims (exactly once for
+  multi-TFM), later builds re-index incrementally and stay silent, opt-out
+  and design-time conditions hold, `-t:RepoCtx`/`-t:RepoCtxInstall`/
+  `-t:RepoCtxShim` work explicitly, the generated MCP JSON launches through
+  `dotnet exec` on the copied assembly, and `search`/`outline`/`related` work
+  through the wrapper — native SQLite and tree-sitter libraries resolve from
+  the copied payload's `runtimes/` folder via `repoctx.deps.json`.

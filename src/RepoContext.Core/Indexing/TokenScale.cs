@@ -53,7 +53,9 @@ public readonly record struct TokenScale
     public static TokenScale From(RepoctxConfig config)
     {
         TokenOptions tokens = config.Tokens;
-        if (tokens.Factor is { } factor and > 0)
+        if (tokens.Factor is { } factor
+            && double.IsFinite(factor)
+            && factor is > 0 and <= 100)
         {
             return factor == 1.0
                 ? Identity
@@ -70,6 +72,14 @@ public readonly record struct TokenScale
     }
 
     /// <summary>Applies the scale to a raw count (rounded up — budgets must not undershoot).</summary>
-    public int Apply(int rawCount) =>
-        IsIdentity || rawCount <= 0 ? rawCount : (int)Math.Ceiling(rawCount * Factor);
+    public int Apply(int rawCount)
+    {
+        if (IsIdentity || rawCount <= 0)
+        {
+            return rawCount;
+        }
+
+        double scaled = Math.Ceiling(rawCount * Factor);
+        return scaled >= int.MaxValue ? int.MaxValue : (int)scaled;
+    }
 }

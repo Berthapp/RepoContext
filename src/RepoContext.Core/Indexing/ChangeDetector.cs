@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
 using RepoContext.Core.Graph;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Scanning;
 using RepoContext.Core.Storage;
 
@@ -28,9 +29,27 @@ public sealed record ChangedFile(string Path, string Status)
 public sealed record ImpactedFile(string Path, IReadOnlyList<string> Reasons);
 
 /// <summary>The result of <c>repoctx changed</c>.</summary>
+/// <param name="State">Deprecated (v2): short <c>content_state</c>.</param>
+/// <param name="Stale">Whether the working tree differs from the index at all.</param>
+/// <param name="Changed">The differing files.</param>
+/// <param name="Impacted">Indexed files whose links point at a change.</param>
+/// <param name="ContentState">Short fingerprint of the indexed file contents (Q4).</param>
+/// <param name="WorktreeState">
+/// Short fingerprint of the indexed base plus this detected local delta (Q4).
+/// <c>changed</c> is the one worktree-sensitive command, so it is the only one
+/// that computes this; index-backed query commands never scan the tree.
+/// </param>
 public sealed record ChangedResult(
     string State, bool Stale,
-    IReadOnlyList<ChangedFile> Changed, IReadOnlyList<ImpactedFile> Impacted);
+    IReadOnlyList<ChangedFile> Changed, IReadOnlyList<ImpactedFile> Impacted,
+    string ContentState, string WorktreeState)
+{
+    /// <summary>Full internal indexed-content fingerprint.</summary>
+    public string FullContentState { get; init; } = string.Empty;
+
+    /// <summary>Full internal indexed-base-plus-local-delta fingerprint.</summary>
+    public string FullWorktreeState { get; init; } = string.Empty;
+}
 
 /// <summary>
 /// Diffs the working tree against the index by content hash (M6, ADR 0010) —
@@ -49,21 +68,29 @@ public static class ChangeDetector
         var seen = new HashSet<string>(StringComparer.Ordinal);
         var changed = new List<ChangedFile>();
 
+        // The current content hash of every differing file, feeding worktree_state.
+        // Added files are hashed too: without that, two different files added at
+        // the same path would share a fingerprint.
+        var delta = new List<(string Status, string Path, string? ContentHash)>();
+
         foreach (ScannedFile file in new FileScanner(layout.Root, config).Scan())
         {
             seen.Add(file.RelativePath);
+            string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(file.AbsolutePath)));
+
             if (!existing.TryGetValue(file.RelativePath, out FileRecord record))
             {
                 changed.Add(new ChangedFile(file.RelativePath, ChangedFile.Added));
+                delta.Add((ChangedFile.Added, file.RelativePath, hash));
                 continue;
             }
 
-            string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(file.AbsolutePath)));
             if (record.ContentHash != hash)
             {
                 changed.Add(patch
                     ? WithPatch(store, file, scale)
                     : new ChangedFile(file.RelativePath, ChangedFile.Modified));
+                delta.Add((ChangedFile.Modified, file.RelativePath, hash));
             }
         }
 
@@ -72,6 +99,7 @@ public static class ChangeDetector
             if (!seen.Contains(path))
             {
                 changed.Add(new ChangedFile(path, ChangedFile.Deleted));
+                delta.Add((ChangedFile.Deleted, path, null));
             }
         }
 
@@ -98,8 +126,15 @@ public static class ChangeDetector
             .Select(e => new ImpactedFile(e.Key, ReasonCompression.Compress(e.Value)))
             .ToList();
 
-        string state = store.GetMeta(MetaKeys.StateHash) ?? string.Empty;
-        return new ChangedResult(Hashes.Short(state), changed.Count > 0, changed, impacted);
+        string contentState = store.GetMeta(MetaKeys.StateHash) ?? string.Empty;
+        string worktreeState = Fingerprints.WorktreeState(contentState, delta);
+        return new ChangedResult(
+            Hashes.Short(contentState), changed.Count > 0, changed, impacted,
+            Hashes.Short(contentState), Hashes.Short(worktreeState))
+        {
+            FullContentState = contentState,
+            FullWorktreeState = worktreeState,
+        };
     }
 
     /// <summary>

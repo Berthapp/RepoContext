@@ -18,6 +18,9 @@ public sealed record PrimeFile(
 /// <summary>The result of <c>repoctx prime</c>.</summary>
 public sealed record PrimeResult
 {
+    /// <summary>Active token-calibration label; null means raw o200k counts.</summary>
+    public string? TokenProfile { get; init; }
+
     public required int ApproxFiles { get; init; }
 
     public required int ApproxLoc { get; init; }
@@ -38,7 +41,8 @@ public sealed record PrimeResult
 /// Builds the cache-stable repository primer (ADR 0012): a block meant to sit
 /// at the <b>top</b> of an agent's prompt behind a cache breakpoint, where
 /// cached input tokens cost a fraction of fresh ones. Prompt caching is a
-/// byte-prefix match, so the primer must not change unless the code does:
+/// byte-prefix match, so the primer must not change unless indexed content or
+/// the explicit token calibration changes:
 /// no timestamps, no state hash, no score-dependent ordering — everything is
 /// ordered by path or name, and volatile aggregates (LOC, file counts) are
 /// quantized to two significant digits so an ordinary edit leaves the primer
@@ -75,6 +79,7 @@ public sealed class PrimeEngine
 
         return new PrimeResult
         {
+            TokenProfile = _scale.Label,
             ApproxFiles = Quantize(architecture.TotalFiles),
             ApproxLoc = Quantize(architecture.TotalLoc),
             Languages = architecture.Languages

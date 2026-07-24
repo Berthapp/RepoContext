@@ -12,6 +12,22 @@ namespace RepoContext.Cli.Mcp;
 public static class McpServerRunner
 {
     /// <summary>
+    /// Model-visible workflow guidance. Public so the offline evaluation harness
+    /// measures the exact production instructions instead of a hand-written
+    /// substitute that can drift.
+    /// </summary>
+    public const string Instructions =
+        "Start with repoctx.get_context(detail='slices', responseBudgetTokens=2000); "
+        + "use outline for breadth or paths for locations. Escalate only on a gap: search "
+        + "for missing files/symbols, get_outline for a missing symbol in a known file, "
+        + "get_related_files for dependencies/impact. Reuse receipts via seen or session. "
+        + "Set known=path@hash only after a full-file read. stripComments is lossy. "
+        + "get_context already recalls matching memories; call memory_search only for a "
+        + "concrete prior-knowledge gap, memory_add only for durable findings. After edits "
+        + "call get_changes(patch=true), then run repoctx index if stale. Stop when evidence "
+        + "is sufficient. All processing is local, offline, deterministic.";
+
+    /// <summary>
     /// Runs the server until the client closes stdin or cancellation is
     /// requested. Nothing is written to stdout except MCP protocol messages.
     /// </summary>
@@ -20,26 +36,7 @@ public static class McpServerRunner
         var options = new McpServerOptions
         {
             ServerInfo = new Implementation { Name = "repoctx", Version = CliInfo.Version },
-            ServerInstructions =
-                "RepoContext serves compact, explainable, deterministic context from a local "
-                + "repository index; every token figure is a real BPE count. The economical loop: "
-                + "(1) repoctx.get_context with a budgetTokens and detail='slices' for working "
-                + "context, or detail='outline' to survey; pass a stable 'session' name and "
-                + "delivered slices are remembered, so later calls return unchanged files as "
-                + "zero-cost markers without you echoing hashes; set stripComments=true to drop "
-                + "comment banners from slices (lossy); (2) repoctx.get_outline before reading "
-                + "any file - a skeleton costs a fraction of the file; (3) repoctx.get_related_files "
-                + "instead of searching for dependencies; (4) after editing, repoctx.get_changes "
-                + "with patch=true returns just the changed hunks instead of a full re-read - when "
-                + "stale, run 'repoctx index' (fast, incremental) and re-query; (5) never pay "
-                + "twice: a session (above) or known=['path@hash'] makes unchanged files "
-                + "zero-cost markers; (6) never re-derive: repoctx.memory_search before "
-                + "exploring a topic (get_context folds matching memories in automatically), "
-                + "and after completing a task repoctx.memory_add stores 1-2 distilled "
-                + "sentences - kind='note' for knowledge, 'decision' for a why, 'constraint' "
-                + "for a warning - linked to the files they describe, so they are stale-flagged "
-                + "when the code drifts. Results are deterministic and carry machine-readable "
-                + "reasons. Nothing ever leaves the machine.",
+            ServerInstructions = Instructions,
             ToolCollection = McpTools.Build(),
         };
 

@@ -20,11 +20,14 @@ public static class ChangedOutput
         var sb = new StringBuilder();
         if (!r.Stale)
         {
-            sb.Append($"Index is current (state {r.State}). No changes.\n");
+            sb.Append(
+                $"Index is current (content {r.ContentState}, worktree {r.WorktreeState}). No changes.\n");
             return sb.ToString();
         }
 
-        sb.Append($"Index is stale (state {r.State}). Run 'repoctx index'.\n");
+        sb.Append(
+            $"Index is stale (content {r.ContentState}, worktree {r.WorktreeState}). "
+            + "Run 'repoctx index'.\n");
         sb.Append("Changed:\n");
         foreach (ChangedFile file in r.Changed)
         {
@@ -62,8 +65,10 @@ public static class ChangedOutput
         var sb = new StringBuilder();
         sb.Append("# Changed\n\n");
         sb.Append(r.Stale
-            ? $"_Index **stale** (state `{r.State}`) — run `repoctx index`._\n\n"
-            : $"_Index current (state `{r.State}`). No changes._\n");
+            ? $"_Index **stale** (content `{r.ContentState}` · worktree `{r.WorktreeState}`) — "
+                + "run `repoctx index`._\n\n"
+            : $"_Index current (content `{r.ContentState}` · worktree `{r.WorktreeState}`). "
+                + "No changes._\n");
         foreach (ChangedFile file in r.Changed)
         {
             sb.Append($"- **{file.Status}** `{file.Path}`");
@@ -105,6 +110,8 @@ public static class ChangedOutput
             SchemaVersion = RepoContextInfo.SchemaVersion,
             Command = "changed",
             State = r.State,
+            ContentState = r.ContentState,
+            WorktreeState = r.WorktreeState,
             Stale = r.Stale,
             Count = r.Changed.Count,
             Changed = r.Changed.Select(c => new ChangedFileDto
@@ -136,6 +143,12 @@ public static class ChangedOutput
 
         /// <summary>Short state hash of the index the tree was compared against.</summary>
         public required string State { get; init; }
+
+        /// <summary>Short fingerprint of the indexed base contents.</summary>
+        public required string ContentState { get; init; }
+
+        /// <summary>Short fingerprint of the indexed base plus the local delta.</summary>
+        public required string WorktreeState { get; init; }
 
         /// <summary>True when the working tree differs from the index.</summary>
         public bool Stale { get; init; }

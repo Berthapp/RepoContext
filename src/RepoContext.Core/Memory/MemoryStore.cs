@@ -1,3 +1,4 @@
+using System.Text;
 using System.Text.Json;
 
 namespace RepoContext.Core.Memory;
@@ -20,6 +21,8 @@ namespace RepoContext.Core.Memory;
 /// </remarks>
 public static class MemoryStore
 {
+    private const int StoreLockTimeoutMilliseconds = 3_000;
+
     /// <summary>Live entries beyond this cap are refused; curation beats silent eviction.</summary>
     public const int MaxEntries = 500;
 
@@ -47,22 +50,25 @@ public static class MemoryStore
     public static IReadOnlyList<MemoryEntry> Load(RepoLayout layout)
     {
         string path = PathFor(layout);
-        if (!File.Exists(path))
-        {
-            return [];
-        }
-
-        string[] lines;
         try
         {
-            lines = File.ReadAllLines(path);
+            using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
+                "Memory", path, StoreLockTimeoutMilliseconds);
+            if (lease is null)
+            {
+                // Appends are single locked writes and compaction uses atomic
+                // replacement, so a lock-free reader still sees a valid
+                // pre- or post-mutation snapshot. Do not silently hide all
+                // memory merely because another agent held the lock briefly.
+                return LoadUnlocked(path);
+            }
+
+            return LoadUnlocked(path);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
             return [];
         }
-
-        return Fold(lines);
     }
 
     /// <summary>
@@ -73,7 +79,9 @@ public static class MemoryStore
     /// </summary>
     public static bool Add(RepoLayout layout, MemoryEntry entry)
     {
-        IReadOnlyList<MemoryEntry> live = Load(layout);
+        string path = PathFor(layout);
+        using PathScopedMutex lease = AcquireForMutation(path);
+        IReadOnlyList<MemoryEntry> live = LoadUnlocked(path);
         bool update = live.Any(e => e.Id == entry.Id);
         if (!update && live.Count >= MaxEntries)
         {
@@ -81,7 +89,7 @@ public static class MemoryStore
                 $"Memory is full ({MaxEntries} entries). Remove entries with 'repoctx memory rm <id>' first.");
         }
 
-        Append(layout, JsonSerializer.Serialize(new StoredLine
+        Append(path, JsonSerializer.Serialize(new StoredLine
         {
             Id = entry.Id,
             Kind = entry.Kind,
@@ -100,22 +108,55 @@ public static class MemoryStore
     /// </summary>
     public static bool Remove(RepoLayout layout, string id)
     {
-        if (Load(layout).All(e => e.Id != id))
+        string path = PathFor(layout);
+        using PathScopedMutex lease = AcquireForMutation(path);
+        if (LoadUnlocked(path).All(e => e.Id != id))
         {
             return false;
         }
 
-        Append(layout, JsonSerializer.Serialize(
+        Append(path, JsonSerializer.Serialize(
             new StoredLine { Id = id, Deleted = true }, SerializerOptions));
         return true;
     }
 
-    private static void Append(RepoLayout layout, string line)
+    private static PathScopedMutex AcquireForMutation(string path) =>
+        PathScopedMutex.TryAcquire("Memory", path, StoreLockTimeoutMilliseconds)
+        ?? throw new TimeoutException("Timed out waiting to update local agent memory.");
+
+    private static IReadOnlyList<MemoryEntry> LoadUnlocked(string path)
     {
-        string path = PathFor(layout);
+        if (!File.Exists(path))
+        {
+            return [];
+        }
+
+        return Fold(File.ReadAllLines(path));
+    }
+
+    private static void Append(string path, string line)
+    {
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
-        File.AppendAllText(path, line + "\n");
-        Compact(path);
+        byte[] bytes = Encoding.UTF8.GetBytes(line + "\n");
+        using (var stream = new FileStream(
+            path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
+        {
+            // A process crash can leave a partial tail. Keep it as an
+            // auditable corrupt line, but separate it from the new valid one.
+            if (stream.Length > 0)
+            {
+                stream.Seek(-1, SeekOrigin.End);
+                if (stream.ReadByte() != '\n')
+                {
+                    stream.WriteByte((byte)'\n');
+                }
+            }
+
+            stream.Seek(0, SeekOrigin.End);
+            stream.Write(bytes);
+        }
+
+        TryCompact(path);
     }
 
     /// <summary>
@@ -123,25 +164,41 @@ public static class MemoryStore
     /// the surviving entries is preserved, so reads before and after a
     /// compaction see the same store.
     /// </summary>
-    private static void Compact(string path)
+    private static void TryCompact(string path)
     {
-        string[] lines = File.ReadAllLines(path);
-        IReadOnlyList<MemoryEntry> live = Fold(lines);
-        if (lines.Length <= live.Count + CompactionSlack)
+        try
         {
-            return;
-        }
+            string[] lines = File.ReadAllLines(path);
+            IReadOnlyList<MemoryEntry> live = Fold(lines);
+            if (lines.Length <= live.Count + CompactionSlack)
+            {
+                return;
+            }
 
-        File.WriteAllLines(path, live.Select(e => JsonSerializer.Serialize(new StoredLine
+            string compacted = string.Join('\n', live.Select(e => JsonSerializer.Serialize(new StoredLine
+            {
+                Id = e.Id,
+                Kind = e.Kind,
+                Text = e.Text,
+                Files = e.Files.Count > 0 ? e.Files.ToDictionary(StringComparer.Ordinal) : null,
+                Tags = e.Tags.Count > 0 ? e.Tags.ToList() : null,
+                Session = e.Session,
+                Created = e.Created,
+            }, SerializerOptions)));
+            if (compacted.Length > 0)
+            {
+                compacted += "\n";
+            }
+
+            string temporaryPath = path + ".compact.tmp";
+            File.WriteAllText(temporaryPath, compacted);
+            File.Move(temporaryPath, path, overwrite: true);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {
-            Id = e.Id,
-            Kind = e.Kind,
-            Text = e.Text,
-            Files = e.Files.Count > 0 ? e.Files.ToDictionary(StringComparer.Ordinal) : null,
-            Tags = e.Tags.Count > 0 ? e.Tags.ToList() : null,
-            Session = e.Session,
-            Created = e.Created,
-        }, SerializerOptions)));
+            // Compaction is optional. The mutation was already successfully
+            // appended, so leave the longer valid log for a later attempt.
+        }
     }
 
     /// <summary>Folds raw lines into live entries: latest per id wins, tombstones delete.</summary>

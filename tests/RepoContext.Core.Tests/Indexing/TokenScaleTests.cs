@@ -82,4 +82,30 @@ public class TokenScaleTests
 
         Assert.True(TokenScale.From(config).IsIdentity);
     }
+
+    [Theory]
+    [InlineData(-1.0)]
+    [InlineData(0.0)]
+    [InlineData(101.0)]
+    [InlineData(double.PositiveInfinity)]
+    public void InvalidOrExtremeFactor_FallsBackToIdentity(double factor)
+    {
+        var config = RepoctxConfig.CreateDefault() with
+        {
+            Tokens = new TokenOptions { Factor = factor },
+        };
+
+        Assert.True(TokenScale.From(config).IsIdentity);
+    }
+
+    [Fact]
+    public void Apply_SaturatesInsteadOfOverflowing()
+    {
+        var config = RepoctxConfig.CreateDefault() with
+        {
+            Tokens = new TokenOptions { Factor = 100.0 },
+        };
+
+        Assert.Equal(int.MaxValue, TokenScale.From(config).Apply(int.MaxValue));
+    }
 }

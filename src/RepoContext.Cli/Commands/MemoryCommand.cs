@@ -3,6 +3,7 @@ using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
+using RepoContext.Core.Indexing;
 using RepoContext.Core.Memory;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
@@ -113,8 +114,9 @@ public static class MemoryCommand
                 return NoIndex();
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
@@ -156,7 +158,9 @@ public static class MemoryCommand
             {
                 updated = MemoryStore.Add(layout, entry);
             }
-            catch (Exception e) when (e is InvalidOperationException or IOException or UnauthorizedAccessException)
+            catch (Exception e) when (
+                e is InvalidOperationException or IOException
+                    or UnauthorizedAccessException or TimeoutException)
             {
                 Console.Error.WriteLine(e.Message);
                 return ExitCode.Error;
@@ -165,8 +169,9 @@ public static class MemoryCommand
             string rendered = MemoryOutput.RenderAdd(
                 entry, updated, MemoryStore.Load(layout).Count, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "memory", UsageSources.Cli, rendered,
-                scale: CommandSupport.ScaleFor(layout));
+            UsageRecorder.Record(
+                layout, "memory", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: TokenScale.From(config));
             return ExitCode.Success;
         });
 
@@ -254,7 +259,7 @@ public static class MemoryCommand
 
             RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
@@ -271,8 +276,9 @@ public static class MemoryCommand
 
             string rendered = MemoryOutput.RenderSearch(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "memory", UsageSources.Cli, rendered,
-                scale: CommandSupport.ScaleFor(layout));
+            UsageRecorder.Record(
+                layout, "memory", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: TokenScale.From(config));
             return ExitCode.Success;
         });
 
@@ -308,7 +314,8 @@ public static class MemoryCommand
             {
                 removed = MemoryStore.Remove(layout, idValue);
             }
-            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            catch (Exception e) when (
+                e is IOException or UnauthorizedAccessException or TimeoutException)
             {
                 Console.Error.WriteLine(e.Message);
                 return ExitCode.Error;
@@ -322,7 +329,8 @@ public static class MemoryCommand
 
             string rendered = MemoryOutput.RenderRemove(idValue, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "memory", UsageSources.Cli, rendered,
+            UsageRecorder.Record(
+                layout, "memory", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
                 scale: CommandSupport.ScaleFor(layout));
             return ExitCode.Success;
         });

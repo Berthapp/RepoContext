@@ -60,9 +60,11 @@ public static class StatsHtmlOutput
 
         sb.Append("<footer><p>Explainable estimate: embedded slices and non-empty outline " +
                   "skeletons are credited at the full-file read cost they are assumed to " +
-                  "replace; unchanged markers assume the caller holds matching content. Discovery " +
+                  "replace; only explicit matching full-file possession assertions credit a " +
+                  "reused read. Partial-evidence receipts receive no full-file credit. Discovery " +
                   "responses (search, related, changed, architecture, paths-only context) " +
-                  "count as pure cost. All figures are real o200k token counts from the " +
+                  "count as pure cost. Figures use the token calibration active for each " +
+                  "recorded call (historical logs may mix profiles) from the " +
                   "local log <code>.repoctx/stats.jsonl</code> — nothing leaves this " +
                   "machine; set <code>REPOCTX_NO_STATS=1</code> to disable recording.</p></footer>\n");
         sb.Append("<div id=\"tip\" hidden></div>\n");
@@ -143,7 +145,7 @@ public static class StatsHtmlOutput
 
     private static void AppendHeader(StringBuilder sb, UsageReport report)
     {
-        sb.Append("<header><h1>Token savings</h1><p class=\"sub\">repoctx · real o200k token counts");
+        sb.Append("<header><h1>Token savings</h1><p class=\"sub\">repoctx · per-call calibrated token counts");
         if (report.FirstDay is not null)
         {
             sb.Append(" · ").Append(Html(report.FirstDay)).Append(" to ").Append(Html(report.LastDay!));

@@ -32,6 +32,11 @@ public static class OutlineOutput
             {
                 sb.Append("             ").Append(doc).Append('\n');
             }
+
+            if (s.Receipt is { Length: > 0 } receipt)
+            {
+                sb.Append("             receipt: ").Append(receipt).Append('\n');
+            }
         }
 
         return sb.ToString();
@@ -48,6 +53,11 @@ public static class OutlineOutput
             if (s.Doc is { Length: > 0 } doc)
             {
                 sb.Append(" — ").Append(doc);
+            }
+
+            if (s.Receipt is { Length: > 0 } receipt)
+            {
+                sb.Append(" · receipt `").Append(receipt).Append('`');
             }
 
             sb.Append('\n');
@@ -81,6 +91,7 @@ public static class OutlineOutput
                 EndLine = s.EndLine,
                 Signature = s.Signature,
                 Doc = s.Doc,
+                Receipt = s.Receipt,
             }).ToList(),
         };
 
@@ -122,5 +133,7 @@ public static class OutlineOutput
         public required string Signature { get; init; }
 
         public string? Doc { get; init; }
+
+        public string? Receipt { get; init; }
     }
 }

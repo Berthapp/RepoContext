@@ -36,7 +36,12 @@ public class OutputLeanTests
         Assert.Contains(dupPath, new[] { "src/auth/login.ts", "src/auth/login_copy.ts" });
         Assert.Contains(original, new[] { "src/auth/login.ts", "src/auth/login_copy.ts" });
         Assert.NotEqual(dupPath, original);
+        Assert.Contains(items, item => item.GetProperty("path").GetString() == original);
+        Assert.True(duplicate.Value.TryGetProperty("receipt", out JsonElement receipt));
+        Assert.False(string.IsNullOrWhiteSpace(receipt.GetString()));
         Assert.Equal(0, duplicate.Value.GetProperty("estimated_tokens").GetInt32());
+        Assert.Equal(0, duplicate.Value.GetProperty("content_tokens").GetInt32());
+        Assert.Equal(0, duplicate.Value.GetProperty("projected_read_tokens").GetInt32());
         Assert.False(duplicate.Value.TryGetProperty("snippet", out _));
     }
 
@@ -73,22 +78,63 @@ public class OutputLeanTests
         string[] args = ["context", "change the login logic", "--detail", "slices",
             "--top", "4", "--format", "json"];
 
-        int plain = SliceCharTotal(ws.Run(args).StdOut);
+        CliResult plainResult = ws.Run(args);
+        int plain = SliceCharTotal(plainResult.StdOut);
         CliResult strippedResult = ws.Run([.. args, "--strip-comments"]);
         int stripped = SliceCharTotal(strippedResult.StdOut);
 
         Assert.True(stripped <= plain, $"stripped {stripped} should be <= plain {plain}");
         // The fixture has comment lines, so at least one slice must shrink and flag.
         using JsonDocument doc = JsonDocument.Parse(strippedResult.StdOut);
-        Assert.Contains(doc.RootElement.GetProperty("results").EnumerateArray(),
-            i => i.TryGetProperty("stripped", out JsonElement s) && s.GetBoolean());
+        JsonElement strippedItem = doc.RootElement.GetProperty("results").EnumerateArray()
+            .First(i => i.TryGetProperty("stripped", out JsonElement s) && s.GetBoolean());
+
+        // A receipt proves possession of the text actually delivered. The same
+        // source range therefore has a different receipt after a lossy strip.
+        using JsonDocument plainDoc = JsonDocument.Parse(plainResult.StdOut);
+        JsonElement plainItem = plainDoc.RootElement.GetProperty("results").EnumerateArray()
+            .First(i => i.GetProperty("path").GetString()
+                == strippedItem.GetProperty("path").GetString());
+        JsonElement? changedPlain = null;
+        JsonElement? changedStripped = null;
+        foreach (JsonElement strippedSpan in strippedItem.GetProperty("spans").EnumerateArray())
+        {
+            JsonElement? plainSpan = plainItem.GetProperty("spans").EnumerateArray()
+                .Where(span =>
+                    span.GetProperty("start_line").GetInt32()
+                        == strippedSpan.GetProperty("start_line").GetInt32()
+                    && span.GetProperty("end_line").GetInt32()
+                        == strippedSpan.GetProperty("end_line").GetInt32())
+                .Cast<JsonElement?>()
+                .FirstOrDefault();
+            if (plainSpan is not null
+                && plainSpan.Value.GetProperty("text").GetString()
+                    != strippedSpan.GetProperty("text").GetString())
+            {
+                changedPlain = plainSpan;
+                changedStripped = strippedSpan;
+                break;
+            }
+        }
+
+        Assert.NotNull(changedPlain);
+        Assert.NotNull(changedStripped);
+        Assert.NotEqual(
+            changedPlain.Value.GetProperty("text").GetString(),
+            changedStripped.Value.GetProperty("text").GetString());
+        Assert.NotEqual(
+            changedPlain.Value.GetProperty("receipt").GetString(),
+            changedStripped.Value.GetProperty("receipt").GetString());
     }
 
     private static int SliceCharTotal(string json)
     {
         using JsonDocument doc = JsonDocument.Parse(json);
         return doc.RootElement.GetProperty("results").EnumerateArray()
-            .Where(i => i.TryGetProperty("snippet", out _))
-            .Sum(i => i.GetProperty("snippet").GetString()!.Length);
+            .Sum(item => item.TryGetProperty("spans", out JsonElement spans)
+                ? spans.EnumerateArray().Sum(span => span.GetProperty("text").GetString()!.Length)
+                : item.TryGetProperty("snippet", out JsonElement snippet)
+                    ? snippet.GetString()!.Length
+                    : 0);
     }
 }

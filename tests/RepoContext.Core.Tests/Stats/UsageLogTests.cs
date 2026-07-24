@@ -102,8 +102,6 @@ public class UsageLogTests : IDisposable
             valid with { Replaced = -1 },
             valid with { Files = -1 },
             valid with { Unchanged = -1 },
-            valid with { Files = null, Unchanged = 0 },
-            valid with { Files = 1, Unchanged = 2 },
         ];
         string validJson = JsonSerializer.Serialize(valid, UsageRecord.SerializerOptions);
         string withoutVersion = validJson.Replace("\"v\":1,", string.Empty, StringComparison.Ordinal);
@@ -116,6 +114,17 @@ public class UsageLogTests : IDisposable
 
         Assert.Single(records);
         Assert.Equal(valid, records[0]);
+    }
+
+    [Fact]
+    public void Read_AcceptsMoreReusedFilesThanDeliveredFiles()
+    {
+        UsageRecord reuseHeavy = Record(
+            "context", served: 50, replaced: 0, files: 1, unchanged: 3);
+
+        UsageLog.Append(LogPath, reuseHeavy);
+
+        Assert.Equal(reuseHeavy, Assert.Single(UsageLog.Read(LogPath)));
     }
 
     [Fact]
@@ -139,14 +148,15 @@ public class UsageLogTests : IDisposable
     }
 
     private static UsageRecord Record(
-        string command, int served, int replaced, int? files = null, int? unchanged = null) => new()
-    {
-        Ts = new DateTimeOffset(2026, 7, 14, 9, 30, 0, TimeSpan.Zero),
-        Command = command,
-        Source = UsageSources.Cli,
-        Served = served,
-        Replaced = replaced,
-        Files = files,
-        Unchanged = unchanged,
-    };
+        string command, int served, int replaced, int? files = null, int? unchanged = null) =>
+        new()
+        {
+            Ts = new DateTimeOffset(2026, 7, 14, 9, 30, 0, TimeSpan.Zero),
+            Command = command,
+            Source = UsageSources.Cli,
+            Served = served,
+            Replaced = replaced,
+            Files = files,
+            Unchanged = unchanged,
+        };
 }

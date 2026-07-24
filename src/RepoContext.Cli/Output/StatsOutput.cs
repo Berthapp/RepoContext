@@ -31,7 +31,7 @@ public static class StatsOutput
         }
 
         var sb = new StringBuilder();
-        sb.Append("Token savings (o200k counts, ")
+        sb.Append("Token savings (per-call calibrated counts, ")
           .Append(report.FirstDay).Append(" to ").Append(report.LastDay).Append("):\n\n");
         sb.Append($"  calls            {N(report.Totals.Calls),12}\n");
         sb.Append($"  response tokens  {N(report.Totals.ServedTokens),12}\n");
@@ -74,7 +74,7 @@ public static class StatsOutput
 
         var sb = new StringBuilder();
         sb.Append("# Token savings\n\n");
-        sb.Append("_o200k counts, ").Append(report.FirstDay).Append(" to ")
+        sb.Append("_Per-call calibrated counts, ").Append(report.FirstDay).Append(" to ")
           .Append(report.LastDay).Append("._\n\n");
         sb.Append("- calls: **").Append(N(report.Totals.Calls)).Append("**\n");
         sb.Append("- response tokens: **").Append(N(report.Totals.ServedTokens)).Append("**\n");

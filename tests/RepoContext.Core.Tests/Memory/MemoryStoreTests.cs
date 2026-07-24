@@ -1,5 +1,6 @@
 using RepoContext.Core;
 using RepoContext.Core.Memory;
+using System.Text.Json;
 
 namespace RepoContext.Core.Tests.Memory;
 
@@ -116,6 +117,61 @@ public class MemoryStoreTests : IDisposable
         Assert.Empty(MemoryStore.Load(_layout));
         Assert.False(MemoryStore.Remove(_layout, entry.Id));
         Assert.False(MemoryStore.Remove(_layout, "00000000"));
+    }
+
+    [Fact]
+    public async Task ParallelMutations_DuringCompaction_PreserveEveryUpdate()
+    {
+        const int removeCount = 24;
+        const int addCount = 48;
+        var removable = Enumerable.Range(0, removeCount)
+            .Select(i => Entry($"remove {i:D2}"))
+            .ToArray();
+        foreach (MemoryEntry entry in removable)
+        {
+            MemoryStore.Add(_layout, entry);
+        }
+
+        // Force the next mutation to compact. Repeating a valid line creates
+        // superseded history without changing the live set.
+        string path = MemoryStore.PathFor(_layout);
+        string duplicate = File.ReadLines(path).First();
+        File.AppendAllText(path, string.Concat(
+            Enumerable.Repeat(duplicate + "\n", 1_001)));
+
+        var additions = Enumerable.Range(0, addCount)
+            .Select(i => Entry($"parallel add {i:D2}"))
+            .ToArray();
+        using var start = new ManualResetEventSlim(initialState: false);
+        Task[] removals = removable.Select(entry => Task.Run(() =>
+        {
+            start.Wait();
+            Assert.True(MemoryStore.Remove(_layout, entry.Id));
+        })).ToArray();
+        Task[] adds = additions.Select(entry => Task.Run(() =>
+        {
+            start.Wait();
+            Assert.False(MemoryStore.Add(_layout, entry));
+        })).ToArray();
+
+        start.Set();
+        await Task.WhenAll(removals.Concat(adds));
+
+        IReadOnlyList<MemoryEntry> loaded = MemoryStore.Load(_layout);
+        Assert.Equal(addCount, loaded.Count);
+        Assert.Equal(
+            additions.Select(e => e.Id).Order(StringComparer.Ordinal),
+            loaded.Select(e => e.Id).Order(StringComparer.Ordinal));
+
+        // Writers never interleave JSON objects, including at the compaction
+        // boundary. Every surviving physical line is independently valid.
+        Assert.All(
+            File.ReadLines(path).Where(line => !string.IsNullOrWhiteSpace(line)),
+            line =>
+            {
+                using JsonDocument document = JsonDocument.Parse(line);
+                Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+            });
     }
 
     [Fact]

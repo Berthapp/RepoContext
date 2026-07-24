@@ -3,6 +3,7 @@ using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
@@ -20,12 +21,23 @@ public static class ContextCommand
         };
         var top = new Option<int>("--top")
         {
-            Description = "Maximum number of files.",
+            Description = "Maximum number of new files. Reused units never consume a slot.",
             DefaultValueFactory = _ => 8,
         };
         var budget = new Option<int?>("--budget-tokens")
         {
-            Description = "Token budget the bundle is packed into (real BPE counts).",
+            Description = "Compatibility 'charged work' cap (active token-profile counts): projected reads for "
+                          + "paths, embedded content otherwise. For a hard ceiling on the response "
+                          + "itself use --response-budget-tokens.",
+        };
+        var responseBudget = new Option<int?>("--response-budget-tokens")
+        {
+            Description = "Hard ceiling on the active token-profile cost of the exact serialized "
+                          + "response, including its trailing newline.",
+        };
+        var readBudget = new Option<int?>("--projected-read-budget-tokens")
+        {
+            Description = "Hard ceiling on the full-file reads implied by delivered pointers.",
         };
         var detail = new Option<string>("--detail")
         {
@@ -38,14 +50,19 @@ public static class ContextCommand
         };
         var known = new Option<string[]>("--known")
         {
-            Description = "A file you already have, as <path>@<hash> (repeatable). " +
-                          "Unchanged files come back as zero-cost markers.",
+            Description = "A file you hold IN FULL, as <path>@<hash> (repeatable). Never derive this "
+                          + "from a slice or outline - use --seen for delivered ranges.",
+        };
+        var seen = new Option<string[]>("--seen")
+        {
+            Description = "A receipt from evidence you already received (repeatable). Only that exact "
+                          + "span or symbol is suppressed; unseen parts of the same file still arrive.",
         };
         var session = new Option<string?>("--session")
         {
-            Description = "Track the known-file set server-side under this session name " +
-                          "(.repoctx/sessions/), so hashes need not be echoed back. " +
-                          "Delivered slices are remembered; explicit --known entries win.",
+            Description = "Track whole-file claims and exact evidence receipts locally under " +
+                          "this session name (.repoctx/sessions/), so they need not be echoed. " +
+                          "Explicit --known and --seen entries are merged in.",
         };
         var stripComments = new Option<bool>("--strip-comments")
         {
@@ -69,9 +86,12 @@ public static class ContextCommand
             task,
             top,
             budget,
+            responseBudget,
+            readBudget,
             detail,
             snippets,
             known,
+            seen,
             session,
             stripComments,
             noMemory,
@@ -93,10 +113,12 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
-            int? budgetTokens = parseResult.GetValue(budget);
-            if (budgetTokens is <= 0)
+            if (!Positive(parseResult.GetValue(budget), "--budget-tokens", out int? budgetTokens)
+                || !Positive(parseResult.GetValue(responseBudget), "--response-budget-tokens",
+                    out int? responseBudgetTokens)
+                || !Positive(parseResult.GetValue(readBudget), "--projected-read-budget-tokens",
+                    out int? readBudgetTokens))
             {
-                Console.Error.WriteLine("--budget-tokens must be greater than zero.");
                 return ExitCode.InvalidArguments;
             }
 
@@ -119,6 +141,15 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
+            string[] seenReceipts = parseResult.GetValue(seen) ?? [];
+            if (Array.Find(seenReceipts, r => !Receipt.IsWellFormed(r)) is { } malformed)
+            {
+                Console.Error.WriteLine(
+                    $"Invalid --seen receipt '{malformed}'. Pass a receipt exactly as returned in "
+                    + "a previous response.");
+                return ExitCode.InvalidArguments;
+            }
+
             string? sessionName = parseResult.GetValue(session);
             if (sessionName is not null && !SessionStore.IsValidName(sessionName))
             {
@@ -136,25 +167,32 @@ public static class ContextCommand
 
             if (sessionName is not null)
             {
-                knownMap = MergeKnown(SessionStore.Load(layout, sessionName), knownMap);
+                SessionState state = SessionStore.LoadState(layout, sessionName);
+                knownMap = MergeKnown(state.Known, knownMap);
+                seenReceipts = MergeSeen(state.Seen, seenReceipts);
             }
 
             string query = parseResult.GetValue(task) ?? string.Empty;
             RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
 
+            TokenScale scale = TokenScale.From(config);
+            var costModel = ContextCostModel.ForCli(outputFormat, scale);
             var engine = new ContextEngine(store, config);
             ContextResult result = engine.Run(query, new ContextOptions
             {
                 Top = topN,
                 BudgetTokens = budgetTokens,
+                ResponseBudgetTokens = responseBudgetTokens,
+                ProjectedReadBudgetTokens = readBudgetTokens,
                 Detail = detailLevel,
                 Known = knownMap,
+                Seen = seenReceipts,
                 StripComments = parseResult.GetValue(stripComments),
                 // Text/md deliver raw slice text; only JSON pays the escape tax,
                 // so charge in serialized form only when JSON is the output (ADR 0012).
@@ -162,26 +200,45 @@ public static class ContextCommand
                 Memories = parseResult.GetValue(noMemory)
                     ? null
                     : VisibleMemories(layout, sessionName),
-            });
+            }, responseBudgetTokens is null ? null : costModel);
 
-            TokenScale scale = TokenScale.From(config);
-            string rendered = ContextOutput.Render(result, outputFormat);
+            if (result.Shortfall is { } shortfall)
+            {
+                // No partial success payload is emitted on this channel.
+                Console.Error.WriteLine(
+                    $"--response-budget-tokens {shortfall.RequestedBudgetTokens} cannot fit the smallest "
+                    + $"useful response; retry_budget_tokens={shortfall.RetryBudgetTokens}.");
+                return ExitCode.InvalidArguments;
+            }
+
+            string rendered = ContextOutput.Render(result, outputFormat, Surfaces.Cli);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "context", UsageSources.Cli, rendered,
-                UsageMeter.ReplacedTokens(result,
-                    path => store.FindFile(path) is { } f ? scale.Apply(f.TokenCount) : null),
+            UsageRecorder.Record(layout, "context", UsageSources.Cli, costModel.SurfaceText(result),
+                UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
                 files: result.Items.Count,
-                unchanged: result.Items.Count(i => i.Unchanged),
+                unchanged: result.ReusedFilesCount,
                 scale: scale);
             if (sessionName is not null)
             {
-                SessionStore.Save(layout, sessionName, result);
+                SessionStore.Save(layout, sessionName, result, knownMap, seenReceipts);
             }
 
             return ExitCode.Success;
         });
 
         return command;
+    }
+
+    private static bool Positive(int? value, string option, out int? parsed)
+    {
+        parsed = value;
+        if (value is <= 0)
+        {
+            Console.Error.WriteLine($"{option} must be greater than zero.");
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryParseDetail(string? value, out ContextDetail detail)
@@ -226,6 +283,19 @@ public static class ContextCommand
 
         return merged;
     }
+
+    /// <summary>
+    /// Session receipts seed the reuse set; explicit <c>--seen</c> entries are
+    /// unioned in. Sorting makes the persisted/request identity independent of
+    /// argument order.
+    /// </summary>
+    private static string[] MergeSeen(
+        IReadOnlyList<string> sessionSeen, IReadOnlyList<string> explicitSeen) =>
+        sessionSeen.Concat(explicitSeen)
+            .Where(Receipt.IsWellFormed)
+            .Distinct(StringComparer.Ordinal)
+            .OrderBy(receipt => receipt, StringComparer.Ordinal)
+            .ToArray();
 
     /// <summary>Parses repeated <c>path@hash</c> entries; the last '@' separates.</summary>
     private static bool TryParseKnown(string[]? entries, out Dictionary<string, string>? known)

@@ -9,7 +9,8 @@ namespace RepoContext.Cli.Output;
 /// <summary>
 /// Renders the cache-stable repository primer (ADR 0012). Every format keeps
 /// the engine's stability guarantees: no volatile fields, path/name ordering,
-/// quantized aggregates — same index content ⇒ byte-identical output.
+/// quantized aggregates — same index content and token calibration imply
+/// byte-identical output.
 /// </summary>
 public static class PrimeOutput
 {
@@ -24,11 +25,15 @@ public static class PrimeOutput
     {
         var sb = new StringBuilder();
         sb.Append("# Repository primer\n\n");
-        sb.Append("_Cache-stable: byte-identical until indexed content changes — ")
+        sb.Append("_Cache-stable for unchanged indexed content and token calibration — ")
           .Append("safe to place behind a prompt-cache breakpoint._\n\n");
         sb.Append($"~{r.ApproxLoc} LOC in ~{r.ApproxFiles} files. Languages: ")
           .Append(string.Join(" · ", r.Languages.Select(l => $"{l.Language} ~{l.ApproxLoc}")))
           .Append(".\n");
+        if (r.TokenProfile is { } profile)
+        {
+            sb.Append("Token counts: ").Append(profile).Append("-calibrated.\n");
+        }
 
         if (r.Dirs.Count > 0)
         {
@@ -78,11 +83,15 @@ public static class PrimeOutput
     private static string RenderText(PrimeResult r)
     {
         var sb = new StringBuilder();
-        sb.Append("Repository primer (cache-stable: changes only with indexed content):\n");
+        sb.Append("Repository primer (cache-stable for unchanged content and token calibration):\n");
         sb.Append($"  ~{r.ApproxLoc} LOC in ~{r.ApproxFiles} files\n");
         sb.Append("  languages: ")
           .Append(string.Join(", ", r.Languages.Select(l => $"{l.Language} ~{l.ApproxLoc}")))
           .Append('\n');
+        if (r.TokenProfile is { } profile)
+        {
+            sb.Append("  token profile: ").Append(profile).Append('\n');
+        }
 
         foreach (PrimeDir dir in r.Dirs)
         {
@@ -117,6 +126,7 @@ public static class PrimeOutput
         {
             SchemaVersion = RepoContextInfo.SchemaVersion,
             Command = "prime",
+            TokenProfile = r.TokenProfile,
             ApproxFiles = r.ApproxFiles,
             ApproxLoc = r.ApproxLoc,
             Languages = r.Languages
@@ -152,6 +162,8 @@ public static class PrimeOutput
         public int SchemaVersion { get; init; }
 
         public required string Command { get; init; }
+
+        public string? TokenProfile { get; init; }
 
         public int ApproxFiles { get; init; }
 

@@ -61,15 +61,18 @@ Claude-family agents, whose tokenizer the index does not use.
    outlines/hashes/read costs — with **no** timestamps or state hash,
    path/name ordering throughout (never score order), and volatile aggregates
    (LOC, file counts) **quantized to two significant digits**, so an ordinary
-   edit leaves the primer byte-identical. Per-file facts change only when
-   that file changes. It defaults to `md` (the primer is a prompt block, not
+   edit leaves the primer byte-identical. Per-file code facts change only when
+   that file changes; reported read costs also change when token calibration
+   changes. It defaults to `md` (the primer is a prompt block, not
    a parseable document). An integration test pins byte-stability by
    re-indexing after an in-place edit to a non-key file.
 
    **Invariant (documented so it is not broken accidentally):** the
    `repoctx init --agents` managed block (`AgentInstructions.Block`) and the
-   `prime` output are byte-stable across `index` runs — they change only when
-   the tool version or the code changes. Any future feature that refreshes
+   `prime` output are byte-stable across `index` runs with the same tool,
+   indexed content and token calibration. Quantization may deliberately absorb
+   small edits; changing calibration changes reported read costs and is an
+   explicit cache-key change. Any future feature that refreshes
    either on every index (e.g. embedding a live repo map in `CLAUDE.md`)
    would invalidate the agent's whole prompt-prefix cache on every index and
    is therefore disallowed.
