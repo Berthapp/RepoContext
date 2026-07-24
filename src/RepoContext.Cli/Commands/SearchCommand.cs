@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Query;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
@@ -70,8 +71,9 @@ public static class SearchCommand
                 return ExitCode.InvalidArguments;
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
@@ -79,7 +81,8 @@ public static class SearchCommand
             IReadOnlyList<SearchHit> hits = store.Search(match, topN, parseResult.GetValue(symbolsOnly));
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "search", UsageSources.Cli, rendered);
+            UsageRecorder.Record(
+                layout, "search", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered));
             return ExitCode.Success;
         });
 

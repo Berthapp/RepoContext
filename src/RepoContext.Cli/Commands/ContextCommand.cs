@@ -3,6 +3,7 @@ using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
@@ -19,12 +20,22 @@ public static class ContextCommand
         };
         var top = new Option<int>("--top")
         {
-            Description = "Maximum number of files.",
+            Description = "Maximum number of new files. Reused units never consume a slot.",
             DefaultValueFactory = _ => 8,
         };
         var budget = new Option<int?>("--budget-tokens")
         {
-            Description = "Token budget the bundle is packed into (real BPE counts).",
+            Description = "Compatibility 'charged work' cap (real BPE counts): projected reads for "
+                          + "paths, embedded content otherwise. For a hard ceiling on the response "
+                          + "itself use --response-budget-tokens.",
+        };
+        var responseBudget = new Option<int?>("--response-budget-tokens")
+        {
+            Description = "Hard ceiling on the exact serialized response, including its trailing newline.",
+        };
+        var readBudget = new Option<int?>("--projected-read-budget-tokens")
+        {
+            Description = "Hard ceiling on the full-file reads implied by delivered pointers.",
         };
         var detail = new Option<string>("--detail")
         {
@@ -37,8 +48,13 @@ public static class ContextCommand
         };
         var known = new Option<string[]>("--known")
         {
-            Description = "A file you already have, as <path>@<hash> (repeatable). " +
-                          "Unchanged files come back as zero-cost markers.",
+            Description = "A file you hold IN FULL, as <path>@<hash> (repeatable). Never derive this "
+                          + "from a slice or outline - use --seen for delivered ranges.",
+        };
+        var seen = new Option<string[]>("--seen")
+        {
+            Description = "A receipt from evidence you already received (repeatable). Only that exact "
+                          + "span or symbol is suppressed; unseen parts of the same file still arrive.",
         };
         var format = new Option<string>("--format")
         {
@@ -53,9 +69,12 @@ public static class ContextCommand
             task,
             top,
             budget,
+            responseBudget,
+            readBudget,
             detail,
             snippets,
             known,
+            seen,
             format,
         };
 
@@ -74,10 +93,12 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
-            int? budgetTokens = parseResult.GetValue(budget);
-            if (budgetTokens is <= 0)
+            if (!Positive(parseResult.GetValue(budget), "--budget-tokens", out int? budgetTokens)
+                || !Positive(parseResult.GetValue(responseBudget), "--response-budget-tokens",
+                    out int? responseBudgetTokens)
+                || !Positive(parseResult.GetValue(readBudget), "--projected-read-budget-tokens",
+                    out int? readBudgetTokens))
             {
-                Console.Error.WriteLine("--budget-tokens must be greater than zero.");
                 return ExitCode.InvalidArguments;
             }
 
@@ -100,6 +121,15 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
+            string[] seenReceipts = parseResult.GetValue(seen) ?? [];
+            if (Array.Find(seenReceipts, r => !Receipt.IsWellFormed(r)) is { } malformed)
+            {
+                Console.Error.WriteLine(
+                    $"Invalid --seen receipt '{malformed}'. Pass a receipt exactly as returned in "
+                    + "a previous response.");
+                return ExitCode.InvalidArguments;
+            }
+
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
             if (layout is null || !layout.HasIndex)
             {
@@ -111,30 +141,55 @@ public static class ContextCommand
             RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
 
+            var costModel = ContextCostModel.ForCli(outputFormat);
             var engine = new ContextEngine(store, config);
             ContextResult result = engine.Run(query, new ContextOptions
             {
                 Top = topN,
                 BudgetTokens = budgetTokens,
+                ResponseBudgetTokens = responseBudgetTokens,
+                ProjectedReadBudgetTokens = readBudgetTokens,
                 Detail = detailLevel,
                 Known = knownMap,
-            });
+                Seen = seenReceipts,
+            }, responseBudgetTokens is null ? null : costModel);
 
-            string rendered = ContextOutput.Render(result, outputFormat);
+            if (result.Shortfall is { } shortfall)
+            {
+                // No partial success payload is emitted on this channel.
+                Console.Error.WriteLine(
+                    $"--response-budget-tokens {shortfall.RequestedBudgetTokens} cannot fit the smallest "
+                    + $"useful response; retry_budget_tokens={shortfall.RetryBudgetTokens}.");
+                return ExitCode.InvalidArguments;
+            }
+
+            string rendered = ContextOutput.Render(result, outputFormat, Surfaces.Cli);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "context", UsageSources.Cli, rendered,
+            UsageRecorder.Record(layout, "context", UsageSources.Cli, costModel.SurfaceText(result),
                 UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
                 files: result.Items.Count,
-                unchanged: result.Items.Count(i => i.Unchanged));
+                unchanged: result.ReusedFilesCount);
             return ExitCode.Success;
         });
 
         return command;
+    }
+
+    private static bool Positive(int? value, string option, out int? parsed)
+    {
+        parsed = value;
+        if (value is <= 0)
+        {
+            Console.Error.WriteLine($"{option} must be greater than zero.");
+            return false;
+        }
+
+        return true;
     }
 
     private static bool TryParseDetail(string? value, out ContextDetail detail)

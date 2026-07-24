@@ -1,6 +1,8 @@
 using System.Security.Cryptography;
+using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Parsing;
 using RepoContext.Core.Scanning;
 using RepoContext.Core.Storage;
@@ -27,6 +29,21 @@ public sealed record IndexStats
     public int TotalEdges { get; init; }
 
     public bool FullRebuild { get; init; }
+
+    /// <summary>Source bytes read for hashing during this scan.</summary>
+    public long BytesRead { get; init; }
+
+    /// <summary>Added/changed files whose chunks and symbols were recomputed.</summary>
+    public int FilesParsed { get; init; }
+
+    /// <summary>Dependency/test edges rebuilt during this run.</summary>
+    public int EdgesRecomputed { get; init; }
+
+    /// <summary>Source files analyzed while rebuilding dependency/test facts.</summary>
+    public int GraphFilesAnalyzed { get; init; }
+
+    /// <summary>Wall-clock duration, reported separately from deterministic goldens.</summary>
+    public long ElapsedMilliseconds { get; init; }
 }
 
 /// <summary>
@@ -48,13 +65,20 @@ public sealed class Indexer
 
     public IndexStats Run(bool full)
     {
+        var stopwatch = Stopwatch.StartNew();
         using IndexStore store = IndexStore.Open(_layout.DatabasePath);
 
-        string configHash = ConfigStore.ComputeHash(_config);
-        bool configChanged = store.GetMeta(MetaKeys.ConfigHash) is { } prev && prev != configHash;
-        bool schemaChanged = store.GetMeta(MetaKeys.SchemaVersion) is { } sv
-            && sv != IndexSchema.Version.ToString();
-        bool rebuild = full || configChanged || schemaChanged;
+        string configHash = ConfigStore.ComputeIndexHash(_config);
+        bool configChanged = store.GetMeta(MetaKeys.ConfigHash) != configHash;
+        bool schemaChanged =
+            store.GetMeta(MetaKeys.SchemaVersion) != IndexSchema.Version.ToString();
+
+        // A producer change (parser, chunker, decoder, tokenizer, graph) alters
+        // stored analysis without changing any source byte, so the incremental
+        // content-hash diff would wrongly report everything as unchanged (Q4).
+        bool producerChanged =
+            store.GetMeta(MetaKeys.AnalysisProducerVersion) != ProducerVersions.AnalysisProducerVersion;
+        bool rebuild = full || configChanged || schemaChanged || producerChanged;
 
         if (rebuild)
         {
@@ -70,6 +94,8 @@ public sealed class Indexer
         IReadOnlyList<ScannedFile> scanned = scanner.Scan();
 
         int added = 0, changed = 0, unchanged = 0, deleted = 0;
+        long bytesRead = 0;
+        int filesParsed = 0;
 
         using ILanguageParser parser = new TreeSitterParser();
         using (SqliteTransaction tx = store.BeginTransaction())
@@ -79,6 +105,7 @@ public sealed class Indexer
                 seen.Add(file.RelativePath);
 
                 byte[] bytes = File.ReadAllBytes(file.AbsolutePath);
+                bytesRead += bytes.LongLength;
                 string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
 
                 if (existing.TryGetValue(file.RelativePath, out FileRecord record))
@@ -98,6 +125,7 @@ public sealed class Indexer
                 }
 
                 string content = DecodeUtf8(bytes);
+                filesParsed++;
                 IReadOnlyList<Chunk> chunks = Chunker.Chunk(file.Language, content);
                 IReadOnlyList<Symbol> symbols = parser.Supports(file.Language)
                     ? parser.Parse(file.Language, file.RelativePath, content)
@@ -122,11 +150,14 @@ public sealed class Indexer
             tx.Commit();
         }
 
-        int totalEdges = new Graph.GraphBuilder(store, _layout.Root, parser).Rebuild();
+        var graphBuilder = new Graph.GraphBuilder(store, _layout.Root, parser);
+        int totalEdges = graphBuilder.Rebuild();
+        bytesRead += graphBuilder.BytesRead;
 
         int totalChunks = store.CountChunks();
         int totalSymbols = store.CountSymbols();
         store.SetMeta(MetaKeys.StateHash, ComputeStateHash(store));
+        store.SetMeta(MetaKeys.AnalysisProducerVersion, ProducerVersions.AnalysisProducerVersion);
         store.SetMeta(MetaKeys.SchemaVersion, IndexSchema.Version.ToString());
         store.SetMeta(MetaKeys.ToolVersion, _toolVersion);
         store.SetMeta(MetaKeys.ConfigHash, configHash);
@@ -135,6 +166,7 @@ public sealed class Indexer
         store.SetMeta(MetaKeys.ChunkCount, totalChunks.ToString());
         store.SetMeta(MetaKeys.SymbolCount, totalSymbols.ToString());
         store.SetMeta(MetaKeys.EdgeCount, totalEdges.ToString());
+        stopwatch.Stop();
 
         return new IndexStats
         {
@@ -147,26 +179,25 @@ public sealed class Indexer
             TotalSymbols = totalSymbols,
             TotalEdges = totalEdges,
             FullRebuild = rebuild,
+            BytesRead = bytesRead,
+            FilesParsed = filesParsed,
+            EdgesRecomputed = totalEdges,
+            GraphFilesAnalyzed = graphBuilder.FilesAnalyzed,
+            ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
     }
 
     /// <summary>
-    /// SHA-256 over the sorted (path, content_hash) pairs: a stable identifier
-    /// for "what the index knows". Agents compare it across calls to detect
-    /// staleness without re-reading anything (ADR 0010).
+    /// The <c>content_state</c> fingerprint: SHA-256 over the sorted
+    /// (path, content_hash) pairs, a stable identifier for "which file contents
+    /// the index knows". Agents compare it across calls to detect staleness
+    /// without re-reading anything (ADR 0010). Canonicalisation lives in
+    /// <see cref="Fingerprints.ContentState"/>. Schema v3 uses length-prefixed
+    /// records; the deprecated <c>state</c> field remains an alias of the value.
     /// </summary>
-    private static string ComputeStateHash(IndexStore store)
-    {
-        var sb = new System.Text.StringBuilder();
-        foreach ((string path, FileRecord record) in store.GetExistingFiles()
-            .OrderBy(e => e.Key, StringComparer.Ordinal))
-        {
-            sb.Append(path).Append('\n').Append(record.ContentHash).Append('\n');
-        }
-
-        return Convert.ToHexStringLower(
-            SHA256.HashData(System.Text.Encoding.UTF8.GetBytes(sb.ToString())));
-    }
+    private static string ComputeStateHash(IndexStore store) =>
+        Fingerprints.ContentState(
+            store.GetExistingFiles().Select(e => (e.Key, e.Value.ContentHash)));
 
     private static string DecodeUtf8(byte[] bytes)
     {

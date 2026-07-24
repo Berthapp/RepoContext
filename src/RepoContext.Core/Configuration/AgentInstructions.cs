@@ -82,27 +82,45 @@ public static class AgentInstructions
     private static string BuildBlock()
     {
         // Kept in sync with the README "Agent integration" snippet.
+        //
+        // Every step here is conditional. The pre-Release-1 wording read as an
+        // unconditional checklist, which cost more calls than it saved, and it
+        // told agents to echo the hash printed next to a *partial* result — a
+        // whole-file possession claim the response never justified (ADR 0012).
         return string.Join('\n',
             BeginMarker,
             "## Getting repository context with RepoContext",
             string.Empty,
             "This repository is indexed by RepoContext (`repoctx`), a local-first, offline",
             "context engine built to save you tokens. Prefer it over reading files broadly;",
-            "all token figures it reports are real BPE counts. The economical loop:",
+            "all token figures it reports are real BPE counts.",
             string.Empty,
-            "1. Orient once: `repoctx architecture --depth 1 --format md`.",
-            "2. Working context: `repoctx context \"<task>\" --detail slices --budget-tokens 2000 --format json`",
-            "   — ranked source slices packed into the budget, each with reasons and a `hash`.",
-            "   Use `--detail outline` to survey more files for fewer tokens.",
-            "3. Before reading any file: `repoctx outline <file> --format json` — symbols,",
-            "   signatures and the exact full-read token cost, at a fraction of that cost.",
-            "4. Dependencies and tests: `repoctx related <file> --format json` instead of grep.",
-            "5. Find a symbol: `repoctx search \"<term>\" --symbols --format json`.",
-            "6. After editing: `repoctx changed --format json`; when it reports `stale`,",
-            "   run `repoctx index` (fast, incremental) and re-query.",
-            "7. Never pay twice: echo hashes you already hold, e.g.",
-            "   `repoctx context \"<task>\" --known <path>@<hash>` — unchanged files come",
-            "   back as zero-cost markers.",
+            "Start with one budgeted context call, then escalate only on a concrete gap:",
+            string.Empty,
+            "1. `repoctx context \"<task>\" --detail slices --response-budget-tokens 2000 --format json`",
+            "   — ranked source spans packed into a hard response ceiling. Each span carries",
+            "   exact lines, reasons and a `receipt`. Use `--detail outline` to survey more",
+            "   files for fewer tokens, `--detail paths` when you only need locations.",
+            "2. Only if a file you need is missing: `repoctx search \"<term>\" --symbols --format json`.",
+            "3. Only if a file is relevant but the symbol you need was not delivered:",
+            "   `repoctx outline <file> --format json`.",
+            "4. Only for dependency or impact questions: `repoctx related <file> --format json`.",
+            "5. Only for cross-cutting or unfamiliar-boundary work: `repoctx architecture --depth 1 --format md`.",
+            "6. Only after you edited files: `repoctx changed --format json`; if it reports",
+            "   `stale`, run `repoctx index` (fast, incremental) and re-query.",
+            "7. Stop querying once no evidence needed for the task is missing.",
+            string.Empty,
+            "Never pay for the same evidence twice — and never over-claim what you hold:",
+            string.Empty,
+            "- `--seen <receipt>` (repeatable) suppresses **exactly** the pointer, span or symbol that",
+            "  receipt came from. Other parts of the same file still arrive. Echo the",
+            "  `receipt` values from evidence units you already received.",
+            "- `--known <path>@<hash>` asserts you hold the **entire** file. Use it only when",
+            "  you actually read the whole file. Never derive it from a slice or outline —",
+            "  the `hash` next to a partial result identifies the file version, not what you",
+            "  were sent.",
+            "- Reused units are acknowledged in `reused` and never consume a `--top` slot, so",
+            "  echoing receipts buys new context rather than markers.",
             EndMarker);
     }
 }

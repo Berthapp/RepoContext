@@ -15,19 +15,18 @@ Supported languages: **TypeScript, TSX, JavaScript, C#**.
 
 ## Why: tokens are the bill
 
-Every token figure repoctx reports is a real BPE count, and budgets are charged
-at what the agent actually receives — so `--budget-tokens 2000` really means
-about 2,000 tokens. Measured end-to-end on this repository
-([methodology & full numbers](docs/token-savings.md)):
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/token-savings-dark.svg">
-  <img alt="Measured: getting working context for the same task costs 6,222 tokens with pointer-plus-full-read workflows, 2,151 with a budgeted outline bundle and 2,110 with a budgeted slices bundle - 66 percent less." src="docs/assets/token-savings.svg" width="880">
-</picture>
+Every token figure repoctx reports is a real BPE count, and
+`--response-budget-tokens 2000` is a hard ceiling measured against the exact
+bytes emitted — not an estimate. In the current deterministic candidate
+evaluation, repeating a slices request with its receipts cuts the core response
+from 1,906 to 609 tokens (68%) while retaining every labelled must-find file,
+symbol and span. See the [methodology, limitations and raw
+artifacts](docs/token-savings.md); the candidate is a baseline for future
+changes, not a retroactive pre/post quality comparison.
 
 The loop an agent runs, on this repository:
 
-<img alt="Animated terminal demo: repoctx context with a token budget returning ranked source slices with reasons and hashes; repoctx outline showing a file skeleton for a third of the read cost; repoctx changed reporting a modified file and its impacted dependents; and a repeated context call with --known returning a zero-cost unchanged marker." src="docs/assets/demo.svg" width="880">
+<img alt="Animated terminal demo: repoctx context returning ranked source slices, repoctx outline showing a compact skeleton, and repoctx changed reporting modified and impacted files. The animation predates per-unit receipts; use --seen for partial evidence and reserve --known for files held in full." src="docs/assets/demo.svg" width="880">
 
 ## Requirements
 
@@ -89,7 +88,7 @@ repoctx search "authentication"                 # BM25 full-text search
 repoctx search "login" --symbols                # search symbols only
 repoctx related src/auth/login.ts               # imports, dependents, tests
 repoctx context "change the login logic"        # explained, budgeted bundle
-repoctx context "add logout" --top 4 --budget-tokens 2000 --snippets
+repoctx context "add logout" --top 4 --response-budget-tokens 2000 --snippets
 repoctx architecture                            # structure, languages, centrality
 ```
 
@@ -130,7 +129,7 @@ $ repoctx search "login" --top 2 --format json
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "command": "search",
   "query": "login",
   "count": 2,
@@ -173,7 +172,7 @@ via `repoctx related`).
 | `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--detail paths\|outline\|slices`, `--known <path>@<hash>`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--format` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
@@ -187,17 +186,50 @@ Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
 All token figures are real BPE counts (`o200k_base`, computed offline at index
 time), so budgets can be trusted. The intended agent workflow:
 
-1. `architecture --depth 1` — orientation for a handful of tokens.
-2. `context "<task>" --detail slices --budget-tokens 2000` — working context
-   with source slices packed into the budget (`--detail outline` surveys more
-   files for fewer tokens; the default `paths` returns pointers plus exact
-   full-read costs).
-3. `outline <file>` before any full read.
-4. After editing: `changed` — and `repoctx index` when it reports `stale`.
-5. Echo the `hash` of files you already hold via `--known <path>@<hash>`:
-   unchanged files return as zero-cost markers instead of repeated content.
-   Every `context` response also carries a `state` hash that moves whenever
-   the index content changes.
+1. `context "<task>" --detail slices --response-budget-tokens 2000` — working
+   context with symbol-aligned source `spans` packed into a **hard** response
+   ceiling (`--detail outline` surveys more files for fewer tokens; the default
+   `paths` returns pointers plus exact full-read costs).
+2. Escalate only on a concrete gap: `search --symbols` when a file is missing,
+   `outline <file>` when the symbol you need was not delivered, `related` for
+   dependency/impact questions, `architecture --depth 1` for unfamiliar
+   boundaries.
+3. After editing: `changed` — and `repoctx index` when it reports `stale`.
+4. Never pay twice, and never over-claim: see below.
+
+#### Budgets
+
+| Option | Bounds | Hard? |
+| --- | --- | --- |
+| `--budget-tokens` | *charged work*: projected reads for `paths`, embedded content otherwise | compatibility cap (v2 basis) |
+| `--response-budget-tokens` | exact model-visible response (CLI stdout includes its newline; MCP counts its text block) | **yes** |
+| `--projected-read-budget-tokens` | full-file reads implied by delivered pointers | **yes** |
+
+Only `--response-budget-tokens` promises a ceiling on what reaches the model.
+Every supplied budget must pass; none overrides another. There is no first-item
+exception — if a budget cannot fit the smallest useful response, the command
+exits `3` with a deterministic `retry_budget_tokens=<n>` that is guaranteed to
+fit, and emits no partial result. The retry value is intentionally conservative
+rather than an exhaustively searched mathematical minimum, keeping malformed
+tiny-budget requests cheap. See ADR 0013.
+
+#### Reuse: receipts vs. full-file possession
+
+These are **not** interchangeable, and conflating them was a real bug (ADR 0012):
+
+- **`--seen <receipt>`** (repeatable) — each delivered pointer, span and outline
+  symbol carries a `receipt`. Echoing one suppresses *exactly* that unit; every
+  other part of the same file still arrives. Reused units are acknowledged in
+  `reused` and never consume a `--top` slot, so echoing receipts buys new context
+  rather than markers.
+- **`--known <path>@<hash>`** — asserts you hold the **entire** file. Use it only
+  when you actually read the whole file. The `hash` printed next to a *partial*
+  result identifies the file version, not what you were sent; deriving `--known`
+  from a slice or outline claims possession of lines you never received.
+
+Every `context` response carries `content_state` (which file contents are
+indexed), `analysis_state` (that content plus config and producer versions),
+`evidence_id` and `representation_id`.
 
 ### The token-savings dashboard
 
@@ -213,12 +245,14 @@ Token savings (o200k counts, 2026-07-01 to 2026-07-14):
   net saved              73,358  (70 % of replaced reads)
 ```
 
-Every successful query response records two real token figures to a local log
-(`.repoctx/stats.jsonl`): what the response cost, and the full file reads it is
-assumed to make unnecessary. Embedded slices and non-empty outlines are credited
-at the file's full-read cost; `--known` markers assume the caller actually holds
-the matching file content. **Net saved** is replaced reads minus response cost,
-summed over every recorded call. It is an estimate, not a guaranteed lower bound:
+Every successful query response records two token figures to a local log
+(`.repoctx/stats.jsonl`): exact response cost and an estimate of full-file reads
+made unnecessary. Embedded spans and non-empty outlines are credited at the
+file's full-read cost. Only an explicit matching full-file `--known` assertion
+can credit a reused read; span, symbol and pointer receipts receive no
+speculative full-file credit because they do not prove a read was avoided.
+**Net saved** is replaced reads minus response cost, summed over every recorded
+call. It is an estimate, not a guaranteed lower bound:
 discovery calls (`search`, `related`, `changed`, `architecture`, and
 `context --detail paths`) receive no credit, while credited content assumes a
 full read would otherwise have happened.
@@ -259,16 +293,22 @@ instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 ## Getting context
 
 This repository is indexed by RepoContext (`repoctx`); token figures are real
-BPE counts. The economical loop:
+BPE counts. Start with one budgeted call, then escalate only on a concrete gap:
 
-1. Orient once: `repoctx architecture --depth 1 --format md`.
-2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format json`.
-3. Before reading any file: `repoctx outline <file> --format json`.
-4. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
-5. Find a symbol: `repoctx search "<term>" --symbols --format json`.
+1. `repoctx context "<task>" --detail slices --response-budget-tokens 2000 --format json`
+2. Only if a file you need is missing: `repoctx search "<term>" --symbols --format json`.
+3. Only if the symbol you need was not delivered: `repoctx outline <file> --format json`.
+4. Only for dependency/impact questions: `repoctx related <file> --format json`.
+5. Only for unfamiliar boundaries: `repoctx architecture --depth 1 --format md`.
 6. After editing: `repoctx changed --format json`; when `stale`, run `repoctx index`.
-7. Never pay twice: `--known <path>@<hash>` returns unchanged files as
-   zero-cost markers.
+7. Stop once nothing you need is missing.
+
+Never pay twice, and never over-claim:
+
+- `--seen <receipt>` suppresses exactly the pointer, span or symbol that receipt
+  came from; the rest of the file still arrives.
+- `--known <path>@<hash>` asserts you hold the **whole** file — never derive it
+  from a slice or outline.
 ```
 
 ## MCP server
@@ -280,7 +320,7 @@ server over stdio and exposes five non-destructive query tools:
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |
 | `repoctx.get_changes` | `changed` | — |
@@ -288,8 +328,9 @@ server over stdio and exposes five non-destructive query tools:
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
 from the working directory, communicates over stdin/stdout only (no network),
-and never mutates the index. Successful calls append token counts to the local
-usage ledger described above.
+and never mutates the index. Successful calls may append token counts to the
+local usage ledger described above, so the tools are not advertised as strictly
+read-only/idempotent at the MCP protocol level.
 
 Register it with an MCP-capable client, for example:
 
@@ -377,7 +418,7 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | --- | --- |
 | `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
-| Results look stale | Re-run `repoctx index`; it is incremental and only re-reads changed files. |
+| Results look stale | Re-run `repoctx index`; unchanged files are not reparsed, though the local hash/graph pass still reads the indexed corpus. |
 | Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 
 ## Development

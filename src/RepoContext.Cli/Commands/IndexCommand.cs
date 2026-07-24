@@ -39,6 +39,10 @@ public static class IndexCommand
                 $"  files: {stats.TotalFiles} (+{stats.Added} ~{stats.Changed} -{stats.Deleted} ={stats.Unchanged})");
             Console.WriteLine(
                 $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  edges: {stats.TotalEdges}");
+            Console.WriteLine(
+                $"  work: {stats.BytesRead} bytes read  {stats.FilesParsed} files parsed  "
+                + $"{stats.GraphFilesAnalyzed} graph files analyzed  "
+                + $"{stats.EdgesRecomputed} edges recomputed  {stats.ElapsedMilliseconds} ms");
             return ExitCode.Success;
         });
 

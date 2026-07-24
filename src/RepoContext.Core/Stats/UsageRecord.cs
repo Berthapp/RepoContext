@@ -39,15 +39,20 @@ public sealed record UsageRecord
     /// <summary>
     /// Full-read tokens this response is credited with replacing: embedded
     /// slices and non-empty outline skeletons at the file's full-read cost,
-    /// unchanged markers at the re-read they avoided. Zero for pure discovery
-    /// responses.
+    /// plus explicit matching full-file possession assertions at the re-read
+    /// they avoided. Partial-evidence receipts and pure discovery responses
+    /// receive no full-file credit.
     /// </summary>
     public int Replaced { get; init; }
 
     /// <summary>Result items in the response (context/outline only).</summary>
     public int? Files { get; init; }
 
-    /// <summary>Zero-cost unchanged markers in the response (context only).</summary>
+    /// <summary>
+    /// Distinct files with acknowledged reused units (context only). The
+    /// persisted field name remains <c>unchanged</c> for log compatibility;
+    /// acknowledgements still consume real response tokens.
+    /// </summary>
     public int? Unchanged { get; init; }
 
     /// <summary>Compact single-line serializer options for the JSONL log.</summary>

@@ -12,6 +12,25 @@ namespace RepoContext.Cli.Mcp;
 public static class McpServerRunner
 {
     /// <summary>
+    /// Model-visible workflow guidance. Public so the offline evaluation harness
+    /// measures the exact production instructions instead of a hand-written
+    /// substitute that can drift.
+    /// </summary>
+    public const string Instructions =
+        "RepoContext serves compact, explainable, deterministic context from a local "
+        + "repository index. Start with one repoctx.get_context call using detail='slices' "
+        + "and responseBudgetTokens=2000; use 'outline' to survey more files or 'paths' "
+        + "when only locations are needed. Escalate only for a concrete gap: search when "
+        + "a needed file is missing, outline when a needed symbol was not delivered, and "
+        + "related_files for dependency or impact questions. Echo returned evidence "
+        + "receipts through seen to suppress exactly those pointers, spans, or symbols. Use known "
+        + "path@hash only when you independently hold the entire file; never derive it "
+        + "from a slice or outline hash. After edits call get_changes and re-index when "
+        + "stale. Stop once no evidence needed for the task is missing. Processing is deterministic, "
+        + "offline, and local; successful calls may append aggregate counts to the local "
+        + "usage ledger.";
+
+    /// <summary>
     /// Runs the server until the client closes stdin or cancellation is
     /// requested. Nothing is written to stdout except MCP protocol messages.
     /// </summary>
@@ -20,17 +39,7 @@ public static class McpServerRunner
         var options = new McpServerOptions
         {
             ServerInfo = new Implementation { Name = "repoctx", Version = CliInfo.Version },
-            ServerInstructions =
-                "RepoContext serves compact, explainable, deterministic context from a local "
-                + "repository index; every token figure is a real BPE count. The economical loop: "
-                + "(1) repoctx.get_context with a budgetTokens and detail='slices' for working "
-                + "context, or detail='outline' to survey; (2) repoctx.get_outline before reading "
-                + "any file - a skeleton costs a fraction of the file; (3) repoctx.get_related_files "
-                + "instead of searching for dependencies; (4) after editing, repoctx.get_changes - "
-                + "when stale, run 'repoctx index' (fast, incremental) and re-query; (5) never pay "
-                + "twice: echo each result's hash back via known=['path@hash'] and unchanged files "
-                + "return as zero-cost markers. Results are deterministic and carry machine-readable "
-                + "reasons. All tools are read-only and never leave the machine.",
+            ServerInstructions = Instructions,
             ToolCollection = McpTools.Build(),
         };
 

@@ -7,17 +7,21 @@ namespace RepoContext.Core.Tests.Stats;
 public class UsageMeterTests
 {
     [Fact]
-    public void ReplacedTokens_CountsDeliveredContentAndUnchangedMarkers()
+    public void ReplacedTokens_CountsDeliveredContentAndAcknowledgedReuse()
     {
         ContextResult result = Result(
-            // A pointer: the agent still reads the file itself — replaces nothing.
-            Item("src/pointer.ts", fileTokens: null),
-            // A slice/outline item: full-read cost carried on the item.
-            Item("src/slice.ts", fileTokens: 500, snippet: "const x = 1;"),
-            // FileTokens alone are metadata, not delivered skeleton content.
-            Item("docs/no-symbols.md", fileTokens: 700),
-            // An unchanged marker: the avoided re-read is resolved via the index.
-            Item("src/known.ts", fileTokens: null, unchanged: true));
+            items:
+            [
+                // A pointer: the agent still reads the file itself — replaces nothing.
+                Item("src/pointer.ts", fileTokens: null),
+                // A slice item: full-read cost carried on the item.
+                Item("src/slice.ts", fileTokens: 500, span: "const x = 1;"),
+                // FileTokens alone are metadata, not delivered skeleton content.
+                Item("docs/no-symbols.md", fileTokens: 700),
+            ],
+            // Explicit matching full-file possession objectively avoids this read.
+            reused: [Reused("src/known.ts")],
+            reusedReadTokens: 300);
 
         var fullReads = new Dictionary<string, int> { ["src/known.ts"] = 300 };
         int replaced = UsageMeter.ReplacedTokens(
@@ -27,9 +31,36 @@ public class UsageMeterTests
     }
 
     [Fact]
-    public void ReplacedTokens_UnresolvableUnchangedFileCountsZero()
+    public void ReplacedTokens_DoesNotTreatPartialReceiptsAsAvoidedFullFileReads()
     {
-        ContextResult result = Result(Item("src/gone.ts", fileTokens: null, unchanged: true));
+        // Three span receipts prove only that those spans were already delivered.
+        // They do not prove that a 400-token full-file read was avoided.
+        ContextResult result = Result(
+            items: [],
+            reused:
+            [
+                Reused("src/big.ts", 1, 10),
+                Reused("src/big.ts", 20, 30),
+                Reused("src/big.ts", 40, 50),
+            ]);
+
+        Assert.Equal(0, UsageMeter.ReplacedTokens(result, _ => 400));
+    }
+
+    [Fact]
+    public void ReplacedTokens_DoesNotDoubleCreditMixedSeenAndUnseenUnits()
+    {
+        ContextResult result = Result(
+            items: [Item("src/big.ts", fileTokens: 500, span: "new evidence")],
+            reused: [Reused("src/big.ts", 1, 10)]);
+
+        Assert.Equal(500, UsageMeter.ReplacedTokens(result, _ => 500));
+    }
+
+    [Fact]
+    public void ReplacedTokens_UnresolvableReusedFileCountsZero()
+    {
+        ContextResult result = Result(items: [], reused: [Reused("src/gone.ts")]);
 
         Assert.Equal(0, UsageMeter.ReplacedTokens(result, _ => null));
     }
@@ -48,20 +79,32 @@ public class UsageMeterTests
         Assert.Equal(500, UsageMeter.OutlineReplacedTokens(withSymbol));
     }
 
-    private static ContextResult Result(params ContextItem[] items) => new()
-    {
-        Query = "q",
-        Terms = ["q"],
-        State = "abcdef123456",
-        Detail = ContextDetail.Slices,
-        Items = items,
-        TotalCandidates = items.Length,
-        Omitted = 0,
-        EstimatedTokens = items.Sum(i => i.EstimatedTokens),
-    };
+    private static ContextResult Result(
+        IReadOnlyList<ContextItem> items,
+        IReadOnlyList<ReusedUnit> reused,
+        int reusedReadTokens = 0) => new()
+        {
+            Query = "q",
+            Terms = ["q"],
+            State = "abcdef123456",
+            ContentState = "abcdef123456",
+            AnalysisState = "111111222222",
+            EvidenceId = "333333444444",
+            Detail = ContextDetail.Slices,
+            Top = 8,
+            Items = items,
+            Reused = reused,
+            ReusedCount = reused.Count,
+            ReusedReadTokens = reusedReadTokens,
+            TotalCandidates = items.Count,
+            Omitted = 0,
+            Omissions = new OmissionReasons(),
+            EstimatedTokens = items.Sum(i => i.EstimatedTokens),
+            ContentTokens = items.Sum(i => i.ContentTokens),
+            ProjectedReadTokens = items.Sum(i => i.ProjectedReadTokens),
+        };
 
-    private static ContextItem Item(
-        string path, int? fileTokens, string? snippet = null, bool unchanged = false) => new()
+    private static ContextItem Item(string path, int? fileTokens, string? span = null) => new()
     {
         Path = path,
         Kind = "code",
@@ -70,9 +113,19 @@ public class UsageMeterTests
         EndLine = 10,
         Reasons = ["fts:q"],
         Hash = "abcdef123456",
-        EstimatedTokens = unchanged ? 0 : 50,
+        EstimatedTokens = 50,
+        ContentTokens = span is null ? 0 : 10,
         FileTokens = fileTokens,
-        Unchanged = unchanged,
-        Snippet = snippet,
+        Spans = span is null
+            ? null
+            : [new ContextSpan { StartLine = 1, EndLine = 10, Text = span, Receipt = "receipt" }],
+    };
+
+    private static ReusedUnit Reused(string path, int? start = null, int? end = null) => new()
+    {
+        Path = path,
+        Receipt = $"receipt-{path}-{start}-{end}",
+        StartLine = start,
+        EndLine = end,
     };
 }

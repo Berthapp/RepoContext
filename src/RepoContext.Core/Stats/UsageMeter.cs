@@ -6,32 +6,40 @@ namespace RepoContext.Core.Stats;
 /// <summary>
 /// Computes the full-read tokens credited as replaced (ADR 0011). Only content
 /// actually delivered (slices, non-empty outline skeletons) and re-reads the
-/// caller declares avoided (unchanged markers) count. Pointers and discovery
+/// caller declares avoided (acknowledged reuse) count. Pointers and discovery
 /// answers replace nothing, whatever their guidance value.
 /// </summary>
 public static class UsageMeter
 {
     /// <summary>
-    /// Full-read tokens credited as replaced by a context bundle. Items that
-    /// carry content have their full-read cost in
-    /// <see cref="ContextItem.FileTokens"/>; unchanged markers deliberately omit
-    /// it (they are zero-cost on the wire), so it is resolved via
-    /// <paramref name="fullReadTokens"/>.
+    /// Full-read tokens credited as replaced by a context bundle.
     /// </summary>
+    /// <remarks>
+    /// Two sources contribute. Items that carry embedded evidence credit the
+    /// full-read cost they stand in for. Reuse contributes only when an explicit
+    /// matching full-file possession claim objectively avoided a read. Span,
+    /// symbol, and pointer receipts prove evidence possession, not a full-file
+    /// read, and therefore receive no speculative full-read credit.
+    /// </remarks>
     public static int ReplacedTokens(ContextResult result, Func<string, int?> fullReadTokens)
     {
+        _ = fullReadTokens; // Retained for source compatibility with existing callers.
         int replaced = 0;
+        var creditedPaths = new HashSet<string>(StringComparer.Ordinal);
         foreach (ContextItem item in result.Items)
         {
-            if (item.Unchanged)
-            {
-                replaced += fullReadTokens(item.Path) ?? 0;
-            }
-            else if (item.FileTokens is { } fullRead && CarriesContent(item))
+            if (item.FileTokens is { } fullRead
+                && CarriesContent(item)
+                && creditedPaths.Add(item.Path))
             {
                 replaced += fullRead;
             }
         }
+
+        // Known-file acknowledgement takes precedence over evidence delivery in
+        // the packer, so these paths cannot overlap delivered items. The total is
+        // computed from the complete reuse set before its display prefix is cut.
+        replaced += result.ReusedReadTokens;
 
         return replaced;
     }
@@ -46,5 +54,5 @@ public static class UsageMeter
         result.Symbols.Count > 0 ? result.TokenCount : 0;
 
     private static bool CarriesContent(ContextItem item) =>
-        item.Snippet is { Length: > 0 } || item.Symbols is { Count: > 0 };
+        item.Spans is { Count: > 0 } || item.Symbols is { Count: > 0 };
 }

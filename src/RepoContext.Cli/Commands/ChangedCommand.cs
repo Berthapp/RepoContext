@@ -46,7 +46,7 @@ public static class ChangedCommand
 
             RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
@@ -54,7 +54,8 @@ public static class ChangedCommand
             ChangedResult result = ChangeDetector.Run(layout, config, store);
             string rendered = ChangedOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "changed", UsageSources.Cli, rendered);
+            UsageRecorder.Record(
+                layout, "changed", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered));
             return ExitCode.Success;
         });
 

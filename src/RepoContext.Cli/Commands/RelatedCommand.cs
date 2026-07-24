@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Graph;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
@@ -53,8 +54,9 @@ public static class RelatedCommand
                 return ExitCode.InvalidArguments;
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
@@ -68,7 +70,8 @@ public static class RelatedCommand
 
             string rendered = RelatedOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "related", UsageSources.Cli, rendered);
+            UsageRecorder.Record(
+                layout, "related", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered));
             return ExitCode.Success;
         });
 

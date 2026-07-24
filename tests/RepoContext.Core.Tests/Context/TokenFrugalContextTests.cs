@@ -9,7 +9,7 @@ namespace RepoContext.Core.Tests.Context;
 public class TokenFrugalContextTests
 {
     private static ContextResult Run(IndexStore store, string query, ContextOptions? options = null) =>
-        new ContextEngine(store, RepoctxConfig.CreateDefault())
+        new ContextEngine(store, RepoctxConfig.CreateDefault() with { Include = ["."] })
             .Run(query, options ?? new ContextOptions { Top = 20 });
 
     [Fact]
@@ -45,14 +45,13 @@ public class TokenFrugalContextTests
     }
 
     [Fact]
-    public void KnownHash_TurnsItemsIntoZeroCostUnchangedMarkers()
+    public void KnownHash_AcknowledgesTheFileAsReused_WithoutDeliveringContent()
     {
         using var repo = new FixtureRepo("sample-ts");
         using IndexStore store = IndexHelper.BuildIndex(repo);
 
         ContextResult first = Run(store, "change the login logic");
         ContextItem login = first.Items.Single(i => i.Path == "src/auth/login.ts");
-        Assert.False(login.Unchanged);
 
         ContextResult second = Run(store, "change the login logic", new ContextOptions
         {
@@ -64,12 +63,11 @@ public class TokenFrugalContextTests
             },
         });
 
-        ContextItem marker = second.Items.Single(i => i.Path == "src/auth/login.ts");
-        Assert.True(marker.Unchanged);
-        Assert.Equal(0, marker.EstimatedTokens);
-        Assert.Null(marker.Snippet);
-        // Ranking and explanation are unaffected; only the payload is dropped.
-        Assert.NotEmpty(marker.Reasons);
+        // v3: a whole-file possession claim is acknowledged in `reused` rather
+        // than delivered as an item, so it cannot occupy a result slot.
+        Assert.DoesNotContain(second.Items, i => i.Path == "src/auth/login.ts");
+        Assert.Contains(second.Reused, r => r.Path == "src/auth/login.ts");
+        Assert.Equal(1, second.ReusedCount);
     }
 
     [Fact]
@@ -87,7 +85,8 @@ public class TokenFrugalContextTests
             },
         });
 
-        Assert.False(result.Items.Single(i => i.Path == "src/auth/login.ts").Unchanged);
+        Assert.Contains(result.Items, i => i.Path == "src/auth/login.ts");
+        Assert.Empty(result.Reused);
     }
 
     [Fact]

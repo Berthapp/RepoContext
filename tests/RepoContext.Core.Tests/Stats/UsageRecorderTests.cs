@@ -18,7 +18,7 @@ public class UsageRecorderTests : IDisposable
         {
             Environment.SetEnvironmentVariable(UsageRecorder.DisableVariable, null);
             UsageRecorder.Record(layout, "context", UsageSources.Cli,
-                rendered: "{\"schema_version\":2}", replacedTokens: 1234, files: 2, unchanged: 1);
+                rendered: "{\"schema_version\":3}", replacedTokens: 1234, files: 2, unchanged: 1);
 
             IReadOnlyList<UsageRecord> records = UsageLog.Read(UsageLog.PathFor(layout));
             UsageRecord record = Assert.Single(records);

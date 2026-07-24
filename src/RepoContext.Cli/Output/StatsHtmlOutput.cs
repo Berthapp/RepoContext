@@ -60,7 +60,8 @@ public static class StatsHtmlOutput
 
         sb.Append("<footer><p>Explainable estimate: embedded slices and non-empty outline " +
                   "skeletons are credited at the full-file read cost they are assumed to " +
-                  "replace; unchanged markers assume the caller holds matching content. Discovery " +
+                  "replace; only explicit matching full-file possession assertions credit a " +
+                  "reused read. Partial-evidence receipts receive no full-file credit. Discovery " +
                   "responses (search, related, changed, architecture, paths-only context) " +
                   "count as pure cost. All figures are real o200k token counts from the " +
                   "local log <code>.repoctx/stats.jsonl</code> — nothing leaves this " +

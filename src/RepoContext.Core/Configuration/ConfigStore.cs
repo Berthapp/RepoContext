@@ -1,6 +1,5 @@
-using System.Security.Cryptography;
-using System.Text;
 using System.Text.Json;
+using RepoContext.Core.Identity;
 
 namespace RepoContext.Core.Configuration;
 
@@ -24,12 +23,40 @@ public static class ConfigStore
         File.WriteAllText(path, Serialize(config) + "\n");
 
     /// <summary>
-    /// A stable content hash of the effective config, stored in the index meta
-    /// table so a changed config can be detected (and trigger a full rebuild).
+    /// A stable semantic hash of the complete effective configuration. Map keys
+    /// are ordinally sorted so construction/insertion order cannot move Q4
+    /// identities.
     /// </summary>
-    public static string ComputeHash(RepoctxConfig config)
-    {
-        byte[] bytes = Encoding.UTF8.GetBytes(Serialize(config));
-        return Convert.ToHexStringLower(SHA256.HashData(bytes));
-    }
+    public static string ComputeHash(RepoctxConfig config) => Canonical.Hash(
+        "effective_config.v1",
+        ComputeIndexHash(config),
+        Invariant(config.Ranking.Weights.Fts),
+        Invariant(config.Ranking.Weights.Symbol),
+        Invariant(config.Ranking.Weights.Graph),
+        Invariant(config.Ranking.Weights.Path),
+        Canonical.JoinRecords(config.Ranking.Synonyms
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .Select(pair => Canonical.JoinRecords(
+            [
+                pair.Key,
+                Canonical.JoinRecords(pair.Value),
+            ]))));
+
+    /// <summary>
+    /// Stable hash of only the configuration that determines the indexed corpus.
+    /// Live ranking weights and synonyms change <c>analysis_state</c>, but do not
+    /// force stored chunks/symbols/edges to be rebuilt.
+    /// </summary>
+    public static string ComputeIndexHash(RepoctxConfig config) => Canonical.Hash(
+        "index_config.v1",
+        Canonical.JoinRecords(config.Include),
+        Canonical.JoinRecords(config.Exclude),
+        config.RespectGitignore ? "true" : "false",
+        Canonical.JoinRecords(config.SensitiveFiles),
+        config.Indexing.MaxFileSizeKb.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        config.Indexing.IncludeTests ? "true" : "false",
+        config.Indexing.IncludeDocs ? "true" : "false");
+
+    private static string Invariant(double value) =>
+        value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);
 }

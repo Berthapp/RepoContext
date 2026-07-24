@@ -1,78 +1,120 @@
-# Token savings — measured
+# Token savings — measurement and accounting
 
-RepoContext's value proposition is that an AI agent solves the same task for
-fewer tokens. This page documents an end-to-end measurement of the M6
-token-frugal protocol (ADR 0009/0010) on this repository itself, so the
-numbers are reproducible: 75 files, 774 chunks, 536 symbols, 205 edges at the
-time of measurement. All figures are real `o200k_base` BPE counts of the
-bytes an agent would actually receive — not estimates.
+RepoContext is useful only when an agent gathers the evidence for the same task
+with less model-visible work and without losing relevant evidence. The Release
+1 candidate therefore measures deterministic simulated evidence-gathering
+workflows, not character counts or isolated snippets.
 
-For the same accounting applied automatically to *your* usage, run
-`repoctx stats` — the token-savings dashboard aggregated from a local usage
-log (ADR 0011).
+The current reviewable results are:
 
-**Task used throughout:** *"improve token budget packing in the context
-engine"* (top-3 relevant files: `ContextEngine.cs` 3,256 tokens,
-`ContextResult.cs` 882, `ContextCommand.cs` 1,198 — 5,336 together).
+- `docs/eval/baseline.md` — aggregate relevance and cost metrics;
+- `docs/eval/raw/` — exact core, CLI and MCP-content bodies plus deterministic
+  canonical MCP envelope/session models used by those token totals; and
+- `docs/eval/manifest.md` — corpus, policy, formulas, environment and exact
+  reproduction commands.
 
-## Getting working context
+All token figures use the local `o200k_base` tokenizer. RepoContext never calls
+an LLM, uses embeddings, or sends code or measurements over a network.
+Because this candidate corpus was introduced with the Release 1 implementation,
+it is a baseline for later changes, not evidence of Release 1 versus pre-change
+quality parity; the manifest records that provenance limitation explicitly.
 
-| Agent workflow | Tokens received | What the agent has afterwards |
-| --- | ---: | --- |
-| grep/read: open the 3 relevant files | 5,336 | 3 whole files, no ranking, no reasons |
-| `context` (pointers) + read all 3 | 886 + 5,336 = 6,222 | 3 whole files + ranking/reasons for 8 |
-| `context --detail outline --budget-tokens 2000` | **2,151** | skeletons of 7 top files + reasons + hashes |
-| `context --detail slices --budget-tokens 2000` | **2,110** | the 3 best source slices embedded + reasons + hashes |
+## What is counted
 
-The slices bundle answers most "where and what is this" questions directly —
-**~60-66 % cheaper** than either full-read workflow, with explainable ranking
-included. When a full read is still needed, its exact cost is already known
-(`file_tokens`), so the agent spends deliberately.
+The harness keeps each layer separate:
 
-## Budgets you can trust
+| Layer | Boundary |
+| --- | --- |
+| core document | rendered result without a CLI newline or transport wrapper |
+| CLI stdout | exact stdout, including its trailing newline |
+| MCP content | model-visible text content block |
+| MCP transport | JSON-RPC escaping and response envelope |
+| session overhead | the production server instructions and generated tool schemas, once per session |
+| call arguments | actual serialized MCP argument objects |
+| full-file reads | exact indexed token counts for reads required by the frozen workflow |
 
-`--budget-tokens` is charged at what the response actually costs (embedded
-content in serialized form + per-item envelope), not at a guess:
+The report also records deterministic cold, no-op and one-file-change index
+operation counters (bytes read, files parsed, graph files analyzed and edges
+recomputed). Wall-clock timing is exposed by `repoctx index` but is not persisted
+in the golden snapshot because it varies by machine.
 
-| Bundle | Charged by the packer | Actual response | Accuracy |
-| --- | ---: | ---: | ---: |
-| slices @ 2,000 | 1,986 | 2,110 | 94 % |
-| outline @ 2,000 | 1,991 | 2,151 | 93 % |
+## Budgets
 
-(The gap is the fixed document header.) The old bytes/4 heuristic was off by
-~15 % on typical source (`ContextEngine.cs`: guessed 3,374, real 2,942) and
-far more on indented or markdown-heavy files.
+The three budget options deliberately have different bases:
 
-## Never pay twice
+| Option | Basis | Hard ceiling? |
+| --- | --- | --- |
+| `--budget-tokens` | compatibility “charged work”: projected reads for paths, embedded evidence otherwise | yes, on that legacy basis |
+| `--response-budget-tokens` | exact model-visible rendered response | yes |
+| `--projected-read-budget-tokens` | downstream full-file reads implied by pointers | yes |
 
-Re-running the same call with the previously returned hashes echoed back
-(`--known <path>@<hash>` per file):
+Only `--response-budget-tokens` bounds the serialized response. The CLI counts
+its final newline; MCP counts the text content block and reports transport
+overhead separately. Final omission and reuse metadata are included. If no
+useful successful payload fits, the command emits no partial success and
+returns an actionable `retry_budget_tokens`. That value is guaranteed to fit a
+deterministically chosen compact useful payload; it may exceed the mathematical
+minimum so the error path remains bounded on large repositories.
 
-- the 3 already-delivered files come back as `unchanged: true` markers
-  (~40 tokens each instead of ~650),
-- the freed budget pulls in 5 additional files that had not fit before
-  (response: 2,469 tokens of *new* information instead of 2,110 of repeats).
+Active limits are echoed in the schema-v3 `budgets` object with explicit bases.
 
-The `state` hash on every bundle tells the agent whether the index moved at
-all between calls.
+## Safe reuse
 
-## Staying oriented cheaply
+A short file hash identifies a file version; it does not prove that an agent
+received the whole file. Release 1 separates the two claims:
 
-| Call | Tokens |
-| --- | ---: |
-| `architecture --depth 1 --format md` (session-start orientation) | 303 |
-| `architecture --format md` (full depth-3 tree) | 505 |
-| `outline` of the 3,256-token `ContextEngine.cs` | 1,111 |
-| `changed` on a clean tree | 154 |
+- `--seen <receipt>` acknowledges exactly one previously delivered pointer,
+  source span or outline symbol. Other evidence from the same file remains
+  eligible.
+- `--known <path>@<hash>` is an explicit assertion that the caller independently
+  holds the entire file. Never derive it from a slice or outline response.
 
-## Reproducing
+Receipts are stateless, deterministic full SHA-256 values encoded as base64url.
+They bind the path, full content hash, representation kind, exact range/symbol,
+canonical delivered evidence and only the producer versions relevant to that
+unit. Reused units do not consume `--top` slots; their bounded metadata still
+counts against the response budget.
 
-```bash
-repoctx index
-repoctx context "improve token budget packing in the context engine" \
-  --detail slices --budget-tokens 2000 --format json | wc -c   # ≈ 4 chars/token
+## Usage dashboard semantics
+
+`repoctx stats` reads a strictly local, git-ignored
+`.repoctx/stats.jsonl`. It records actual response tokens. “Reads replaced” is
+an estimate:
+
+- an embedded non-empty slice or outline credits the file read it is assumed to
+  replace;
+- an explicit matching full-file `known` assertion can credit an avoided read;
+- a span, symbol or pointer receipt receives no speculative full-file credit;
+  it proves evidence possession, not that a full read was avoided; and
+- discovery-only calls receive no replacement credit.
+
+This conservative rule prevents mixed seen/unseen units from crediting the same
+file twice. “Net saved” remains an estimate because whether an agent would
+otherwise have read a file is counterfactual.
+
+## Reproduce
+
+```powershell
+$env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'
+$env:REPOCTX_NO_STATS = '1'
+
+dotnet build RepoContext.slnx -c Release
+dotnet test tests/RepoContext.Integration.Tests -c Release --no-build `
+  --filter "FullyQualifiedName~Evaluation"
+
+# Rewrite aggregate and raw snapshots only when their diff is under review.
+$env:REPOCTX_UPDATE_EVAL_BASELINE = '1'
+dotnet test tests/RepoContext.Integration.Tests -c Release --no-build `
+  --filter "FullyQualifiedName~BaselineSnapshotTests"
 ```
 
-Counts here were produced with the same `o200k_base` tokenizer the index
-uses. Ranking or costing changes should re-run this measurement and update
-the tables (see ADR 0010).
+For an individual live call:
+
+```powershell
+repoctx index
+repoctx context "improve token budget packing" `
+  --detail slices --response-budget-tokens 2000 --format json
+```
+
+Tokenize the exact stdout with the same local tokenizer. Do not use `wc -c`,
+bytes/4, or a characters-per-token approximation.

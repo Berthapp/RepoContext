@@ -512,9 +512,11 @@ Acceptance criteria:
   their bases in self-describing output.
 - Expose why candidates were omitted: `top`, `response_budget`,
   `projected_read_budget`, or `nonpositive_score`.
-- If a response budget cannot fit the smallest useful successful payload, CLI
-  returns `ExitCode.InvalidArguments` with concise stderr and MCP returns
-  `IsError=true` with `minimum_budget_tokens`. The requested success-payload
+- If a response budget cannot fit a useful successful payload, CLI returns
+  `ExitCode.InvalidArguments` with concise stderr and MCP returns `IsError=true`
+  with a deterministic `retry_budget_tokens` guaranteed to fit a compact useful
+  retry. Do not exhaustively search every lower integer: error-path work must be
+  bounded independently of the requested budget. The requested success-payload
   budget does not apply to this error channel, and no partial success result is
   emitted.
 - Defer `detail=auto` to Release 2. It needs an evaluated, documented rule table

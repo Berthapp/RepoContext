@@ -6,6 +6,7 @@ using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
 using RepoContext.Core.Graph;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Query;
 using RepoContext.Core.Stats;
@@ -42,14 +43,14 @@ public static class McpTools
                     + "document (schema_version, results[] with path, score, kind, lines and "
                     + "machine-readable reasons). Use for finding files or symbols by term.")),
             McpServerTool.Create(
-                (Func<string, int, int?, string, string[]?, CallToolResult>)GetContext,
+                (Func<string, int, int?, int?, int?, string, string[]?, string[]?, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Ranked, explained context bundle for a natural-language task, packed into a "
                     + "real-BPE token budget. detail='paths' returns pointers with exact full-read "
-                    + "costs; 'outline' adds symbol skeletons; 'slices' embeds the best source "
-                    + "slice so no file read is needed. Pass path@hash as 'known' only for files "
-                    + "whose content you already hold; do not echo hashes from pointer-only results. "
-                    + "Prefer this over reading files.")),
+                    + "costs; 'outline' adds symbol skeletons; 'slices' embeds the matching source "
+                    + "spans and can avoid a full-file read. Echo a 'receipt' from earlier evidence "
+                    + "via 'seen' to skip exactly that pointer, span, or symbol; pass path@hash as 'known' only "
+                    + "for files you hold in full. Prefer this over reading files.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
                 Describe("repoctx.get_related_files",
@@ -60,8 +61,8 @@ public static class McpTools
                 (Func<string, CallToolResult>)GetOutline,
                 Describe("repoctx.get_outline",
                     "A file's skeleton: symbols with signatures, lines and doc summaries, plus its "
-                    + "content hash and exact full-read token cost. Costs a fraction of reading the "
-                    + "file - use it to decide whether (and which part of) a file is worth reading.")),
+                    + "content hash and exact full-read token cost. Use the compact skeleton to "
+                    + "decide whether (and which part of) a file is worth reading.")),
             McpServerTool.Create(
                 (Func<CallToolResult>)GetChanges,
                 Describe("repoctx.get_changes",
@@ -92,8 +93,9 @@ public static class McpTools
             return Fail("Query has no searchable terms.");
         }
 
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         using IndexStore store = IndexStore.Open(layout.DatabasePath);
-        if (OutdatedSchema(store) is { } outdated)
+        if (OutdatedIndex(store, config) is { } outdated)
         {
             return outdated;
         }
@@ -106,12 +108,19 @@ public static class McpTools
 
     private static CallToolResult GetContext(
         [Description("A natural-language description of what you want to do.")] string task,
-        [Description("Maximum number of files (default 8).")] int top = 8,
-        [Description("Token budget the bundle is packed into (real BPE counts).")] int? budgetTokens = null,
+        [Description("Maximum number of new files (default 8); reused units never consume a slot.")]
+        int top = 8,
+        [Description("Compatibility 'charged work' cap (real BPE counts).")] int? budgetTokens = null,
+        [Description("Hard ceiling on the exact serialized response.")] int? responseBudgetTokens = null,
+        [Description("Hard ceiling on full-file reads implied by delivered pointers.")]
+        int? projectedReadBudgetTokens = null,
         [Description("Per-file detail: 'paths', 'outline' or 'slices'.")] string detail = "paths",
-        [Description("Files whose full content you already hold, each as path@hash; "
-            + "unchanged ones return as zero-cost markers.")]
-        string[]? known = null)
+        [Description("Files whose FULL content you already hold, each as path@hash. Never derive "
+            + "this from a slice or outline.")]
+        string[]? known = null,
+        [Description("Receipts from evidence you already received; only those exact pointers, "
+            + "spans, or symbols are suppressed.")]
+        string[]? seen = null)
     {
         if (top <= 0)
         {
@@ -121,6 +130,22 @@ public static class McpTools
         if (budgetTokens is <= 0)
         {
             return Fail("budgetTokens must be greater than zero.");
+        }
+
+        if (responseBudgetTokens is <= 0)
+        {
+            return Fail("responseBudgetTokens must be greater than zero.");
+        }
+
+        if (projectedReadBudgetTokens is <= 0)
+        {
+            return Fail("projectedReadBudgetTokens must be greater than zero.");
+        }
+
+        string[] seenReceipts = seen ?? [];
+        if (Array.Find(seenReceipts, r => !Receipt.IsWellFormed(r)) is { } malformed)
+        {
+            return Fail($"Invalid seen receipt '{malformed}'. Pass a receipt exactly as returned.");
         }
 
         ContextDetail? detailLevel = detail?.ToLowerInvariant() switch
@@ -158,7 +183,7 @@ public static class McpTools
 
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         using IndexStore store = IndexStore.Open(layout.DatabasePath);
-        if (OutdatedSchema(store) is { } outdated)
+        if (OutdatedIndex(store, config) is { } outdated)
         {
             return outdated;
         }
@@ -168,15 +193,27 @@ public static class McpTools
         {
             Top = top,
             BudgetTokens = budgetTokens,
+            ResponseBudgetTokens = responseBudgetTokens,
+            ProjectedReadBudgetTokens = projectedReadBudgetTokens,
             Detail = detailLevel.Value,
             Known = knownMap,
-        });
+            Seen = seenReceipts,
+        }, responseBudgetTokens is null ? null : ContextCostModel.ForMcpText());
 
-        string rendered = ContextOutput.Render(result, OutputFormat.Json);
+        if (result.Shortfall is { } shortfall)
+        {
+            // Error channel: the requested success-payload budget does not apply
+            // here, and no partial result is emitted alongside it.
+            return Fail(
+                $"responseBudgetTokens {shortfall.RequestedBudgetTokens} cannot fit the smallest "
+                + $"useful response. retry_budget_tokens={shortfall.RetryBudgetTokens}");
+        }
+
+        string rendered = ContextOutput.Render(result, OutputFormat.Json, Surfaces.McpText);
         UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
             UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),
             files: result.Items.Count,
-            unchanged: result.Items.Count(i => i.Unchanged));
+            unchanged: result.ReusedFilesCount);
         return Ok(rendered);
     }
 
@@ -194,8 +231,9 @@ public static class McpTools
             return Fail("Path is outside the repository.");
         }
 
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         using IndexStore store = IndexStore.Open(layout.DatabasePath);
-        if (OutdatedSchema(store) is { } outdated)
+        if (OutdatedIndex(store, config) is { } outdated)
         {
             return outdated;
         }
@@ -225,8 +263,9 @@ public static class McpTools
             return Fail("Path is outside the repository.");
         }
 
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         using IndexStore store = IndexStore.Open(layout.DatabasePath);
-        if (OutdatedSchema(store) is { } outdated)
+        if (OutdatedIndex(store, config) is { } outdated)
         {
             return outdated;
         }
@@ -252,7 +291,7 @@ public static class McpTools
 
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         using IndexStore store = IndexStore.Open(layout.DatabasePath);
-        if (OutdatedSchema(store) is { } outdated)
+        if (OutdatedIndex(store, config) is { } outdated)
         {
             return outdated;
         }
@@ -274,6 +313,34 @@ public static class McpTools
         store.IsSchemaCurrent
             ? null
             : Fail("Index schema is outdated. Run 'repoctx index' to rebuild it.");
+
+    /// <summary>
+    /// Rejects both an outdated on-disk schema and an index produced by different
+    /// analysis versions (Q4). Serving evidence — or honouring a receipt — from
+    /// stale stored analysis is exactly the failure this fails closed on.
+    /// </summary>
+    private static CallToolResult? OutdatedIndex(IndexStore store, RepoctxConfig config)
+    {
+        if (OutdatedSchema(store) is { } outdated)
+        {
+            return outdated;
+        }
+
+        if (!store.IsProducerCurrent)
+        {
+            return Fail(
+                "Index was produced by a different analysis version. Run 'repoctx index' to rebuild it.");
+        }
+
+        if (!store.HasValidStateHash)
+        {
+            return Fail("Index state metadata is missing or invalid. Run 'repoctx index' to rebuild it.");
+        }
+
+        return store.IsIndexConfigCurrent(config)
+            ? null
+            : Fail("Index was built with different indexing settings. Run 'repoctx index' to refresh it.");
+    }
 
     private static McpServerToolCreateOptions Describe(string name, string description) => new()
     {
