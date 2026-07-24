@@ -8,7 +8,7 @@ namespace RepoContext.Core.Tests.Context;
 public class ContextEngineTests
 {
     private static ContextResult Run(IndexStore store, string query, ContextOptions? options = null) =>
-        new ContextEngine(store, RepoctxConfig.CreateDefault())
+        new ContextEngine(store, RepoctxConfig.CreateDefault() with { Include = ["."] })
             .Run(query, options ?? new ContextOptions { Top = 20 });
 
     [Fact]

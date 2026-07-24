@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
@@ -56,13 +57,14 @@ public static class OutlineCommand
                 return ExitCode.InvalidArguments;
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
 
-            Core.Indexing.TokenScale scale = CommandSupport.ScaleFor(layout);
+            Core.Indexing.TokenScale scale = Core.Indexing.TokenScale.From(config);
             Core.Outline.OutlineResult? result = Core.Outline.Outline.Query(store, relative, scale);
             if (result is null)
             {
@@ -72,7 +74,8 @@ public static class OutlineCommand
 
             string rendered = OutlineOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "outline", UsageSources.Cli, rendered,
+            UsageRecorder.Record(
+                layout, "outline", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
                 replacedTokens: UsageMeter.OutlineReplacedTokens(result), files: 1, scale: scale);
             return ExitCode.Success;
         });

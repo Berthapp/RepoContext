@@ -80,7 +80,10 @@ public sealed record TokenOptions
     /// </summary>
     public string Profile { get; init; } = "o200k";
 
-    /// <summary>Explicit multiplier; overrides <see cref="Profile"/> when set.</summary>
+    /// <summary>
+    /// Explicit multiplier in <c>(0, 100]</c>; overrides
+    /// <see cref="Profile"/> when valid. Invalid values fall back to raw counts.
+    /// </summary>
     public double? Factor { get; init; }
 }
 

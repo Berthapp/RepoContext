@@ -2,6 +2,7 @@ using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Architecture;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
@@ -31,7 +32,7 @@ public static class PrimeCommand
         format.Aliases.Add("-f");
 
         var command = new Command("prime",
-            "Emit a cache-stable repository primer: byte-identical output until indexed content changes.")
+            "Emit a cache-stable repository primer: byte-identical for unchanged indexed content and token calibration.")
         {
             files,
             format,
@@ -59,18 +60,21 @@ public static class PrimeCommand
                 return ExitCode.NoIndex;
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
 
-            Core.Indexing.TokenScale scale = CommandSupport.ScaleFor(layout);
+            Core.Indexing.TokenScale scale = Core.Indexing.TokenScale.From(config);
             var engine = new PrimeEngine(store, scale);
             PrimeResult result = engine.Build(fileCount);
             string rendered = PrimeOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "prime", UsageSources.Cli, rendered, scale: scale);
+            UsageRecorder.Record(
+                layout, "prime", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: scale);
             return ExitCode.Success;
         });
 

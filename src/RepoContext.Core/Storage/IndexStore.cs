@@ -1,4 +1,5 @@
 using Microsoft.Data.Sqlite;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Parsing;
 
@@ -9,6 +10,10 @@ public static class MetaKeys
 {
     public const string SchemaVersion = "schema_version";
     public const string ToolVersion = "tool_version";
+    /// <summary>
+    /// Hash of indexing-affecting settings only. Live ranking/output settings
+    /// belong to result analysis identity and do not stale the stored corpus.
+    /// </summary>
     public const string ConfigHash = "config_hash";
     public const string IndexedAtUtc = "indexed_at_utc";
     public const string FileCount = "file_count";
@@ -18,6 +23,14 @@ public static class MetaKeys
 
     /// <summary>SHA-256 over all (path, content_hash) pairs: identifies the index state.</summary>
     public const string StateHash = "state_hash";
+
+    /// <summary>
+    /// Catch-all fingerprint of every index-time producer (scanner, decoder,
+    /// parser, chunker, tokenizer, graph) whose output is stored on disk (Q4,
+    /// ADR 0015). Query commands reject an index whose stored value is stale, the
+    /// same way an outdated on-disk schema is rejected.
+    /// </summary>
+    public const string AnalysisProducerVersion = "analysis_producer_version";
 }
 
 /// <summary>Existing file identity used for incremental diffing.</summary>
@@ -105,6 +118,34 @@ public sealed class IndexStore : IDisposable
     /// </summary>
     public bool IsSchemaCurrent =>
         GetMeta(MetaKeys.SchemaVersion) == IndexSchema.Version.ToString();
+
+    /// <summary>
+    /// Whether the stored analysis producers match the running build (Q4). A
+    /// parser, chunker, decoder, tokenizer or graph change alters stored analysis
+    /// without changing a byte of source, so the index must be rebuilt before its
+    /// contents can be trusted — and before any receipt derived from them is
+    /// honoured.
+    /// </summary>
+    public bool IsProducerCurrent =>
+        GetMeta(MetaKeys.AnalysisProducerVersion) == Identity.ProducerVersions.AnalysisProducerVersion;
+
+    /// <summary>Whether the index records a complete SHA-256 content-state fingerprint.</summary>
+    public bool HasValidStateHash
+    {
+        get
+        {
+            string? value = GetMeta(MetaKeys.StateHash);
+            return value is { Length: 64 } && value.All(Uri.IsHexDigit);
+        }
+    }
+
+    /// <summary>
+    /// Whether the indexed corpus was scanned under the current indexing-only
+    /// configuration. Live ranking/synonym changes intentionally do not make the
+    /// stored corpus stale.
+    /// </summary>
+    public bool IsIndexConfigCurrent(RepoctxConfig config) =>
+        GetMeta(MetaKeys.ConfigHash) == ConfigStore.ComputeIndexHash(config);
 
     public SqliteTransaction BeginTransaction() => _connection.BeginTransaction();
 
@@ -210,51 +251,109 @@ public sealed class IndexStore : IDisposable
     /// <param name="symbolsOnly">When true, only symbol chunks are considered.</param>
     public IReadOnlyList<SearchHit> Search(string matchExpression, int top, bool symbolsOnly = false)
     {
-        var best = new Dictionary<string, SearchHit>(StringComparer.Ordinal);
+        var best = new List<SearchHit>();
         using (SqliteCommand cmd = _connection.CreateCommand())
         {
             cmd.CommandText =
-                "SELECT f.path, f.kind, c.kind, c.start_line, c.end_line, c.heading, " +
-                "       bm25(chunks_fts) AS score " +
-                "FROM chunks_fts " +
-                "JOIN chunks c ON c.id = chunks_fts.rowid " +
-                "JOIN files f ON f.id = c.file_id " +
-                "WHERE chunks_fts MATCH $q " +
+                "WITH matched AS MATERIALIZED (" +
+                "  SELECT f.path, f.kind AS file_kind, c.kind AS chunk_kind, " +
+                "         c.start_line, c.end_line, c.heading, bm25(chunks_fts) AS score " +
+                "  FROM chunks_fts " +
+                "  JOIN chunks c ON c.id = chunks_fts.rowid " +
+                "  JOIN files f ON f.id = c.file_id " +
+                "  WHERE chunks_fts MATCH $q " +
                 (symbolsOnly ? "AND c.kind = 'symbol' " : string.Empty) +
-                // c.id breaks BM25 ties so the cap cutoff and the best chunk
-                // per file stay stable across SQLite versions (determinism).
-                "ORDER BY score ASC, c.id ASC LIMIT $cap";
+                "), ranked AS (" +
+                "  SELECT *, row_number() OVER (" +
+                "    PARTITION BY path ORDER BY score ASC, start_line ASC, end_line ASC, " +
+                "    chunk_kind COLLATE BINARY ASC, coalesce(heading, '') COLLATE BINARY ASC" +
+                "  ) AS file_rank FROM matched" +
+                ") " +
+                "SELECT path, file_kind, chunk_kind, start_line, end_line, heading, score " +
+                "FROM ranked WHERE file_rank = 1 " +
+                "ORDER BY score ASC, path COLLATE BINARY ASC, start_line ASC, end_line ASC, " +
+                "chunk_kind COLLATE BINARY ASC, coalesce(heading, '') COLLATE BINARY ASC " +
+                "LIMIT $cap";
             cmd.Parameters.AddWithValue("$q", matchExpression);
-            cmd.Parameters.AddWithValue("$cap", Math.Max(top * 20, 200));
+            cmd.Parameters.AddWithValue("$cap", top);
             using SqliteDataReader reader = cmd.ExecuteReader();
             while (reader.Read())
             {
-                string path = reader.GetString(0);
-                double score = -reader.GetDouble(6); // bm25: lower is better -> flip.
-                if (best.TryGetValue(path, out SearchHit? existing) && existing.Score >= score)
+                best.Add(new SearchHit
                 {
-                    continue;
-                }
-
-                best[path] = new SearchHit
-                {
-                    Path = path,
+                    Path = reader.GetString(0),
                     Kind = reader.GetString(1),
                     ChunkKind = reader.GetString(2),
                     StartLine = reader.GetInt32(3),
                     EndLine = reader.GetInt32(4),
                     Heading = reader.IsDBNull(5) ? null : reader.GetString(5),
-                    Score = score,
+                    Score = -reader.GetDouble(6), // bm25: lower is better -> flip.
                     Reasons = ["fts"],
-                };
+                });
             }
         }
 
-        return best.Values
-            .OrderByDescending(h => h.Score)
-            .ThenBy(h => h.Path, StringComparer.Ordinal)
-            .Take(top)
-            .ToList();
+        return best;
+    }
+
+    /// <summary>
+    /// Returns <i>all</i> matching chunks rather than the single best one per
+    /// file, so context generation can retain several pieces of evidence from
+    /// the same file (Q2). A per-file cap keeps one repetitive file from
+    /// consuming the whole global limit, and both caps are applied after a
+    /// deterministic ordering so the cut is stable.
+    /// </summary>
+    /// <param name="matchExpression">The FTS5 MATCH expression.</param>
+    /// <param name="perFileCap">Maximum hits retained per file.</param>
+    /// <param name="globalCap">Maximum hits returned overall.</param>
+    /// <param name="symbolsOnly">When true, only symbol chunks are considered.</param>
+    public IReadOnlyList<SearchHit> SearchEvidence(
+        string matchExpression, int perFileCap, int globalCap, bool symbolsOnly = false)
+    {
+        var all = new List<SearchHit>();
+        using (SqliteCommand cmd = _connection.CreateCommand())
+        {
+            cmd.CommandText =
+                "WITH matched AS MATERIALIZED (" +
+                "  SELECT f.path, f.kind AS file_kind, c.kind AS chunk_kind, " +
+                "         c.start_line, c.end_line, c.heading, bm25(chunks_fts) AS score " +
+                "  FROM chunks_fts " +
+                "  JOIN chunks c ON c.id = chunks_fts.rowid " +
+                "  JOIN files f ON f.id = c.file_id " +
+                "  WHERE chunks_fts MATCH $q " +
+                (symbolsOnly ? "AND c.kind = 'symbol' " : "AND c.kind <> 'symbol' ") +
+                "), ranked AS (" +
+                "  SELECT *, row_number() OVER (" +
+                "    PARTITION BY path ORDER BY score ASC, start_line ASC, end_line ASC, " +
+                "    chunk_kind COLLATE BINARY ASC, coalesce(heading, '') COLLATE BINARY ASC" +
+                "  ) AS file_rank FROM matched" +
+                ") " +
+                "SELECT path, file_kind, chunk_kind, start_line, end_line, heading, score " +
+                "FROM ranked WHERE file_rank <= $per_file " +
+                "ORDER BY score ASC, path COLLATE BINARY ASC, start_line ASC, end_line ASC, " +
+                "chunk_kind COLLATE BINARY ASC, coalesce(heading, '') COLLATE BINARY ASC " +
+                "LIMIT $cap";
+            cmd.Parameters.AddWithValue("$q", matchExpression);
+            cmd.Parameters.AddWithValue("$per_file", Math.Max(perFileCap, 0));
+            cmd.Parameters.AddWithValue("$cap", Math.Max(globalCap, 0));
+            using SqliteDataReader reader = cmd.ExecuteReader();
+            while (reader.Read())
+            {
+                all.Add(new SearchHit
+                {
+                    Path = reader.GetString(0),
+                    Kind = reader.GetString(1),
+                    ChunkKind = reader.GetString(2),
+                    StartLine = reader.GetInt32(3),
+                    EndLine = reader.GetInt32(4),
+                    Heading = reader.IsDBNull(5) ? null : reader.GetString(5),
+                    Score = -reader.GetDouble(6), // bm25: lower is better -> flip.
+                    Reasons = ["fts"],
+                });
+            }
+        }
+
+        return all;
     }
 
     /// <summary>Removes all graph edges (the graph is fully recomputed each index).</summary>

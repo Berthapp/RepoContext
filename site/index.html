@@ -482,10 +482,10 @@ tar -xzf repoctx-linux-x64.tar.gz
               <span>copy</span>
             </button>
           </div>
-          <div class="code"><pre><span class="comment"># in one project of the repository</span>
-dotnet add package RepoContext.MSBuild
+          <div class="code"><pre><span class="comment"># in exactly one project of the repository</span>
+dotnet add src/YourProject package RepoContext.MSBuild
 
-<span class="comment"># the next build sets everything up: init (CLAUDE.md/AGENTS.md), index, wrappers, MCP config</span>
+<span class="comment"># sets up init, index, local CLI payload, wrappers, and portable MCP config</span>
 dotnet build
 ./.repoctx/bin/repoctx context "change the login logic"</pre></div>
         </div>
@@ -526,7 +526,7 @@ dotnet build
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">commands</span>
-        <h2>Six commands, one contract.</h2>
+        <h2>Twelve commands, one contract.</h2>
         <p>Every command speaks <code>--format text</code>, <code>json</code> or <code>md</code>. The JSON is stable, snake_case and always carries <code>schema_version</code>.</p>
       </div>
       <div class="table-wrap">
@@ -539,8 +539,14 @@ dotnet build
             <tr><td><code>index</code></td><td class="desc">Build or incrementally update the index (hash diff).</td><td><code>--full</code></td></tr>
             <tr><td><code>search</code></td><td class="desc">BM25 full-text search over content and symbols.</td><td><code>--symbols · --top</code></td></tr>
             <tr><td><code>related</code></td><td class="desc">A file's imports, dependents and linked tests.</td><td><code>--format</code></td></tr>
-            <tr><td><code>context</code></td><td class="desc">Ranked, explained, budgeted bundle for a task.</td><td><code>--budget-tokens · --snippets</code></td></tr>
+            <tr><td><code>context</code></td><td class="desc">Ranked, explained bundle under exact response and read budgets.</td><td><code>--response-budget-tokens · --detail</code></td></tr>
+            <tr><td><code>outline</code></td><td class="desc">A compact symbol skeleton before a full-file read.</td><td><code>--format</code></td></tr>
+            <tr><td><code>changed</code></td><td class="desc">Working-tree changes, impacted files, and optional delta hunks.</td><td><code>--patch</code></td></tr>
             <tr><td><code>architecture</code></td><td class="desc">LOC tree, language mix, centrality, entrypoints.</td><td><code>--format</code></td></tr>
+            <tr><td><code>prime</code></td><td class="desc">A cache-stable repository primer for unfamiliar work.</td><td><code>--files · --format</code></td></tr>
+            <tr><td><code>memory</code></td><td class="desc">Store and recall short agent-authored notes, decisions, and constraints.</td><td><code>add · search · rm</code></td></tr>
+            <tr><td><code>stats</code></td><td class="desc">Local token-savings and optional cost dashboard.</td><td><code>--format · --open</code></td></tr>
+            <tr><td><code>mcp</code></td><td class="desc">Serve the same deterministic tools over stdio.</td><td>—</td></tr>
           </tbody>
         </table>
       </div>
@@ -556,11 +562,15 @@ dotnet build
       </div>
       <div class="mcp-grid">
         <div>
-          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a read-only server over stdio and exposes three tools — each returning the same deterministic JSON as the CLI.</p>
+          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a local, non-destructive server over stdio and exposes seven compact tools. Query calls may append aggregate counts to the local usage ledger.</p>
           <ul>
             <li><b>repoctx.search</b> — full-text and symbol search</li>
             <li><b>repoctx.get_context</b> — the ranked, budgeted bundle</li>
             <li><b>repoctx.get_related_files</b> — imports, dependents, tests</li>
+            <li><b>repoctx.get_outline</b> — compact symbol skeleton</li>
+            <li><b>repoctx.get_changes</b> — changes, impact, delta hunks</li>
+            <li><b>repoctx.memory_add</b> — retain a durable finding</li>
+            <li><b>repoctx.memory_search</b> — recall local knowledge</li>
           </ul>
         </div>
         <div class="panel">

@@ -2,6 +2,7 @@ using System.CommandLine;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Architecture;
+using RepoContext.Core.Configuration;
 using RepoContext.Core.Stats;
 using RepoContext.Core.Storage;
 
@@ -53,8 +54,9 @@ public static class ArchitectureCommand
                 return ExitCode.NoIndex;
             }
 
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
-            if (!CommandSupport.EnsureSchemaCurrent(store))
+            if (!CommandSupport.EnsureIndexUsable(store, config))
             {
                 return ExitCode.NoIndex;
             }
@@ -62,8 +64,9 @@ public static class ArchitectureCommand
             ArchitectureResult result = new ArchitectureEngine(store).Build(treeDepth);
             string rendered = ArchitectureOutput.Render(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
-            UsageRecorder.Record(layout, "architecture", UsageSources.Cli, rendered,
-                scale: CommandSupport.ScaleFor(layout));
+            UsageRecorder.Record(
+                layout, "architecture", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
+                scale: Core.Indexing.TokenScale.From(config));
             return ExitCode.Success;
         });
 

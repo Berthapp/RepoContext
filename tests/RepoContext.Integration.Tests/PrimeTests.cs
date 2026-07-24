@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace RepoContext.Integration.Tests;
 
@@ -67,6 +68,37 @@ public class PrimeTests
 
         var paths = files.Select(f => f.GetProperty("path").GetString()!).ToList();
         Assert.Equal(paths.OrderBy(p => p, StringComparer.Ordinal).ToList(), paths);
+    }
+
+    [Fact]
+    public void Prime_TokenProfile_IsExplicitAndPartOfCacheIdentity()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+        ws.Run("init");
+        ws.Run("index");
+
+        CliResult raw = ws.Run("prime", "--format", "json");
+        using JsonDocument rawDoc = JsonDocument.Parse(raw.StdOut);
+        Assert.False(rawDoc.RootElement.TryGetProperty("token_profile", out _));
+        int rawTokens = rawDoc.RootElement.GetProperty("results")[0]
+            .GetProperty("estimated_tokens").GetInt32();
+
+        string configPath = ws.PathOf("repoctx.config.json");
+        JsonNode config = JsonNode.Parse(File.ReadAllText(configPath))!;
+        config["tokens"] = new JsonObject { ["profile"] = "claude" };
+        File.WriteAllText(configPath, config.ToJsonString());
+
+        CliResult calibrated = ws.Run("prime", "--format", "json");
+        Assert.Equal(0, calibrated.ExitCode);
+        using JsonDocument calibratedDoc = JsonDocument.Parse(calibrated.StdOut);
+        Assert.Equal(
+            "claude",
+            calibratedDoc.RootElement.GetProperty("token_profile").GetString());
+        Assert.Equal(
+            (int)Math.Ceiling(rawTokens * 1.2),
+            calibratedDoc.RootElement.GetProperty("results")[0]
+                .GetProperty("estimated_tokens").GetInt32());
+        Assert.NotEqual(raw.StdOut, calibrated.StdOut);
     }
 
     [Fact]

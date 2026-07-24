@@ -25,8 +25,8 @@ public static class SearchOutput
         int i = 1;
         foreach (SearchHit hit in hits)
         {
-            sb.Append($"| {i} | `{hit.Path}` | {Round(hit.Score):F4} | {hit.Kind} | " +
-                      $"L{hit.StartLine}-{hit.EndLine} | {string.Join(", ", hit.Reasons)} |\n");
+            sb.Append(FormattableString.Invariant(
+                $"| {i} | `{hit.Path}` | {Round(hit.Score):F4} | {hit.Kind} | L{hit.StartLine}-{hit.EndLine} | {string.Join(", ", hit.Reasons)} |\n"));
             i++;
         }
 
@@ -41,8 +41,8 @@ public static class SearchOutput
         foreach (SearchHit hit in hits)
         {
             string symbol = hit.Heading is { Length: > 0 } h ? $"  {h}" : string.Empty;
-            sb.Append($"{i,3}. {hit.Path,-48} {Round(hit.Score),7:F4}  {hit.Kind,-6}  " +
-                      $"[L{hit.StartLine}-{hit.EndLine}]  {string.Join(",", hit.Reasons)}{symbol}\n");
+            sb.Append(FormattableString.Invariant(
+                $"{i,3}. {hit.Path,-48} {Round(hit.Score),7:F4}  {hit.Kind,-6}  [L{hit.StartLine}-{hit.EndLine}]  {string.Join(",", hit.Reasons)}{symbol}\n"));
             i++;
         }
 

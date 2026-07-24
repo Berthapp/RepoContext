@@ -6,9 +6,9 @@ using RepoContext.Core.Memory;
 namespace RepoContext.Cli.Output;
 
 /// <summary>
-/// Renders <c>repoctx memory</c> documents (ADR 0013). JSON stays on
-/// <c>schema_version</c> 2: the <c>memory</c> command document is additive and
-/// the item shape is shared with the <c>context</c> bundle's memory section.
+/// Renders <c>repoctx memory</c> documents (ADR 0013). JSON uses the current
+/// repository-wide output schema; its item shape is shared with the
+/// <c>context</c> bundle's memory section.
 /// </summary>
 public static class MemoryOutput
 {

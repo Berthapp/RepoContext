@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RepoContext.Core.Indexing;
 
 namespace RepoContext.Integration.Tests;
 
@@ -72,6 +73,21 @@ public class StatsDashboardTests
         string line = Assert.Single(File.ReadAllLines(ws.PathOf(StatsFile)));
         using JsonDocument record = JsonDocument.Parse(line);
         Assert.Equal(0, record.RootElement.GetProperty("replaced").GetInt32());
+    }
+
+    [Fact]
+    public void CliUsageRecordsTheExactStdoutIncludingItsNewline()
+    {
+        using FixtureWorkspace ws = Indexed();
+
+        CliResult result = ws.Run("search", "login", "--format", "json");
+        Assert.Equal(0, result.ExitCode);
+
+        string line = Assert.Single(File.ReadAllLines(ws.PathOf(StatsFile)));
+        using JsonDocument record = JsonDocument.Parse(line);
+        Assert.Equal(
+            Tokens.Count(result.StdOut),
+            record.RootElement.GetProperty("served").GetInt32());
     }
 
     [Fact]

@@ -7,7 +7,10 @@ public sealed record UsageBucket
 {
     public required int Calls { get; init; }
 
-    /// <summary>Tokens all responses in this bucket cost (real o200k counts).</summary>
+    /// <summary>
+    /// Tokens all responses in this bucket cost, using the per-call calibration
+    /// recorded in the ledger (raw o200k for uncalibrated calls).
+    /// </summary>
     public required long ServedTokens { get; init; }
 
     /// <summary>Full-read tokens these responses are credited as replacing.</summary>

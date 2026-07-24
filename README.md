@@ -15,19 +15,18 @@ Supported languages: **TypeScript, TSX, JavaScript, C#**.
 
 ## Why: tokens are the bill
 
-Every token figure repoctx reports is a real BPE count, and budgets are charged
-at what the agent actually receives — so `--budget-tokens 2000` really means
-about 2,000 tokens. Measured end-to-end on this repository
-([methodology & full numbers](docs/token-savings.md)):
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="docs/assets/token-savings-dark.svg">
-  <img alt="Measured: getting working context for the same task costs 6,222 tokens with pointer-plus-full-read workflows, 2,151 with a budgeted outline bundle and 2,110 with a budgeted slices bundle - 66 percent less." src="docs/assets/token-savings.svg" width="880">
-</picture>
+Every token figure repoctx reports is a real BPE count, and
+`--response-budget-tokens 2000` is a hard ceiling measured against the exact
+bytes emitted — not an estimate. In the current deterministic candidate
+evaluation, repeating a slices request with its receipts cuts the core response
+from 1,904 to 609 tokens (68%) while retaining every labelled must-find file,
+symbol and span. See the [methodology, limitations and raw
+artifacts](docs/token-savings.md); the candidate is a baseline for future
+changes, not a retroactive pre/post quality comparison.
 
 The loop an agent runs, on this repository:
 
-<img alt="Animated terminal demo: repoctx context with a token budget returning ranked source slices with reasons and hashes; repoctx outline showing a file skeleton for a third of the read cost; repoctx changed reporting a modified file and its impacted dependents; and a repeated context call with --known returning a zero-cost unchanged marker." src="docs/assets/demo.svg" width="880">
+<img alt="Animated terminal demo: repoctx context returning ranked source slices, repoctx outline showing a compact skeleton, and repoctx changed reporting modified and impacted files. The animation predates per-unit receipts; use --seen for partial evidence and reserve --known for files held in full." src="docs/assets/demo.svg" width="880">
 
 ## Requirements
 
@@ -65,12 +64,16 @@ Many corporate environments allow NuGet packages but block installing dotnet
 tools. **`RepoContext.MSBuild`** delivers the same `repoctx` CLI as a regular
 package: it arrives with the `dotnet restore` your build already runs — no
 tool installation, no extra download, nothing outside the NuGet feed you
-already trust. Add it to one project of the repository (any target framework;
-the machine needs the .NET 10 runtime, which the SDK you build with includes):
+already trust. Add it to **exactly one project in the repository** (any target
+framework; the machine needs the .NET 10 runtime, which the SDK you build with
+includes):
 
 ```bash
 dotnet add src/YourProject package RepoContext.MSBuild
 ```
+
+Do not add it to every project through `Directory.Build.props`: auto-setup is
+repository-scoped, so one project must own it.
 
 It is a development-only dependency: nothing is compiled into your assemblies,
 copied to your output, or passed on to consumers of your package. **The next
@@ -81,12 +84,16 @@ build sets everything up automatically** — no further commands:
   agent instructions);
 - every build: an incremental `repoctx index`, so the index follows your
   code without anyone remembering to run it;
+- a portable copy of the packaged CLI in `.repoctx/bin/tool/`, refreshed only
+  when the package version changes (a one-line source stamp keeps unchanged
+  builds cheap);
 - wrapper scripts `repoctx` / `repoctx.cmd` in `.repoctx/bin/` (git-ignored),
-  kept pointing at the current package version across updates;
+  both pointing at that stable local copy;
 - a `.vscode/mcp.json` registering the repoctx [MCP server](#mcp-server) for
   Copilot agent mode and other MCP clients — only when none exists yet; an
-  existing `mcp.json` is never touched. It references the wrapper by
-  workspace-relative path, so commit it and the whole team is wired up.
+  existing `mcp.json` is never touched. It invokes the workspace-relative
+  local DLL through `dotnet exec`, so the same committed file works on Windows,
+  macOS and Linux.
 
 **Install the package, build once, code with your agent** — no commands:
 
@@ -95,24 +102,29 @@ dotnet build      # ...and everything is ready:
 ./.repoctx/bin/repoctx context "change the login logic"
 ```
 
-The wrapper is a fixed path for humans, agent instructions and MCP configs
-alike. The repository root is detected as: an existing `repoctx.config.json`
-above the project, else the solution directory, else the directory the build
-was started from — override with `-p:RepoCtxRoot=...`.
+The wrapper is a fixed path for humans and agent instructions; MCP launches the
+same local payload directly. The repository root is detected as: an existing
+`repoctx.config.json` above the project, else the solution directory, else the
+directory the build was started from — override with `-p:RepoCtxRoot=...`.
 
-Auto-setup is skipped for IDE design-time builds, runs once per build (never
-per target framework), and never fails your build — repoctx problems surface
-as warnings. Opt out per property (in the project file or via `-p:`):
+Auto-setup is skipped for IDE design-time builds, runs once per build when the
+package is referenced by exactly one project (never per target framework), and
+never fails your build — repoctx problems surface as warnings. Because setup
+and indexing are repository-wide, separate project builds cannot share an
+MSBuild critical section. Opt out per property (in the project file or via
+`-p:`):
 `RepoCtxAutoSetup=false` (everything), `RepoCtxAutoAgents=false` (init runs
 with `--no-agents`: no `CLAUDE.md`/`AGENTS.md`), `RepoCtxAutoIndex=false`
 (no per-build index), `RepoCtxAutoShim=false` (no wrapper scripts),
 `RepoCtxAutoMcp=false` (no `.vscode/mcp.json`).
 
-For manual control (e.g. with auto-setup off), three MSBuild targets remain:
+For manual control (e.g. with auto-setup off), four MSBuild targets remain:
 
 ```bash
 # run any repoctx command through MSBuild, in the detected repository root:
 dotnet msbuild src/YourProject -t:RepoCtx -p:RepoCtxArgs="index"
+# refresh the repository-local portable payload:
+dotnet msbuild src/YourProject -t:RepoCtxInstall
 # (re)write the wrapper scripts:
 dotnet msbuild src/YourProject -t:RepoCtxShim
 # write .vscode/mcp.json (if missing):
@@ -150,7 +162,7 @@ repoctx search "authentication"                 # BM25 full-text search
 repoctx search "login" --symbols                # search symbols only
 repoctx related src/auth/login.ts               # imports, dependents, tests
 repoctx context "change the login logic"        # explained, budgeted bundle
-repoctx context "add logout" --top 4 --budget-tokens 2000 --snippets
+repoctx context "add logout" --top 4 --response-budget-tokens 2000 --detail slices
 repoctx architecture                            # structure, languages, centrality
 ```
 
@@ -191,7 +203,7 @@ $ repoctx search "login" --top 2 --format json
 
 ```json
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "command": "search",
   "query": "login",
   "count": 2,
@@ -234,10 +246,10 @@ via `repoctx related`).
 | `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--detail paths\|outline\|slices`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--no-memory`, `--format` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
-| `prime` | Cache-stable repository primer for the top of an agent's prompt (byte-identical until code changes). | `--files`, `--format` |
+| `prime` | Cache-stable repository primer for a cacheable prompt prefix (byte-identical for unchanged indexed content and token calibration). | `--files`, `--format` |
 | `memory add <text>` | Store one agent-authored insight: a `note`, `decision` or `constraint`, optionally linked to files (hash-recorded) and scoped to a session. | `--kind`, `--file`, `--tag`, `--session`, `--format` |
 | `memory search [query]` | Deterministic recall with reasons and hash-based `stale` flags; omit the query to list. | `--top`, `--kind`, `--file`, `--session`, `--stale`, `--format` |
 | `memory rm <id>` | Remove one memory entry (curation). | `--format` |
@@ -252,28 +264,67 @@ Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
 All token figures are real BPE counts (`o200k_base`, computed offline at index
 time), so budgets can be trusted. The intended agent workflow:
 
-1. `prime` — a byte-stable primer (languages, layout, entrypoints, key files)
-   for the top of the prompt, behind a cache breakpoint. It changes only when
-   code changes, so every later turn re-reads it at cached-token rates.
-2. `context "<task>" --detail slices --budget-tokens 2000 --format md` —
-   working context with source slices packed into the budget. Prefer `md` for
-   slices: JSON escaping of embedded code is billed and adds 10-20 %. `--detail
-   outline` surveys more files for fewer tokens; the default `paths` returns
-   pointers plus exact full-read costs. `--strip-comments` drops comment
+1. Optionally run `prime` for a new, unfamiliar repository when the agent can
+   keep a byte-stable primer (languages, layout, entrypoints, key files) behind
+   a cache breakpoint. Skip this call for focused/familiar work or clients that
+   cannot retain a cached prefix. The primer is byte-identical for unchanged
+   indexed content and token calibration.
+2. `context "<task>" --detail slices --response-budget-tokens 2000 --format md`
+   — working context with symbol-aligned source `spans` packed into a **hard**
+   response ceiling. Markdown avoids JSON's escaping cost for embedded code;
+   use JSON when a client needs to parse the envelope. `--detail outline`
+   surveys more files for fewer tokens, while the default `paths` returns
+   pointers plus exact full-read costs. `--strip-comments` can remove comment
    banners from slices (lossy; line ranges become approximate).
-3. `outline <file>` before any full read.
-4. After editing: `changed --patch` returns just the changed hunks (far
-   cheaper than a re-read) — and `repoctx index` when it reports `stale`.
-5. Never pay twice. Pass `--session <name>` and `context` remembers the slices
-   it delivered, returning unchanged files as zero-cost markers on later calls
-   without you re-typing anything (echoed `--known <path>@<hash>` lists work
-   too, but that text is output tokens, which cost more than input). Every
-   `context` response also carries a `state` hash that moves whenever the
-   index content changes.
-6. Never re-derive. `memory add` stores a distilled insight after the work is
-   done; `memory search` (and `context`, automatically) brings it back in the
-   next session for a fraction of the re-discovery cost. See
+3. Escalate only on a concrete gap: `search --symbols` when a file is missing,
+   `outline <file>` when the symbol you need was not delivered, `related` for
+   dependency/impact questions, and `architecture --depth 1` for unfamiliar
+   boundaries.
+4. After editing, use `changed --patch` for just the changed hunks. Run
+   `repoctx index` and re-query when it reports `stale`.
+5. Never pay twice, and never over-claim what is known: use receipts, whole-file
+   assertions, or a named session as described below.
+6. When `context` leaves a concrete knowledge gap, try `memory search` before
+   re-deriving it (`context` already recalls matching memories automatically);
+   `memory add` records a distilled finding after the work is done. See
    [Agent memory](#agent-memory-never-re-derive) below.
+
+#### Budgets
+
+| Option | Bounds | Hard? |
+| --- | --- | --- |
+| `--budget-tokens` | *charged work*: projected reads for `paths`, embedded content otherwise | compatibility cap (v2 basis) |
+| `--response-budget-tokens` | exact model-visible response (CLI stdout includes its newline; MCP counts its text block) | **yes** |
+| `--projected-read-budget-tokens` | full-file reads implied by delivered pointers | **yes** |
+
+Only `--response-budget-tokens` promises a ceiling on what reaches the model.
+Every supplied budget must pass; none overrides another. There is no first-item
+exception — if a budget cannot fit the smallest useful response, the command
+exits `3` with a deterministic `retry_budget_tokens=<n>` that is guaranteed to
+fit, and emits no partial result. The retry value is intentionally conservative
+rather than an exhaustively searched mathematical minimum, keeping malformed
+tiny-budget requests cheap. See ADR 0016.
+
+#### Reuse: receipts vs. full-file possession
+
+These are **not** interchangeable, and conflating them was a real bug (ADR 0015):
+
+- **`--seen <receipt>`** (repeatable) — each delivered pointer, span and outline
+  symbol carries a `receipt`. Echoing one suppresses *exactly* that unit; every
+  other part of the same file still arrives. Reused units are acknowledged in
+  `reused` and never consume a `--top` slot, so echoing receipts buys new context
+  rather than markers.
+- **`--known <path>@<hash>`** — asserts you hold the **entire** file. Use it only
+  when you actually read the whole file. The `hash` printed next to a *partial*
+  result identifies the file version, not what you were sent; deriving `--known`
+  from a slice or outline claims possession of lines you never received.
+- **`--session <name>`** — persists reuse bookkeeping locally so clients need
+  not echo receipts and hashes on every call. It preserves the same distinction:
+  partial evidence must never be promoted to a whole-file possession claim.
+
+Every `context` response carries `content_state` (which file contents are
+indexed), `analysis_state` (that content plus config and producer versions),
+`evidence_id` and `representation_id`.
 
 Using a non-OpenAI model? Set `tokens.profile` (e.g. `"claude"`) in
 `repoctx.config.json` so budgets and reported counts match your tokenizer —
@@ -285,7 +336,7 @@ the index keeps raw counts, so no re-index is needed when you switch.
 successful usage (CLI and MCP alike):
 
 ```text
-Token savings (o200k counts, 2026-07-01 to 2026-07-14):
+Token savings (per-call calibrated counts, 2026-07-01 to 2026-07-14):
 
   calls                      42
   response tokens        31,208
@@ -293,12 +344,16 @@ Token savings (o200k counts, 2026-07-01 to 2026-07-14):
   net saved              73,358  (70 % of replaced reads)
 ```
 
-Every successful query response records two real token figures to a local log
-(`.repoctx/stats.jsonl`): what the response cost, and the full file reads it is
-assumed to make unnecessary. Embedded slices and non-empty outlines are credited
-at the file's full-read cost; `--known` markers assume the caller actually holds
-the matching file content. **Net saved** is replaced reads minus response cost,
-summed over every recorded call. It is an estimate, not a guaranteed lower bound:
+Every successful query response records two token figures to a local log
+(`.repoctx/stats.jsonl`): exact response cost and an estimate of full-file reads
+made unnecessary, using the token calibration active for that call. A historical
+log can therefore mix profiles if the configuration changes. Embedded spans and
+non-empty outlines are credited at the
+file's full-read cost. Only an explicit matching full-file `--known` assertion
+can credit a reused read; span, symbol and pointer receipts receive no
+speculative full-file credit because they do not prove a read was avoided.
+**Net saved** is replaced reads minus response cost, summed over every recorded
+call. It is an estimate, not a guaranteed lower bound:
 discovery calls (`search`, `related`, `changed`, `architecture`, and
 `context --detail paths`) receive no credit, while credited content assumes a
 full read would otherwise have happened.
@@ -336,7 +391,8 @@ of `.repoctx/`):
   rename").
 - `--session <name>` scopes an entry short-term: a scratchpad note visible
   only to calls carrying that session (it survives an agent's context-window
-  compaction), while the session's known-set keeps tracking delivered files.
+  compaction), while the session tracks delivered evidence receipts and only
+  explicit whole-file possession assertions.
 
 Every entry is content-addressed (re-adding updates instead of duplicating),
 capped at 2,000 characters, and linked files record their content hash — when
@@ -376,25 +432,34 @@ instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
 ## Getting context
 
 This repository is indexed by RepoContext (`repoctx`); token figures are real
-BPE counts. The economical loop:
+BPE counts. Start with one budgeted call, then escalate only on a concrete gap:
 
-1. Orient once: `repoctx prime` — a cache-stable primer; place it at the top
-   of the prompt behind a cache breakpoint.
-2. Working context: `repoctx context "<task>" --detail slices --budget-tokens 2000 --format md`
-   (prefer `md` for slices — JSON escaping of code is billed; `--strip-comments`
-   drops comment banners).
-3. Track a session instead of echoing hashes: `repoctx context "<task>" --session <name>`
-   returns unchanged files as zero-cost markers on later calls.
-4. Before reading any file: `repoctx outline <file> --format json`.
-5. Dependencies and tests: `repoctx related <file> --format json` instead of grep.
-6. Find a symbol: `repoctx search "<term>" --symbols --format json`.
-7. After editing: `repoctx changed --patch --format md` for just the changed
-   hunks; when `stale`, run `repoctx index`.
-8. Never re-derive: `repoctx memory search "<topic>" --format json` before
-   exploring (`context` folds matching memories in automatically); verify
-   entries flagged `stale`.
-9. Remember what you learned: `repoctx memory add "<1-2 sentence insight>"
-   --kind note|decision|constraint --file <path>` after completing a task.
+1. Optionally orient with `repoctx prime` for a new, unfamiliar repository, but
+   only when the client can retain it behind a cache breakpoint.
+2. Working context: `repoctx context "<task>" --detail slices
+   --response-budget-tokens 2000 --format md` (`md` avoids JSON escaping for
+   embedded code; `--strip-comments` is a lossy option for comment banners).
+3. Only if a file is missing: `repoctx search "<term>" --symbols --format json`.
+4. Only if a symbol is missing: `repoctx outline <file> --format json`.
+5. Only for dependency or impact questions:
+   `repoctx related <file> --format json`.
+6. Only for unfamiliar boundaries:
+   `repoctx architecture --depth 1 --format md`.
+7. After editing: `repoctx changed --patch --format md`; when `stale`, run
+   `repoctx index`.
+8. If `context` leaves a concrete knowledge gap, use
+   `repoctx memory search "<topic>" --format json`; after completing difficult
+   work, record only a distilled finding with `repoctx memory add`.
+9. Stop once no evidence needed for the task is missing.
+
+Never pay twice, and never over-claim:
+
+- `--seen <receipt>` suppresses exactly the pointer, span or symbol that receipt
+  came from; the rest of the file still arrives.
+- `--known <path>@<hash>` asserts you hold the **whole** file — never derive it
+  from a slice or outline.
+- `--session <name>` persists reuse bookkeeping locally without changing that
+  partial-versus-whole-file distinction.
 ```
 
 ## MCP server
@@ -406,7 +471,7 @@ server over stdio and exposes seven non-destructive tools:
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `detail`, `known`, `session`, `stripComments`, `includeMemory` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |
 | `repoctx.get_changes` | `changed` | `patch` |
@@ -419,8 +484,9 @@ stays under human supervision.)
 Each tool returns the same JSON as the corresponding `--format json` command
 (carrying `schema_version` and per-result `reasons`). The server runs the index
 from the working directory, communicates over stdin/stdout only (no network),
-and never mutates the index. Successful calls append token counts to the local
-usage ledger described above.
+and never mutates the index. Successful calls may append token counts to the
+local usage ledger described above, so the tools are not advertised as strictly
+read-only/idempotent at the MCP protocol level.
 
 Register it with an MCP-capable client, for example:
 
@@ -444,15 +510,16 @@ claude mcp add repoctx -- repoctx mcp
 
 With GitHub Copilot agent mode in VS Code, commit a `.vscode/mcp.json`
 (installed via `RepoContext.MSBuild`? The first build wrote this file for you
-already, pointing at the wrapper script):
+already, using the portable local payload):
 
 ```json
 {
   "servers": {
     "repoctx": {
       "type": "stdio",
-      "command": "repoctx",
-      "args": ["mcp"]
+      "command": "dotnet",
+      "args": ["exec", "${workspaceFolder}/.repoctx/bin/tool/repoctx.dll", "mcp"],
+      "cwd": "${workspaceFolder}"
     }
   }
 }
@@ -460,6 +527,11 @@ already, pointing at the wrapper script):
 
 Build the index first (`repoctx init && repoctx index`); tools return an error
 until an index exists.
+
+`RepoCtxMcpConfig` never overwrites an existing user-owned file. If version
+0.6.1 generated the old extensionless-shim command, delete that unchanged
+generated file and rerun `RepoCtxMcpConfig`, or replace it with the
+`dotnet exec` configuration above.
 
 ## Configuration
 
@@ -490,7 +562,7 @@ until an index exists.
 | `ranking.weights` | Signal weights used by `context` (fts, symbol, graph, path). |
 | `ranking.synonyms` | Query-term expansions used by `context`. |
 | `tokens.profile` | Calibrate reported counts/budgets to a tokenizer: `o200k`/`openai` (default) or `claude`. |
-| `tokens.factor` | Explicit calibration multiplier; overrides `tokens.profile`. |
+| `tokens.factor` | Explicit calibration multiplier in `(0, 100]`; overrides `tokens.profile` (invalid values fall back to raw counts). |
 | `pricing.inputPerMtok` | Input price per million tokens; enables the money view in `stats`. |
 | `pricing.currency` | Currency label for the `stats` money view (default `USD`). |
 
@@ -515,7 +587,7 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | --- | --- |
 | `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
-| Results look stale | Re-run `repoctx index`; it is incremental and only re-reads changed files. |
+| Results look stale | Re-run `repoctx index`; unchanged files are not reparsed, though the local hash/graph pass still reads the indexed corpus. |
 | Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 
 ## Development

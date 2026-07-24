@@ -66,12 +66,18 @@ public class IndexerTests
 
         IndexStats first = Index(repo, config, full: true);
         Assert.True(first.Added > 0);
+        Assert.Equal(first.Added, first.FilesParsed);
+        Assert.True(first.BytesRead > 0);
+        Assert.True(first.GraphFilesAnalyzed > 0);
+        Assert.Equal(first.TotalEdges, first.EdgesRecomputed);
 
         IndexStats noChange = Index(repo, config);
         Assert.Equal(0, noChange.Added);
         Assert.Equal(0, noChange.Changed);
         Assert.Equal(0, noChange.Deleted);
         Assert.Equal(first.TotalFiles, noChange.Unchanged);
+        Assert.Equal(0, noChange.FilesParsed);
+        Assert.True(noChange.BytesRead > 0, "hashing and graph analysis perform local reads");
 
         repo.Write("src/newmod.ts", "export function brandNew() {}\n");
         repo.Write("src/auth/login.ts", File.ReadAllText(repo.PathOf("src/auth/login.ts")) + "\n// changed\n");
@@ -81,6 +87,7 @@ public class IndexerTests
         Assert.Equal(1, delta.Added);
         Assert.Equal(1, delta.Changed);
         Assert.Equal(1, delta.Deleted);
+        Assert.Equal(2, delta.FilesParsed);
 
         List<string> paths = IndexedPaths(repo);
         Assert.Contains("src/newmod.ts", paths);
@@ -114,6 +121,122 @@ public class IndexerTests
         IndexStats rebuilt = Index(repo, ScanAll());
         Assert.True(rebuilt.FullRebuild);
         Assert.NotEqual(defaultCount, IndexedPaths(repo).Count);
+    }
+
+    [Fact]
+    public void Index_DoesNotRebuildForLiveRankingOnlyChanges()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        RepoctxConfig initial = ScanAll();
+        Index(repo, initial, full: true);
+
+        RepoctxConfig reranked = initial with
+        {
+            Ranking = initial.Ranking with
+            {
+                Weights = initial.Ranking.Weights with { Fts = 0.9 },
+            },
+        };
+
+        IndexStats result = Index(repo, reranked);
+
+        Assert.False(result.FullRebuild);
+        Assert.Equal(result.TotalFiles, result.Unchanged);
+    }
+
+    [Fact]
+    public void Index_MissingProducerMetadataForcesRebuildAndRepairsDerivedRows()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        RepoctxConfig config = ScanAll();
+        Index(repo, config, full: true);
+        string database = RepoLayout.For(repo.Root).DatabasePath;
+
+        using (var connection = new SqliteConnection($"Data Source={database};Pooling=False"))
+        {
+            connection.Open();
+            using SqliteCommand command = connection.CreateCommand();
+            command.CommandText =
+                "UPDATE symbols SET signature = 'tampered';" +
+                "DELETE FROM meta WHERE key = $producer;";
+            command.Parameters.AddWithValue("$producer", MetaKeys.AnalysisProducerVersion);
+            command.ExecuteNonQuery();
+        }
+
+        IndexStats rebuilt = Index(repo, config);
+
+        Assert.True(rebuilt.FullRebuild);
+        using IndexStore store = IndexStore.Open(database);
+        Assert.DoesNotContain(
+            store.GetFiles().SelectMany(file => store.GetSymbols(file.Id)),
+            symbol => symbol.Signature == "tampered");
+    }
+
+    [Fact]
+    public void SearchCapsPerFileBeforeGlobalLimit()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        string repetitive = string.Join(
+            '\n',
+            Enumerable.Range(1, 500).Select(i => $"# Repeated {i}\nneedle"));
+        repo.Write("docs/repetitive.md", repetitive);
+        repo.Write("docs/useful.md", "# Useful\nneedle target");
+        Index(repo, ScanAll(), full: true);
+
+        using IndexStore store = IndexStore.Open(RepoLayout.For(repo.Root).DatabasePath);
+        IReadOnlyList<SearchHit> evidence =
+            store.SearchEvidence("\"needle\"", perFileCap: 2, globalCap: 10);
+        IReadOnlyList<SearchHit> publicResults = store.Search("\"needle\"", top: 2);
+
+        Assert.Contains(evidence, hit => hit.Path == "docs/useful.md");
+        Assert.True(evidence.Count(hit => hit.Path == "docs/repetitive.md") <= 2);
+        Assert.Contains(publicResults, hit => hit.Path == "docs/useful.md");
+    }
+
+    [Fact]
+    public void ContextEvidenceChannels_DoNotDoubleCountSymbolChunks()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        Index(repo, ScanAll(), full: true);
+
+        using IndexStore store = IndexStore.Open(RepoLayout.For(repo.Root).DatabasePath);
+        IReadOnlyList<SearchHit> general =
+            store.SearchEvidence("\"login\"", perFileCap: 8, globalCap: 100);
+        IReadOnlyList<SearchHit> symbols =
+            store.SearchEvidence("\"login\"", perFileCap: 8, globalCap: 100, symbolsOnly: true);
+
+        Assert.NotEmpty(general);
+        Assert.NotEmpty(symbols);
+        Assert.DoesNotContain(general, hit => hit.ChunkKind == "symbol");
+        Assert.All(symbols, hit => Assert.Equal("symbol", hit.ChunkKind));
+    }
+
+    [Fact]
+    public void SearchOrdering_DoesNotDependOnSQLiteRowIds()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        RepoctxConfig config = ScanAll();
+        Index(repo, config, full: true);
+        string path = repo.PathOf("src/auth/session.ts");
+        string original = File.ReadAllText(path);
+
+        IReadOnlyList<string> before;
+        using (IndexStore store = IndexStore.Open(RepoLayout.For(repo.Root).DatabasePath))
+        {
+            before = Describe(store.SearchEvidence("\"session\"", 8, 100));
+        }
+
+        File.WriteAllText(path, original + "\n// force delete and reinsert\n");
+        Index(repo, config);
+        File.WriteAllText(path, original);
+        Index(repo, config);
+
+        using IndexStore reopened = IndexStore.Open(RepoLayout.For(repo.Root).DatabasePath);
+        Assert.Equal(before, Describe(reopened.SearchEvidence("\"session\"", 8, 100)));
+
+        static IReadOnlyList<string> Describe(IReadOnlyList<SearchHit> hits) =>
+            [.. hits.Select(hit =>
+                $"{hit.Path}|{hit.ChunkKind}|{hit.StartLine}|{hit.EndLine}|{hit.Heading}|{hit.Score:R}")];
     }
 
     [Fact]

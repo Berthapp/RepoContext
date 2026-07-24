@@ -14,11 +14,13 @@ public class ContextMemoryTests : IDisposable
 {
     private readonly FixtureRepo _repo;
     private readonly IndexStore _store;
+    private readonly RepoctxConfig _config =
+        RepoctxConfig.CreateDefault() with { Include = ["."] };
 
     public ContextMemoryTests()
     {
         _repo = new FixtureRepo("sample-ts");
-        _store = IndexHelper.BuildIndex(_repo);
+        _store = IndexHelper.BuildIndex(_repo, _config);
     }
 
     public void Dispose()
@@ -29,7 +31,7 @@ public class ContextMemoryTests : IDisposable
     }
 
     private ContextResult Run(string query, ContextOptions options) =>
-        new ContextEngine(_store, RepoctxConfig.CreateDefault()).Run(query, options);
+        new ContextEngine(_store, _config).Run(query, options);
 
     private MemoryEntry Entry(string text, params string[] linkedPaths)
     {
@@ -57,6 +59,9 @@ public class ContextMemoryTests : IDisposable
     public void Run_FoldsMatchingMemoryIn_WithLinkedReason_AndChargesIt()
     {
         MemoryEntry memory = Entry("Login validates credentials via session store.", "src/auth/login.ts");
+        ContextResult baseline = Run(
+            "change the login logic",
+            new ContextOptions { Top = 5 });
 
         ContextResult result = Run("change the login logic", new ContextOptions
         {
@@ -70,6 +75,7 @@ public class ContextMemoryTests : IDisposable
         Assert.Contains("linked:src/auth/login.ts", hit.Reasons);
         Assert.True(hit.EstimatedTokens > 0);
         Assert.False(hit.Stale);
+        Assert.NotEqual(baseline.FullEvidenceId, result.FullEvidenceId);
         Assert.Equal(
             result.Items.Sum(i => i.EstimatedTokens) + hit.EstimatedTokens,
             result.EstimatedTokens);
@@ -79,6 +85,9 @@ public class ContextMemoryTests : IDisposable
     public void Run_ExcludesIrrelevantMemories()
     {
         MemoryEntry unrelated = Entry("Payments are retried three times with backoff.");
+        ContextResult baseline = Run(
+            "change the login logic",
+            new ContextOptions { Top = 5 });
 
         ContextResult result = Run("change the login logic", new ContextOptions
         {
@@ -87,6 +96,7 @@ public class ContextMemoryTests : IDisposable
         });
 
         Assert.Empty(result.Memories);
+        Assert.Equal(baseline.FullEvidenceId, result.FullEvidenceId);
     }
 
     [Fact]
@@ -154,25 +164,18 @@ public class ContextMemoryTests : IDisposable
     }
 
     [Fact]
-    public void Run_MemoriesYield_WhenFirstFileAloneOvershootsTheBudget()
+    public void Run_LegacyBudget_DoesNotAdmitAnOversizedFirstFileOrMemory()
     {
-        // Pick a budget below the top file's full-read cost: the first file
-        // is still admitted (the sanctioned overshoot), so every memory must
-        // be dropped rather than widening it.
-        FileRow? top = _store.FindFile("src/auth/login.ts");
-        Assert.NotNull(top);
-        int budget = Math.Max(2, top.Value.TokenCount - 1);
-
         ContextResult result = Run("change the login logic", new ContextOptions
         {
             Top = 1,
-            BudgetTokens = budget,
+            BudgetTokens = 1,
             Memories = [Entry("Login validates credentials.", "src/auth/login.ts")],
         });
 
-        Assert.NotEmpty(result.Items);
+        Assert.Empty(result.Items);
         Assert.Empty(result.Memories);
-        Assert.Equal(result.Items.Sum(i => i.EstimatedTokens), result.EstimatedTokens);
+        Assert.Equal(0, result.EstimatedTokens);
     }
 
     [Fact]
@@ -182,13 +185,77 @@ public class ContextMemoryTests : IDisposable
 
         _repo.Write("src/auth/login.ts",
             File.ReadAllText(_repo.PathOf("src/auth/login.ts")) + "\n// drift\n");
-        using IndexStore fresh = IndexHelper.BuildIndex(_repo);
+        using IndexStore fresh = IndexHelper.BuildIndex(_repo, _config);
 
-        ContextResult result = new ContextEngine(fresh, RepoctxConfig.CreateDefault())
+        ContextResult result = new ContextEngine(fresh, _config)
             .Run("change the login logic", new ContextOptions { Top = 5, Memories = [memory] });
 
         MemoryHit hit = Assert.Single(result.Memories);
         Assert.True(hit.Stale);
         Assert.Equal("src/auth/login.ts", Assert.Single(hit.StaleFiles));
+    }
+
+    [Fact]
+    public void Run_ResponseBudget_DropsOptionalMemoryBeforeAllSourceEvidence()
+    {
+        var cost = new StructuralCostModel();
+        ContextResult result = new ContextEngine(_store, _config).Run(
+            "change the login logic",
+            new ContextOptions
+            {
+                Top = 1,
+                ResponseBudgetTokens = 200,
+                Memories = [Entry("Login validates credentials.", "src/auth/login.ts")],
+            },
+            cost);
+
+        Assert.Null(result.Shortfall);
+        Assert.Single(result.Items);
+        Assert.Empty(result.Memories);
+        Assert.True(cost.Measure(result) <= 200);
+    }
+
+    [Fact]
+    public void Run_ResponseBudget_RejectingOnlyMemory_ReportsFittingRetry()
+    {
+        var cost = new StructuralCostModel();
+        ContextResult result = new ContextEngine(_store, _config).Run(
+            "rare-memory-term",
+            new ContextOptions
+            {
+                Top = 1,
+                ResponseBudgetTokens = 199,
+                Memories = [Entry("rare-memory-term records a local invariant.")],
+            },
+            cost);
+
+        BudgetShortfall shortfall = Assert.IsType<BudgetShortfall>(result.Shortfall);
+        Assert.Equal(200, shortfall.RetryBudgetTokens);
+
+        ContextResult retry = new ContextEngine(_store, _config).Run(
+            "rare-memory-term",
+            new ContextOptions
+            {
+                Top = 1,
+                ResponseBudgetTokens = shortfall.RetryBudgetTokens,
+                Memories = [Entry("rare-memory-term records a local invariant.")],
+            },
+            cost);
+        Assert.Null(retry.Shortfall);
+        Assert.Single(retry.Memories);
+        Assert.True(cost.Measure(retry) <= shortfall.RetryBudgetTokens);
+    }
+
+    /// <summary>
+    /// Small deterministic oracle: metadata costs 100, and every delivered file
+    /// or memory costs another 100. It makes memory/file budget competition
+    /// explicit without depending on a CLI renderer in this core test.
+    /// </summary>
+    private sealed class StructuralCostModel : IResponseCostModel
+    {
+        public int Measure(ContextResult result) =>
+            100 + (result.Items.Count * 100) + (result.Memories.Count * 100);
+
+        public string Surface => "test";
     }
 }

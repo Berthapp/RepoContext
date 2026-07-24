@@ -30,7 +30,9 @@ public class MemoryTests
         using JsonDocument addDoc = JsonDocument.Parse(add.StdOut);
         JsonElement entry = addDoc.RootElement.GetProperty("entry");
         string id = entry.GetProperty("id").GetString()!;
-        Assert.Equal(2, addDoc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.Equal(
+            RepoContext.Core.RepoContextInfo.SchemaVersion,
+            addDoc.RootElement.GetProperty("schema_version").GetInt32());
         Assert.Equal("decision", entry.GetProperty("kind").GetString());
         Assert.Equal(1, addDoc.RootElement.GetProperty("total_entries").GetInt32());
         Assert.True(entry.GetProperty("files").TryGetProperty("src/auth/login.ts", out JsonElement hash));
