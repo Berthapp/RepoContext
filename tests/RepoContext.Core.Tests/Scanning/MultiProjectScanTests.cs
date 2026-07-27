@@ -121,6 +121,25 @@ public class MultiProjectScanTests
     }
 
     [Fact]
+    public void NestedRepositoryMetadata_IsNeverIndexed()
+    {
+        using var repo = new FixtureRepo("multi-project");
+        // One project is a checkout of its own, already initialized for
+        // RepoContext. Neither its git objects nor its index may be indexed.
+        repo.Write("apps/web/.git/config", "[core]\n\trepositoryformatversion = 0\n");
+        repo.Write("apps/web/.repoctx/index.db", "not a real database\n");
+        repo.Write("apps/web/repoctx.config.json", "{\"include\":[]}\n");
+
+        IReadOnlyList<string> paths = ScanDefault(repo);
+
+        Assert.DoesNotContain(paths, p => p.StartsWith("apps/web/.git/", StringComparison.Ordinal));
+        Assert.DoesNotContain(paths, p => p.StartsWith("apps/web/.repoctx/", StringComparison.Ordinal));
+
+        // Its own config file is an ordinary file and stays indexable.
+        Assert.Contains("apps/web/repoctx.config.json", paths);
+    }
+
+    [Fact]
     public void Scan_IsDeterministic()
     {
         using var repo = new FixtureRepo("multi-project");
