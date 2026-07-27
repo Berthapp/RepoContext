@@ -29,3 +29,6 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   receipts, fail-closed freshness, and query-aware evidence selection.
 - `0016-exact-budgets-and-cost-semantics.md` — exact CLI/MCP response ceilings,
   distinct projected-read budgets, retry sizing, and explicit cost fields.
+- `0017-whole-repository-coverage.md` — scan the whole repository by default
+  (every nested project and subfolder), per-directory ignore files, reported
+  project detection, a warning for pre-0.8 include roots, UTF-8 console output.

@@ -1,4 +1,5 @@
 using System.CommandLine;
+using System.Text;
 using RepoContext.Cli.Commands;
 
 namespace RepoContext.Cli;
@@ -20,6 +21,8 @@ public static class CliApplication
 {
     public static int Invoke(string[] args)
     {
+        UseUtf8Output();
+
         RootCommand root = BuildRootCommand();
         ParseResult parseResult = root.Parse(args);
 
@@ -34,6 +37,31 @@ public static class CliApplication
         }
 
         return parseResult.Invoke();
+    }
+
+    /// <summary>
+    /// Pins console output to UTF-8. Without this, Windows encodes stdout with
+    /// the active console code page, which best-fit-maps characters the page
+    /// lacks - an em dash silently becomes a hyphen under CP 850 - so identical
+    /// index and query would not produce byte-identical output. Determinism is
+    /// a non-negotiable constraint, and the MCP stdio transport requires UTF-8.
+    /// </summary>
+    private static void UseUtf8Output()
+    {
+        var utf8 = new UTF8Encoding(encoderShouldEmitUTF8Identifier: false);
+        try
+        {
+            Console.OutputEncoding = utf8;
+            Console.InputEncoding = utf8;
+        }
+        catch (IOException)
+        {
+            // No console attached (detached process, closed handles): the
+            // stream defaults to UTF-8 already, so there is nothing to fix.
+        }
+        catch (PlatformNotSupportedException)
+        {
+        }
     }
 
     public static RootCommand BuildRootCommand()

@@ -104,7 +104,9 @@ The implementation must first turn these audit findings into regression tests:
    ranking behavior, or output representation.
 9. **Default roots can omit tests.** The default include roots are `src`, `app`,
    `lib`, and `docs`; consequently `includeTests: true` does not include a
-   top-level `tests` directory.
+   top-level `tests` directory. *(Fixed in 0.8.0 — ADR 0017: the default scans
+   the whole repository. The finding understated the problem: a repository
+   whose projects live below the root indexed nothing at all.)*
 10. **MCP has avoidable overhead.** Context defaults to unbudgeted `paths`;
     results are JSON serialized inside a text block; tool descriptions and
     schemas cost session tokens; tools are marked non-read-only and
@@ -681,7 +683,9 @@ Priority: P1; Release 2.
 
 ### Q6 — Repository coverage discovery and `doctor`
 
-Priority: P1; Release 2.
+Priority: P1; Release 2. **Coverage half delivered in 0.8.0 (ADR 0017)** — the
+default scans the whole repository instead of detecting roots, which cannot miss
+one. `doctor` is still open.
 
 1. **Current problem:** `includeTests: true` cannot include tests outside the
    configured roots. Users can unknowingly index a partial repository, reducing

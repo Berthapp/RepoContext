@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Scanning;
 
 namespace RepoContext.Cli.Commands;
 
@@ -55,6 +56,10 @@ public static class InitCommand
                     Console.WriteLine("  updated .gitignore (.repoctx/)");
                 }
 
+                Console.WriteLine(
+                    $"  scope: the whole repository, {result.ScannedFiles} file(s) selected");
+                WriteProjects(result.Projects);
+
                 foreach (AgentFileResult agentFile in result.AgentFiles)
                 {
                     string verb = agentFile.Change switch
@@ -83,6 +88,30 @@ public static class InitCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Lists the detected project roots. Long lists are truncated because the
+    /// message only has to confirm that nested projects are covered.
+    /// </summary>
+    private static void WriteProjects(IReadOnlyList<DetectedProject> projects)
+    {
+        if (projects.Count == 0)
+        {
+            return;
+        }
+
+        const int limit = 10;
+        Console.WriteLine($"  projects: {projects.Count} detected");
+        foreach (DetectedProject project in projects.Take(limit))
+        {
+            Console.WriteLine($"    {project.Path} ({project.Ecosystem}, {project.Marker})");
+        }
+
+        if (projects.Count > limit)
+        {
+            Console.WriteLine($"    ... and {projects.Count - limit} more");
+        }
     }
 
     /// <summary>

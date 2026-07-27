@@ -115,12 +115,12 @@ public class IndexerTests
     public void Index_RebuildsWhenConfigChanges()
     {
         using var repo = new FixtureRepo("sample-ts");
-        Index(repo, RepoctxConfig.CreateDefault(), full: true);
-        int defaultCount = IndexedPaths(repo).Count;
+        Index(repo, ScanAll(), full: true);
+        int scanAllCount = IndexedPaths(repo).Count;
 
-        IndexStats rebuilt = Index(repo, ScanAll());
+        IndexStats rebuilt = Index(repo, ScanAll() with { Include = ["src"] });
         Assert.True(rebuilt.FullRebuild);
-        Assert.NotEqual(defaultCount, IndexedPaths(repo).Count);
+        Assert.NotEqual(scanAllCount, IndexedPaths(repo).Count);
     }
 
     [Fact]

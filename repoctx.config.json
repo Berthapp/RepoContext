@@ -1,17 +1,29 @@
 {
-  "include": [
-    "src",
-    "app",
-    "lib",
-    "docs"
-  ],
+  "include": [],
   "exclude": [
+    ".git",
     "node_modules",
     "dist",
+    "build",
+    "out",
     "bin",
     "obj",
+    "target",
     ".next",
-    ".git"
+    ".nuxt",
+    ".svelte-kit",
+    ".turbo",
+    ".angular",
+    ".gradle",
+    ".venv",
+    "venv",
+    "__pycache__",
+    ".pytest_cache",
+    ".mypy_cache",
+    ".tox",
+    "coverage",
+    ".idea",
+    ".vs"
   ],
   "respectGitignore": true,
   "sensitiveFiles": [
@@ -32,5 +44,13 @@
       "path": 0.1
     },
     "synonyms": {}
+  },
+  "tokens": {
+    "profile": "o200k",
+    "factor": null
+  },
+  "pricing": {
+    "inputPerMtok": null,
+    "currency": "USD"
   }
 }

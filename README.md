@@ -539,8 +539,8 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 
 ```json
 {
-  "include": ["src", "app", "lib", "docs"],
-  "exclude": ["node_modules", "dist", "bin", "obj", ".next", ".git"],
+  "include": [],
+  "exclude": [".git", "node_modules", "dist", "build", "out", "bin", "obj", "target", "..."],
   "respectGitignore": true,
   "sensitiveFiles": [".env*", "*.secret.*", "appsettings.Production.json"],
   "indexing": { "maxFileSizeKb": 512, "includeTests": true, "includeDocs": true },
@@ -553,9 +553,9 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 
 | Key | Meaning |
 | --- | --- |
-| `include` | Root directories to scan. |
-| `exclude` | Directory/file globs to skip (gitignore syntax). |
-| `respectGitignore` | Also honor the repository's root `.gitignore`. |
+| `include` | Directories to scan, each recursively. **Empty (the default) scans the whole repository**, so every project and subfolder below the root is indexed. Set it only to deliberately narrow the scope. |
+| `exclude` | Directory/file globs to skip (gitignore syntax). A bare name like `dist` matches at any depth, so it also covers nested projects. |
+| `respectGitignore` | Also honor `.gitignore` — the root one and any in subdirectories. |
 | `sensitiveFiles` | Never indexed — neither content nor path. |
 | `indexing.maxFileSizeKb` | Skip files larger than this. |
 | `indexing.includeTests` / `includeDocs` | Include test / documentation files. |
@@ -567,7 +567,35 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 | `pricing.currency` | Currency label for the `stats` money view (default `USD`). |
 
 You can also add a `.repoctxignore` file (gitignore syntax) for extra
-exclusions. The index (`.repoctx/`) contains code excerpts — and, with M9,
+exclusions. Both `.gitignore` and `.repoctxignore` are read per directory: a
+file in a subdirectory applies to that subtree and overrides rules inherited
+from above, so each project in a multi-project checkout keeps its own rules.
+
+### Repositories with several projects
+
+`repoctx init` at the top of a folder that holds several projects covers all of
+them — there is no per-project setup. `init` reports what it found:
+
+```
+$ repoctx init
+Initialized RepoContext in /work/checkouts
+  wrote repoctx.config.json
+  scope: the whole repository, 412 file(s) selected
+  projects: 2 detected
+    apps/web (node, package.json)
+    services/api (dotnet, SampleApi.csproj)
+```
+
+Project detection is informational only — directories that belong to no project
+(loose scripts, docs, `tools/`) are indexed just the same.
+
+> **Upgrading from ≤ 0.7:** configurations written by an older `init` pin
+> `include` to `["src", "app", "lib", "docs"]`, which is anchored at the
+> repository root and therefore misses nested projects. `repoctx index` now
+> warns when those roots do not exist. Delete the `include` key (or set it to
+> `[]`) and re-run `repoctx index`.
+
+The index (`.repoctx/`) contains code excerpts — and, with M9,
 agent-authored memory notes about the code — so it is a sensitive artifact;
 it is git-ignored automatically.
 
@@ -587,6 +615,7 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | --- | --- |
 | `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
+| `index` reports `files: 0`, or a project below the root is missing | An older config pins `include` to root-level directories. Remove the key (or set it to `[]`) to scan the whole repository and re-run `repoctx index`. |
 | Results look stale | Re-run `repoctx index`; unchanged files are not reparsed, though the local hash/graph pass still reads the indexed corpus. |
 | Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 

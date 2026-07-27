@@ -25,8 +25,10 @@ rebuilds and is distinct from the JSON `schema_version`.
 
 ## Config (`repoctx.config.json`, camelCase)
 
-Defaults follow the product doc chapter 14: `include` = [src, app, lib, docs];
-`exclude` = [node_modules, dist, bin, obj, .next, .git]; `respectGitignore` =
+Defaults followed the product doc chapter 14: `include` = [src, app, lib, docs];
+`exclude` = [node_modules, dist, bin, obj, .next, .git]. **Superseded by ADR
+0017:** `include` now defaults to `[]` (scan the whole repository) and `exclude`
+covers generated output for more ecosystems. Unchanged: `respectGitignore` =
 true; `sensitiveFiles` = [.env*, *.secret.*, appsettings.Production.json];
 `indexing` = { maxFileSizeKb: 512, includeTests: true, includeDocs: true };
 `ranking.weights` = { fts .4, symbol .3, graph .2, path .1 } (used from M3).

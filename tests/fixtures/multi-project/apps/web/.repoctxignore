@@ -1,0 +1,2 @@
+# Scoped to apps/web: proves a nested ignore file binds its own subtree only.
+generated/
