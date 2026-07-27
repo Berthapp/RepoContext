@@ -25,12 +25,11 @@ public sealed class EvalRepo : IDisposable
         Layout = RepoLayout.For(_workspace.Root);
         Directory.CreateDirectory(Layout.IndexDirectory);
 
-        Config = RepoctxConfig.CreateDefault() with
-        {
-            // The evaluation corpus deliberately includes a top-level `tests`
-            // directory, which the default include roots do not cover (Q6).
-            Include = ["src", "tests", "vendor"],
-        };
+        // The corpus deliberately spreads over `src`, a top-level `tests` and
+        // `vendor`. It used to need an explicit include list because the
+        // default roots covered only src/app/lib/docs; the default now scans
+        // the whole repository, so the plain default selects the same corpus.
+        Config = RepoctxConfig.CreateDefault();
 
         Stats = new Indexer(Layout, Config, "eval").Run(full: true);
         Store = IndexStore.Open(Layout.DatabasePath);

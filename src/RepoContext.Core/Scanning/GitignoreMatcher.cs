@@ -73,14 +73,23 @@ public sealed class GitignoreMatcher
     public static GitignoreMatcher FromGlobs(IEnumerable<string> globs) => Parse(globs);
 
     /// <summary>Whether the given path is ignored. Later rules win (enabling negation).</summary>
-    public bool IsIgnored(string relativePath, bool isDirectory)
+    public bool IsIgnored(string relativePath, bool isDirectory) =>
+        Match(relativePath, isDirectory) ?? false;
+
+    /// <summary>
+    /// Evaluates the path against this matcher: <c>true</c> ignored,
+    /// <c>false</c> explicitly re-included (<c>!</c> rule), <c>null</c> when no
+    /// rule applies. Callers stacking several matchers (nested ignore files)
+    /// need the third state so an outer decision survives an inner no-match.
+    /// </summary>
+    public bool? Match(string relativePath, bool isDirectory)
     {
         string normalized = relativePath.Replace('\\', '/').TrimStart('/');
         string basename = normalized.Length == 0
             ? string.Empty
             : normalized[(normalized.LastIndexOf('/') + 1)..];
 
-        bool ignored = false;
+        bool? ignored = null;
         foreach (Rule rule in _rules)
         {
             if (rule.DirOnly && !isDirectory)

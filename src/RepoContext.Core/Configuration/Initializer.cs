@@ -1,3 +1,5 @@
+using RepoContext.Core.Scanning;
+
 namespace RepoContext.Core.Configuration;
 
 /// <summary>The outcome of <c>repoctx init</c>.</summary>
@@ -16,6 +18,17 @@ public sealed record InitResult
     /// not requested).
     /// </summary>
     public IReadOnlyList<AgentFileResult> AgentFiles { get; init; } = [];
+
+    /// <summary>
+    /// Project roots found below the repository root, ordered by path. All of
+    /// them are covered by the written configuration; this is what
+    /// <c>init</c> reports so a multi-project checkout can be verified at a
+    /// glance.
+    /// </summary>
+    public IReadOnlyList<DetectedProject> Projects { get; init; } = [];
+
+    /// <summary>Number of files the written configuration selects for indexing.</summary>
+    public required int ScannedFiles { get; init; }
 }
 
 /// <summary>Initializes a repository for RepoContext (spec F1).</summary>
@@ -42,9 +55,14 @@ public static class Initializer
         }
 
         Directory.CreateDirectory(layout.IndexDirectory);
-        ConfigStore.Save(layout.ConfigPath, RepoctxConfig.CreateDefault());
+        RepoctxConfig config = RepoctxConfig.CreateDefault();
+        ConfigStore.Save(layout.ConfigPath, config);
 
         bool gitignoreUpdated = EnsureGitignore(layout.Root);
+
+        // Reported, not persisted: the scan covers the whole repository, so the
+        // detected projects only tell the user what that amounts to here.
+        IReadOnlyList<ScannedFile> scanned = new FileScanner(layout.Root, config).Scan();
 
         var agentFiles = new List<AgentFileResult>();
         if (writeAgentInstructions)
@@ -62,6 +80,8 @@ public static class Initializer
             GitignoreUpdated = gitignoreUpdated,
             ConfigPath = layout.ConfigPath,
             AgentFiles = agentFiles,
+            Projects = ProjectDetector.Detect(scanned),
+            ScannedFiles = scanned.Count,
         };
     }
 

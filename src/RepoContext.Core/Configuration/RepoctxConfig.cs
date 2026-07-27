@@ -9,8 +9,19 @@ namespace RepoContext.Core.Configuration;
 /// </summary>
 public sealed record RepoctxConfig
 {
+    /// <summary>
+    /// Directories (or files) to scan, relative to the repository root. Each
+    /// entry is scanned recursively. An empty list - the default - scans the
+    /// whole repository, so a root containing several projects indexes all of
+    /// them without further configuration.
+    /// </summary>
     public IReadOnlyList<string> Include { get; init; } = [];
 
+    /// <summary>
+    /// Gitignore-style exclusion patterns. A bare name (<c>node_modules</c>)
+    /// matches at any depth, which is what keeps per-project build output out
+    /// of a multi-project repository.
+    /// </summary>
     public IReadOnlyList<string> Exclude { get; init; } = [];
 
     public bool RespectGitignore { get; init; } = true;
@@ -28,8 +39,12 @@ public sealed record RepoctxConfig
     /// <summary>The default configuration written by <c>repoctx init</c>.</summary>
     public static RepoctxConfig CreateDefault() => new()
     {
-        Include = ["src", "app", "lib", "docs"],
-        Exclude = ["node_modules", "dist", "bin", "obj", ".next", ".git"],
+        // Empty include = the whole repository. Coverage is subtractive
+        // (excludes, ignore files, sensitive patterns) rather than a root
+        // allow-list, which used to silently miss nested projects and any
+        // top-level directory that was not src/app/lib/docs.
+        Include = [],
+        Exclude = DefaultExclude,
         RespectGitignore = true,
         SensitiveFiles = [".env*", "*.secret.*", "appsettings.Production.json"],
         Indexing = new IndexingOptions
@@ -46,6 +61,44 @@ public sealed record RepoctxConfig
         Tokens = new TokenOptions { Profile = "o200k" },
         Pricing = new PricingOptions(),
     };
+
+    /// <summary>
+    /// Directory names that are generated build output in practically every
+    /// ecosystem. They are matched by basename at any depth, so each project in
+    /// a multi-project repository is covered. Ordered for a readable config
+    /// file; the order does not affect matching.
+    /// </summary>
+    /// <remarks>
+    /// Vendored source (<c>vendor/</c>) is deliberately absent: RepoContext
+    /// indexes it and lets ranking apply the vendor penalty (ADR 0006), which
+    /// keeps it findable when it is genuinely the answer.
+    /// </remarks>
+    private static readonly string[] DefaultExclude =
+    [
+        ".git",
+        "node_modules",
+        "dist",
+        "build",
+        "out",
+        "bin",
+        "obj",
+        "target",
+        ".next",
+        ".nuxt",
+        ".svelte-kit",
+        ".turbo",
+        ".angular",
+        ".gradle",
+        ".venv",
+        "venv",
+        "__pycache__",
+        ".pytest_cache",
+        ".mypy_cache",
+        ".tox",
+        "coverage",
+        ".idea",
+        ".vs",
+    ];
 
     /// <summary>Serializer options shared by config read/write (stable, indented).</summary>
     public static JsonSerializerOptions SerializerOptions { get; } = new()

@@ -11,6 +11,7 @@ implementation were introduced together.
 | --- | --- |
 | Base commit | `9986548ee7c4640d42a2f89ab03e6dd96aaa4982` (`claude/token-savings-dashboard`) |
 | Source state | the version 0.7.0 source tree containing this manifest; the base commit alone cannot reconstruct it |
+| Re-baselined | 0.8.0 (ADR 0017). The default exclude list feeds the config hash, and hash-derived identifiers are rendered into responses, so token counts moved by −5…+4. Every relevance metric and the selected corpus are unchanged. |
 | OS | Windows 11 Pro 10.0.26200 (x64) |
 | Runtime / SDK | .NET SDK 10.0.301, target `net10.0` |
 | Build configuration | `Release` |
@@ -28,7 +29,11 @@ used.
 - Labels: `tests/RepoContext.Integration.Tests/Evaluation/EvalCorpus.cs`.
 - Seven C# and TypeScript tasks across `Locate`, `Explain`, `Fix` and `Impact`.
 - Every task uses a declared 3,000-token response budget.
-- Include roots: `src`, `tests`, `vendor`; `.env` is a forbidden sensitive path.
+- Scanned scope: the plain default configuration, which covers the whole
+  fixture (`src`, `tests`, `vendor`); `.env` is a forbidden sensitive path.
+  Until 0.8.0 this needed an explicit `include: ["src", "tests", "vendor"]`
+  override, because the default roots did not reach a top-level `tests`
+  directory (ADR 0017). The selected corpus is identical either way.
 
 The corpus is frozen with this implementation, not a retroactive quality
 comparator. It currently lacks JavaScript/TSX, multi-project,
