@@ -103,9 +103,14 @@ jobs:
             os: windows-latest
           - rid: osx-arm64
             os: macos-latest
-          # macos-13 is the last Intel image; macos-latest is Apple silicon.
+          # Cross-published from the Apple-silicon runner, for the same reason
+          # as win-arm64 above. Targeting the Intel image instead ties the
+          # release to whichever label GitHub currently offers for it — macos-13
+          # was retired mid-release and the job queued forever, blocking every
+          # downstream job. A self-contained publish only needs the target's
+          # runtime pack, not a host of that architecture.
           - rid: osx-x64
-            os: macos-13
+            os: macos-latest
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
