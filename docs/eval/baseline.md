@@ -45,13 +45,13 @@ Layers are reported separately so a saving in one cannot be counted twice.
 
 | task | calls | core | cli stdout | mcp content | mcp transport | session | args | full reads | full-read tokens | model-visible CLI | wire MCP |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| locate-cs-packer | 1 | 645 | 643 | 645 | 701 | 1339 | 25 | 1 | 1008 | 1676 | 3718 |
-| fix-cs-budget | 1 | 2158 | 2157 | 2159 | 1128 | 1339 | 23 | 0 | 0 | 2180 | 4649 |
-| explain-cs-envelope | 1 | 1981 | 1981 | 1982 | 2069 | 1339 | 22 | 0 | 0 | 2003 | 5412 |
-| locate-ts-login | 1 | 355 | 353 | 354 | 447 | 1339 | 22 | 1 | 116 | 491 | 2278 |
-| fix-ts-session-validity | 1 | 727 | 724 | 724 | 682 | 1339 | 24 | 0 | 0 | 748 | 2769 |
-| explain-ts-session | 1 | 828 | 827 | 828 | 998 | 1339 | 21 | 0 | 0 | 848 | 3186 |
-| impact-ts-session | 1 | 353 | 353 | 353 | 442 | 1339 | 20 | 2 | 259 | 632 | 2413 |
+| locate-cs-packer | 1 | 645 | 643 | 645 | 701 | 1363 | 25 | 1 | 1008 | 1676 | 3742 |
+| fix-cs-budget | 1 | 2158 | 2157 | 2159 | 1128 | 1363 | 23 | 0 | 0 | 2180 | 4673 |
+| explain-cs-envelope | 1 | 1981 | 1981 | 1982 | 2069 | 1363 | 22 | 0 | 0 | 2003 | 5436 |
+| locate-ts-login | 1 | 355 | 353 | 354 | 447 | 1363 | 22 | 1 | 116 | 491 | 2302 |
+| fix-ts-session-validity | 1 | 727 | 724 | 724 | 682 | 1363 | 24 | 0 | 0 | 748 | 2793 |
+| explain-ts-session | 1 | 828 | 827 | 828 | 998 | 1363 | 21 | 0 | 0 | 848 | 3210 |
+| impact-ts-session | 1 | 353 | 353 | 353 | 442 | 1363 | 20 | 2 | 259 | 632 | 2437 |
 
 ## Reuse economics
 

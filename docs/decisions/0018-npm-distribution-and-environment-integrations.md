@@ -156,10 +156,12 @@ session are new.
   `init --agents` now writes the pointer instead of the full protocol, and the
   block it writes is byte-identical to the one `integrate` writes into the same
   files, so the two commands never fight over the region.
-- **The MCP session overhead moves.** Adding `auto` to the tool description and
-  the server instructions changes the measured session-overhead figure, so
-  `docs/eval/baseline.md` and `docs/eval/raw/` must be regenerated
-  (`REPOCTX_UPDATE_EVAL_BASELINE=1`) as part of landing this change. That
+- **The MCP session overhead moves, by 24 tokens.** Advertising `auto` in the
+  tool description, the `detail` parameter description and the server
+  instructions costs 1,339 → 1,363 `o200k` tokens once per MCP session. That is
+  the price of the option being discoverable at all, and it is repaid by the
+  first avoided corrective call. `docs/eval/baseline.md` and `docs/eval/raw/`
+  carry the new figure; the derived `wire MCP` totals move by the same 24. That
   movement is the point of the review, which is the documented condition for
   rewriting the snapshot.
 - **Two distributions of the same binary.** The npm platform packages and the
