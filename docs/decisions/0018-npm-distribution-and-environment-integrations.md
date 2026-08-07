@@ -58,6 +58,16 @@ session are new.
      to exactly that version, so a wrapper can never resolve a payload from a
      different release. CI runs the builder in `--dry-run` mode on every push,
      which exercises the generator without a .NET build.
+   - Publishing prefers **trusted publishing** (OIDC), matching the keyless
+     NuGet path already used for `RepoContext.Tool`: no long-lived credential
+     is stored in the repository, and provenance is attested from the workflow
+     identity rather than asserted by a flag. npm registers a trusted publisher
+     per package and only for packages that already exist, so `NPM_TOKEN` is
+     retained as the documented bootstrap path for a package's first version;
+     the publish step selects the path by whether the secret is set, so the
+     workflow does not change when the token goes away. `actions/setup-node`
+     is used without `registry-url` because that input writes an auth line
+     into `.npmrc`, which silently demotes OIDC to the legacy token path.
 
 2. **Progressive disclosure of the usage protocol.** The instruction text is
    split in two, by what it costs:

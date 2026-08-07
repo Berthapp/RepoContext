@@ -147,8 +147,20 @@ jobs:
     steps:
       - uses: actions/checkout@v7
 
-      # The runner image ships Node; no setup action is needed, which keeps this
-      # job free of a second action version to track.
+      # Trusted publishing needs npm >= 11.5.1 on Node >= 22.14; the runner
+      # image lags both. setup-node is deliberately used *without* registry-url:
+      # that input writes an _authToken line into .npmrc, and an .npmrc with an
+      # auth line — even an empty one — makes npm take the legacy token path and
+      # ignore OIDC entirely.
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Use an npm that supports trusted publishing
+        run: |
+          npm install -g npm@latest
+          npm --version
+
       - name: Unit-test the launcher
         run: |
           node --version
@@ -189,19 +201,38 @@ jobs:
           name: repoctx-npm
           path: npm/dist/*/package.json
 
-      # Publish only for tag builds, and only when NPM_TOKEN is configured.
+      # Publishing prefers trusted publishing (OIDC): npm exchanges this job's
+      # GitHub identity for a short-lived credential, so no long-lived token is
+      # stored anywhere and provenance is attested automatically. That requires
+      # a trusted publisher registered per package on npmjs.com — which npm
+      # only lets you configure once the package exists. NPM_TOKEN therefore
+      # remains supported as the bootstrap path for a package's first-ever
+      # version; once every package is registered, delete the secret and this
+      # step silently switches to OIDC.
+      #
       # Platform packages go first: the wrapper declares them as optional
       # dependencies, so publishing it first would briefly resolve to nothing.
       # `npm view` makes re-runs idempotent the way --skip-duplicate does for
       # NuGet.
       - name: Publish to npm
-        if: startsWith(github.ref, 'refs/tags/v') && env.NPM_TOKEN != ''
+        if: startsWith(github.ref, 'refs/tags/v')
         run: |
           set -euo pipefail
-          # Written here rather than by setup-node; the token stays in the
-          # runner's home directory and never reaches a repository file.
-          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
-          trap 'rm -f "$HOME/.npmrc"' EXIT
+          if [ -n "${NPM_TOKEN:-}" ]; then
+            echo "NPM_TOKEN is set: publishing with the bootstrap token."
+            # Written here rather than by setup-node; the token stays in the
+            # runner's home directory and never reaches a repository file.
+            printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
+            trap 'rm -f "$HOME/.npmrc"' EXIT
+            # Provenance is explicit on this path; OIDC attests it on its own.
+            provenance=(--provenance)
+          else
+            echo "No NPM_TOKEN: publishing via trusted publishing (OIDC)."
+            # Any auth line at all sends npm down the legacy token path, so make
+            # sure a stray .npmrc from the image or an action cannot shadow OIDC.
+            rm -f "$HOME/.npmrc"
+            provenance=()
+          fi
           publish() {
             name=$(node -p "require('./$1/package.json').name")
             version=$(node -p "require('./$1/package.json').version")
@@ -209,7 +240,7 @@ jobs:
               echo "$name@$version already published, skipping."
               return
             fi
-            npm publish "$1" --access public --provenance
+            npm publish "$1" --access public "${provenance[@]}"
           }
           for dir in npm/dist/repocontext-*; do publish "$dir"; done
           publish npm/dist/repocontext

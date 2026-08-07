@@ -687,9 +687,43 @@ Releases are cut by merging, not by hand:
 A merge that leaves `VersionPrefix` untouched releases nothing. One-time
 setup: an Actions secret `RELEASE_PAT` (fine-grained PAT, this repository
 only, Contents: Read and write) — required because tags pushed with the
-default workflow token do not trigger `release.yml` — and an `NPM_TOKEN`
-secret (an npm automation token) for the npm publish. Without `NPM_TOKEN` the
-npm job still builds and validates the packages, it just does not publish them.
+default workflow token do not trigger `release.yml`.
+
+#### npm authentication
+
+The npm job publishes through **trusted publishing**: npm exchanges the job's
+GitHub OIDC identity for a short-lived credential, so no long-lived token is
+stored in the repository and provenance is attested automatically. Register a
+trusted publisher on npmjs.com for **each** of the seven packages
+(`repocontext` and the six `repocontext-<platform>-<arch>` packages), under
+*Package settings → Trusted publishing*:
+
+| Field | Value |
+| --- | --- |
+| Organization or user | `Berthapp` |
+| Repository | `RepoContext` |
+| Workflow filename | `release.yml` (filename only, not a path) |
+| Environment | *(leave empty)* |
+
+These fields are case-sensitive and must match GitHub exactly.
+
+npm can only register a trusted publisher for a package that already exists,
+so a package's **first-ever** version needs one of:
+
+- an `NPM_TOKEN` Actions secret (granular token, read and write). The job uses
+  it automatically when present, then you delete the secret and register the
+  trusted publishers; or
+- a one-off `npm publish` from a machine where you are logged in
+  (`npm login`), which stores nothing in CI.
+
+Both paths are supported without editing the workflow: `NPM_TOKEN` wins when
+set, OIDC is used when it is absent. Publishing is skipped per package when
+that exact version already exists, so re-running a release is safe.
+
+Trusted publishing needs npm ≥ 11.5.1 on Node ≥ 22.14, which the job installs
+itself. Note that `actions/setup-node` is used **without** `registry-url`: that
+input writes an auth line into `.npmrc`, and any auth line makes npm take the
+legacy token path and ignore OIDC.
 
 The npm packages are assembled from the same self-contained publish output as
 the release archives, by `npm/build-packages.mjs`. `Directory.Build.props` stays
