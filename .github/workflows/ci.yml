@@ -42,6 +42,50 @@ jobs:
           dotnet pack src/RepoContext.MSBuild/RepoContext.MSBuild.csproj
           -c Release --no-restore -o artifacts/nupkg
 
+  # The npm distribution has no .NET in it: the launcher resolves a
+  # platform-specific payload package and hands over stdio. Both halves are
+  # cheap to verify on every push, and a broken resolver would otherwise only
+  # surface at release time.
+  npm-distribution:
+    name: npm launcher & package builder
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Unit-test the launcher
+        run: node --test npm/repocontext/test/platform.test.mjs
+
+      # --dry-run generates every manifest without a .NET publish, so the
+      # generator, the version stamping and the platform list are all exercised
+      # here rather than during a release.
+      - name: Generate package manifests
+        run: node npm/build-packages.mjs --dry-run --out npm/dist
+
+      - name: Verify the wrapper pins every platform package to its own version
+        run: |
+          set -euo pipefail
+          node -e '
+            const fs = require("node:fs");
+            const { targets } = require("./npm/repocontext/lib/platform.js");
+            const wrapper = JSON.parse(fs.readFileSync("npm/dist/repocontext/package.json", "utf8"));
+            const optional = wrapper.optionalDependencies ?? {};
+            for (const target of targets()) {
+              const pinned = optional[target.package];
+              if (pinned !== wrapper.version) {
+                throw new Error(`${target.package} pinned to ${pinned}, wrapper is ${wrapper.version}`);
+              }
+              const platform = JSON.parse(
+                fs.readFileSync(`npm/dist/${target.package}/package.json`, "utf8"));
+              if (platform.version !== wrapper.version) {
+                throw new Error(`${target.package} built at ${platform.version}`);
+              }
+            }
+            console.log(`wrapper ${wrapper.version} pins ${targets().length} platform packages`);
+          '
+
+      - name: Pack the wrapper
+        run: npm pack --dry-run ./npm/dist/repocontext
+
   deterministic-evaluation:
     name: Evaluation golden (${{ matrix.os }})
     runs-on: ${{ matrix.os }}

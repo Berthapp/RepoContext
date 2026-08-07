@@ -76,6 +76,12 @@ public static class InitCommand
                     Console.WriteLine(
                         "Tip: pass --agents to add RepoContext usage to CLAUDE.md and AGENTS.md.");
                 }
+                else if (result.AgentFiles.Count > 0)
+                {
+                    Console.WriteLine(
+                        "Tip: run 'repoctx integrate' to wire up the coding agents this repository "
+                        + "uses (skills, project rules, MCP registration).");
+                }
 
                 Console.WriteLine("Next: run 'repoctx index'.");
                 return ExitCode.Success;

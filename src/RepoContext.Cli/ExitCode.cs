@@ -17,4 +17,11 @@ public static class ExitCode
 
     /// <summary>The command was invoked with invalid arguments.</summary>
     public const int InvalidArguments = 3;
+
+    /// <summary>
+    /// A <c>--check</c> run found managed content that is missing or out of date.
+    /// Distinct from <see cref="Error"/> so CI can tell "integration is stale"
+    /// from "the tool failed".
+    /// </summary>
+    public const int Drift = 4;
 }
