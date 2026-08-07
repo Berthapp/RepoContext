@@ -40,15 +40,16 @@ From npm — no .NET runtime required, and the natural route for a
 TypeScript/JavaScript repository:
 
 ```bash
-npm install -g repocontext
+npm install -g repocontext-tool
 repoctx --version
 ```
 
-The package is called `repocontext`; the command it installs is `repoctx`. Pin
-it per repository instead, so the whole team gets the same version:
+The package is called `repocontext-tool` (mirroring the NuGet package
+`RepoContext.Tool`); the command it installs is `repoctx`. Pin it per
+repository instead, so the whole team gets the same version:
 
 ```bash
-npm install --save-dev repocontext
+npm install --save-dev repocontext-tool
 npx repoctx --version
 ```
 
@@ -695,8 +696,8 @@ The npm job publishes through **trusted publishing**: npm exchanges the job's
 GitHub OIDC identity for a short-lived credential, so no long-lived token is
 stored in the repository and provenance is attested automatically. Register a
 trusted publisher on npmjs.com for **each** of the seven packages
-(`repocontext` and the six `repocontext-<platform>-<arch>` packages), under
-*Package settings → Trusted publishing*:
+(`repocontext-tool` and the six `repocontext-<platform>-<arch>` packages),
+under *Package settings → Trusted publishing*:
 
 | Field | Value |
 | --- | --- |

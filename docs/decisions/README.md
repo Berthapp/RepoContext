@@ -32,7 +32,8 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
 - `0017-whole-repository-coverage.md` — scan the whole repository by default
   (every nested project and subfolder), per-directory ignore files, reported
   project detection, a warning for pre-0.8 include roots, UTF-8 console output.
-- `0018-npm-distribution-and-environment-integrations.md` — the `repocontext`
-  npm package (wrapper + per-platform binaries), `repoctx integrate` /
+- `0018-npm-distribution-and-environment-integrations.md` — the
+  `repocontext-tool` npm package (wrapper + per-platform binaries),
+  `repoctx integrate` /
   `repoctx guide`, on-demand instructions via skills and rules, `--detail auto`,
   and the `REPOCTX_SESSION` ambient session.

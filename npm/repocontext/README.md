@@ -1,4 +1,4 @@
-# repocontext
+# repocontext-tool
 
 > Local-first, explainable project memory for AI coding agents.
 
@@ -16,14 +16,14 @@ Supported languages: **TypeScript, TSX, JavaScript, C#**.
 ## Install
 
 ```bash
-npm install -g repocontext
+npm install -g repocontext-tool
 repoctx --version
 ```
 
 Or per repository, so the whole team gets the same pinned version:
 
 ```bash
-npm install --save-dev repocontext
+npm install --save-dev repocontext-tool
 npx repoctx --version
 ```
 

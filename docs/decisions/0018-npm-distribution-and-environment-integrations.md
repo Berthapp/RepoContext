@@ -32,7 +32,7 @@ session are new.
 
 ## Decisions
 
-1. **npm distribution as `repocontext`.** The npm ecosystem is where the
+1. **npm distribution as `repocontext-tool`.** The npm ecosystem is where the
    TypeScript users are, and it can carry a binary without a runtime
    prerequisite. The layout is the one esbuild and swc established: a small
    wrapper package holding a Node launcher, plus one package per platform
@@ -40,8 +40,18 @@ session are new.
    **optional** dependencies constrained by `os`/`cpu` — so `npm install`
    downloads exactly one payload rather than six.
 
-   - The command stays **`repoctx`**. The package is named `repocontext`
-     because `repoctx` was already taken on npm by an unrelated maintainer.
+   - The command stays **`repoctx`**; only the package name differs from it,
+     because `repoctx` is taken on npm by an unrelated maintainer.
+   - **Name availability is not the same as name acceptability.** npm rejects a
+     new package whose name differs from an existing one only by punctuation or
+     case. `repocontext` returns 404 on the registry but is refused at publish
+     time because `repo-context` exists; `repocontext-cli` is refused for the
+     same reason by `repo-context-cli`. The wrapper is therefore
+     `repocontext-tool`, which also mirrors the NuGet package
+     `RepoContext.Tool`. The platform packages are unaffected — their names
+     carry a platform suffix, so they collide with nothing — and they keep the
+     `repocontext-` prefix. Check a candidate's punctuation-stripped form
+     against the registry before adding any further package.
    - The launcher `spawnSync`s the binary with `stdio: "inherit"`, so
      `repoctx mcp` keeps working: the MCP stdio transport speaks raw JSON-RPC
      over stdin/stdout and must not be buffered or line-translated by a shim.

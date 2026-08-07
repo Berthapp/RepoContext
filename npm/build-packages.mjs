@@ -1,11 +1,17 @@
 // Assembles the publishable npm packages for RepoContext.
 //
 // The npm distribution mirrors the pattern esbuild and swc use: one small
-// wrapper package (`repocontext`) that carries the launcher and declares every
-// platform build as an *optional* dependency, plus one package per platform
-// carrying only that platform's self-contained binary. npm installs exactly the
-// one that matches the machine, so a user downloads a single payload instead of
-// all six.
+// wrapper package (`repocontext-tool`) that carries the launcher and declares
+// every platform build as an *optional* dependency, plus one package per
+// platform carrying only that platform's self-contained binary. npm installs
+// exactly the one that matches the machine, so a user downloads a single
+// payload instead of all six.
+//
+// Package names are constrained by more than availability: npm rejects a new
+// name that differs from an existing one only by punctuation or case. `repo-
+// context` and `repo-context-cli` already exist, which rules out `repocontext`
+// and `repocontext-cli` even though neither is registered. Check a candidate's
+// punctuation-stripped form against the registry before adding a package here.
 //
 // Usage:
 //   node npm/build-packages.mjs --artifacts <dir> [--out npm/dist] [--version X.Y.Z]
@@ -27,7 +33,14 @@ const { PAYLOAD_DIRECTORY, targets } = require("./repocontext/lib/platform.js");
 
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(HERE, "..");
+
+// The wrapper's source directory keeps its original name; only the published
+// package name changed. Reading the name from the manifest keeps that the one
+// place it is written down.
 const WRAPPER_SOURCE = path.join(HERE, "repocontext");
+const WRAPPER_PACKAGE_NAME = JSON.parse(
+  fs.readFileSync(path.join(WRAPPER_SOURCE, "package.json"), "utf8"),
+).name;
 
 /** Files copied verbatim from the checked-in wrapper into the built wrapper. */
 const WRAPPER_FILES = [
@@ -103,7 +116,7 @@ function buildPlatformPackage(target, { version, outDir, options }) {
   writeJson(path.join(packageDir, "package.json"), {
     name: target.package,
     version,
-    description: `RepoContext (repoctx) binary for ${os}-${cpu}. Installed automatically by the 'repocontext' package.`,
+    description: `RepoContext (repoctx) binary for ${os}-${cpu}. Installed automatically by the '${WRAPPER_PACKAGE_NAME}' package.`,
     homepage: "https://berthapp.github.io/RepoContext/",
     repository: {
       type: "git",
@@ -152,7 +165,7 @@ function buildWrapperPackage({ version, outDir }) {
   copyIfPresent(path.join(REPO_ROOT, "NOTICE"), path.join(packageDir, "NOTICE"));
 
   const declared = Object.keys(manifest.optionalDependencies);
-  return { name: "repocontext", detail: `wrapper, ${declared.length} optional deps` };
+  return { name: manifest.name, detail: `wrapper, ${declared.length} optional deps` };
 }
 
 /**

@@ -1,5 +1,5 @@
 {
-  "name": "repocontext",
+  "name": "repocontext-tool",
   "version": "0.0.0-dev",
   "description": "Local-first, explainable project memory for AI coding agents. Installs the repoctx CLI — offline, deterministic, no telemetry, no LLM or embedding calls.",
   "keywords": [
