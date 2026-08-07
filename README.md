@@ -696,7 +696,8 @@ The npm job publishes through **trusted publishing**: npm exchanges the job's
 GitHub OIDC identity for a short-lived credential, so no long-lived token is
 stored in the repository and provenance is attested automatically. Register a
 trusted publisher on npmjs.com for **each** of the seven packages
-(`repocontext-tool` and the six `repocontext-<platform>-<arch>` packages),
+(`repocontext-tool` and the six platform packages, whose exact names are listed
+in `npm/repocontext/lib/platform.js`),
 under *Package settings → Trusted publishing*:
 
 | Field | Value |

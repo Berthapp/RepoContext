@@ -50,8 +50,19 @@ session are new.
      `repocontext-tool`, which also mirrors the NuGet package
      `RepoContext.Tool`. The platform packages are unaffected — their names
      carry a platform suffix, so they collide with nothing — and they keep the
-     `repocontext-` prefix. Check a candidate's punctuation-stripped form
-     against the registry before adding any further package.
+     `repocontext-` prefix, with one exception below. Check a candidate's
+     punctuation-stripped form against the registry before adding any further
+     package.
+   - **A second, separate filter exists.** `repocontext-win32-x64` was refused
+     with "name triggered spam detection" while the five sibling names were
+     accepted, and the wrapper published 35 seconds later — so the rule is
+     name-specific, not rate- or account-based. A `<name>-win32-x64` package is
+     the exact shape a supply-chain attacker uses to hijack another project's
+     optional dependencies, which is the likely trigger. That target therefore
+     publishes as `repocontext-windows-x64`. Platform package names are
+     consequently **opaque registry names**, not values to derive from the
+     platform key; `TARGETS` in `platform.js` is the single mapping and a test
+     pins the exception so it cannot be "tidied up" later.
    - The launcher `spawnSync`s the binary with `stdio: "inherit"`, so
      `repoctx mcp` keeps working: the MCP stdio transport speaks raw JSON-RPC
      over stdin/stdout and must not be buffered or line-translated by a shim.

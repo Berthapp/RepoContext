@@ -55,7 +55,7 @@ repoctx integrate --check    # CI-friendly drift check, changes nothing
 | Linux arm64 | `repocontext-linux-arm64` |
 | macOS arm64 (Apple silicon) | `repocontext-darwin-arm64` |
 | macOS x64 (Intel) | `repocontext-darwin-x64` |
-| Windows x64 | `repocontext-win32-x64` |
+| Windows x64 | `repocontext-windows-x64` |
 | Windows arm64 | `repocontext-win32-arm64` |
 
 They are optional dependencies, so `npm install` downloads only the one that

@@ -55,6 +55,9 @@ test("targetFor maps the six supported platform/arch pairs", () => {
   assert.equal(targetFor("darwin", "arm64").rid, "osx-arm64");
   assert.equal(targetFor("win32", "x64").rid, "win-x64");
   assert.equal(targetFor("win32", "arm64").rid, "win-arm64");
+  // Not derivable from the key: npm's spam detection refuses the literal
+  // `repocontext-win32-x64`, so this one target carries a different name.
+  assert.equal(targetFor("win32", "x64").package, "repocontext-windows-x64");
 });
 
 test("targetFor returns null for an unsupported pair", () => {

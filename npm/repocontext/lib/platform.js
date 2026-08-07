@@ -16,13 +16,21 @@ const path = require("node:path");
  * `rid` is the .NET runtime identifier the release workflow publishes; it is
  * carried here so the package layout and the build matrix cannot drift apart
  * silently.
+ *
+ * The package names follow `repocontext-<platform>-<arch>` with one exception:
+ * `win32-x64` publishes as `repocontext-windows-x64`. npm's spam detection
+ * refuses the literal name `repocontext-win32-x64` — a `<name>-win32-x64`
+ * package is the shape a supply-chain attacker uses to hijack another
+ * project's optional dependencies, so the registry is strict about it. The
+ * five other names were accepted. Keep the key/`rid` mapping authoritative and
+ * treat `package` as an opaque registry name, not something to derive.
  */
 const TARGETS = {
   "linux-x64": { package: "repocontext-linux-x64", rid: "linux-x64", binary: "repoctx" },
   "linux-arm64": { package: "repocontext-linux-arm64", rid: "linux-arm64", binary: "repoctx" },
   "darwin-x64": { package: "repocontext-darwin-x64", rid: "osx-x64", binary: "repoctx" },
   "darwin-arm64": { package: "repocontext-darwin-arm64", rid: "osx-arm64", binary: "repoctx" },
-  "win32-x64": { package: "repocontext-win32-x64", rid: "win-x64", binary: "repoctx.exe" },
+  "win32-x64": { package: "repocontext-windows-x64", rid: "win-x64", binary: "repoctx.exe" },
   "win32-arm64": { package: "repocontext-win32-arm64", rid: "win-arm64", binary: "repoctx.exe" },
 };
 
