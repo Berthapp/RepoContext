@@ -14,8 +14,9 @@ namespace RepoContext.Cli;
 /// engine to AI agents over the Model Context Protocol, the token-lean
 /// M6 additions <c>outline</c> and <c>changed</c> (ADR 0010), the
 /// <c>stats</c> token-savings dashboard (ADR 0011), M8 <c>prime</c> and
-/// changed-patch optimizations (ADR 0012), and the M9 agent <c>memory</c>
-/// store (ADR 0013).
+/// changed-patch optimizations (ADR 0012), the M9 agent <c>memory</c>
+/// store (ADR 0013), and the environment-aware <c>integrate</c> / <c>guide</c>
+/// pair that carries the usage protocol at on-demand cost (ADR 0018).
 /// </remarks>
 public static class CliApplication
 {
@@ -70,6 +71,8 @@ public static class CliApplication
             "RepoContext - local-first, explainable project memory for AI coding agents.");
 
         root.Subcommands.Add(InitCommand.Build());
+        root.Subcommands.Add(IntegrateCommand.Build());
+        root.Subcommands.Add(GuideCommand.Build());
         root.Subcommands.Add(IndexCommand.Build());
         root.Subcommands.Add(SearchCommand.Build());
         root.Subcommands.Add(RelatedCommand.Build());

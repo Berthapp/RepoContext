@@ -41,7 +41,9 @@ public static class ContextCommand
         };
         var detail = new Option<string>("--detail")
         {
-            Description = "Per-file detail: paths (pointers), outline (symbol skeletons) or slices (source content).",
+            Description = "Per-file detail: paths (pointers), outline (symbol skeletons), slices "
+                          + "(source content), or auto to pick slices for change tasks and outline "
+                          + "for survey questions.",
             DefaultValueFactory = _ => "paths",
         };
         var snippets = new Option<bool>("--snippets")
@@ -122,9 +124,11 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
-            if (!TryParseDetail(parseResult.GetValue(detail), out ContextDetail detailLevel))
+            // A null level means 'auto': it cannot be resolved until the query has
+            // been analyzed against this repository's configuration.
+            if (!TryParseDetail(parseResult.GetValue(detail), out ContextDetail? requestedDetail))
             {
-                Console.Error.WriteLine("Invalid --detail. Use 'paths', 'outline' or 'slices'.");
+                Console.Error.WriteLine("Invalid --detail. Use 'auto', 'paths', 'outline' or 'slices'.");
                 return ExitCode.InvalidArguments;
             }
 
@@ -132,7 +136,7 @@ public static class ContextCommand
             // --detail wins.
             if (parseResult.GetValue(snippets) && parseResult.GetResult(detail) is null or { Implicit: true })
             {
-                detailLevel = ContextDetail.Slices;
+                requestedDetail = ContextDetail.Slices;
             }
 
             if (!TryParseKnown(parseResult.GetValue(known), out Dictionary<string, string>? knownMap))
@@ -150,11 +154,23 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
+            // An explicit --session always wins; REPOCTX_SESSION only fills the gap,
+            // so reuse can be a property of how the agent was launched instead of
+            // something it has to remember on every call.
             string? sessionName = parseResult.GetValue(session);
+            bool sessionFromEnvironment = false;
+            if (sessionName is null && AmbientSession.TryGetName(out string? ambient))
+            {
+                sessionName = ambient;
+                sessionFromEnvironment = true;
+            }
+
             if (sessionName is not null && !SessionStore.IsValidName(sessionName))
             {
-                Console.Error.WriteLine(
-                    "Invalid --session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+                Console.Error.WriteLine(sessionFromEnvironment
+                    ? $"Invalid {AmbientSession.VariableName} '{sessionName}'. Use 1-64 characters "
+                      + "from A-Z, a-z, 0-9, '.', '_', '-'."
+                    : "Invalid --session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
                 return ExitCode.InvalidArguments;
             }
 
@@ -174,6 +190,12 @@ public static class ContextCommand
 
             string query = parseResult.GetValue(task) ?? string.Empty;
             RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+
+            // 'auto' is resolved here, before the engine runs, so the response
+            // reports the concrete level exactly as if the caller had named it —
+            // no extra wire field, and the cost oracle measures the same bytes.
+            ContextDetail detailLevel = requestedDetail
+                ?? DetailPolicy.Resolve(QueryAnalyzer.Analyze(query, config).Terms).Detail;
 
             using IndexStore store = IndexStore.Open(layout.DatabasePath);
             if (!CommandSupport.EnsureIndexUsable(store, config))
@@ -241,10 +263,17 @@ public static class ContextCommand
         return true;
     }
 
-    private static bool TryParseDetail(string? value, out ContextDetail detail)
+    /// <summary>
+    /// Parses <c>--detail</c>. A parsed value of <c>null</c> means <c>auto</c>:
+    /// valid, but not resolvable until the query has been analyzed.
+    /// </summary>
+    private static bool TryParseDetail(string? value, out ContextDetail? detail)
     {
         switch (value?.ToLowerInvariant())
         {
+            case "auto":
+                detail = null;
+                return true;
             case null or "" or "paths":
                 detail = ContextDetail.Paths;
                 return true;

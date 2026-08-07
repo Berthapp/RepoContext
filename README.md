@@ -30,10 +30,32 @@ The loop an agent runs, on this repository:
 
 ## Requirements
 
+- Nothing, if you install from npm: that package ships a self-contained binary.
 - [.NET 10 SDK](https://dotnet.microsoft.com/) (LTS) to build; the released
   global tool needs only the .NET 10 runtime.
 
 ## Installation
+
+From npm — no .NET runtime required, and the natural route for a
+TypeScript/JavaScript repository:
+
+```bash
+npm install -g repocontext
+repoctx --version
+```
+
+The package is called `repocontext`; the command it installs is `repoctx`. Pin
+it per repository instead, so the whole team gets the same version:
+
+```bash
+npm install --save-dev repocontext
+npx repoctx --version
+```
+
+Prebuilt binaries cover Linux (x64, arm64), macOS (Apple silicon, Intel) and
+Windows (x64, arm64); npm downloads only the one that matches your machine.
+Alpine and other musl-based distributions are not covered — use the .NET tool
+there.
 
 As a .NET global tool (needs the .NET 10 runtime):
 
@@ -131,9 +153,9 @@ dotnet msbuild src/YourProject -t:RepoCtxShim
 dotnet msbuild src/YourProject -t:RepoCtxMcpConfig
 ```
 
-Or download a self-contained binary for `linux-x64`, `win-x64` or `osx-arm64`
-(no .NET runtime required) from the [latest release][releases], unpack it and
-put `repoctx` on your `PATH`:
+Or download a self-contained binary for `linux-x64`, `linux-arm64`, `win-x64`,
+`win-arm64`, `osx-x64` or `osx-arm64` (no .NET runtime required) from the
+[latest release][releases], unpack it and put `repoctx` on your `PATH`:
 
 ```bash
 tar -xzf repoctx-linux-x64.tar.gz     # or unzip repoctx-win-x64.zip
@@ -243,10 +265,12 @@ via `repoctx related`).
 | Command | Purpose | Key options |
 | --- | --- | --- |
 | `init` | Create `.repoctx/` and `repoctx.config.json`; add `.repoctx/` to `.gitignore`. Optionally add usage instructions to `CLAUDE.md` / `AGENTS.md`. | `--force`, `--agents`, `--no-agents` |
+| `integrate` | Wire RepoContext into the coding agents this repository uses (instructions, skills, project rules, MCP registration). Never touches `repoctx.config.json`. | `--client`, `--check`, `--remove`, `--inline-playbook`, `--list` |
+| `guide` | Print the full usage protocol for an agent that needs it. Constant output, safe behind a cache breakpoint. | — |
 | `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
 | `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--no-memory`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--no-memory`, `--format` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
 | `prime` | Cache-stable repository primer for a cacheable prompt prefix (byte-identical for unchanged indexed content and token calibration). | `--files`, `--format` |
@@ -257,7 +281,7 @@ via `repoctx related`).
 | `stats` | Token-savings dashboard aggregated from your local usage (see below). | `--format` (incl. `html`), `--open` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
-Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments.
+Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments · `4` drift (`integrate --check` only).
 
 ### The token-frugal loop
 
@@ -269,13 +293,22 @@ time), so budgets can be trusted. The intended agent workflow:
    a cache breakpoint. Skip this call for focused/familiar work or clients that
    cannot retain a cached prefix. The primer is byte-identical for unchanged
    indexed content and token calibration.
-2. `context "<task>" --detail slices --response-budget-tokens 2000 --format md`
-   — working context with symbol-aligned source `spans` packed into a **hard**
-   response ceiling. Markdown avoids JSON's escaping cost for embedded code;
-   use JSON when a client needs to parse the envelope. `--detail outline`
-   surveys more files for fewer tokens, while the default `paths` returns
-   pointers plus exact full-read costs. `--strip-comments` can remove comment
-   banners from slices (lossy; line ranges become approximate).
+2. `context "<task>" --detail auto --response-budget-tokens 2000 --format md`
+   — working context packed into a **hard** response ceiling. Markdown avoids
+   JSON's escaping cost for embedded code; use JSON when a client needs to
+   parse the envelope. `--strip-comments` can remove comment banners from
+   slices (lossy; line ranges become approximate).
+
+   `--detail auto` reads the shape of the task: change verbs (`fix`,
+   `implement`, `refactor`, `debug`, …) return symbol-aligned source `spans`,
+   survey terms (`where`, `which`, `architecture`, …) return outlines, which
+   cover more files for fewer tokens. A task that is both gets spans — the
+   survey half is answerable from source, the change half is not answerable
+   from an outline. The rule table is deterministic and versioned (ADR 0018);
+   name `slices`, `outline` or `paths` explicitly whenever you know better.
+   The response reports the level it ran with, so nothing about the contract
+   depends on the guess. This exists to remove one round trip: an agent that
+   picks wrong pays for a useless response and then asks again.
 3. Escalate only on a concrete gap: `search --symbols` when a file is missing,
    `outline <file>` when the symbol you need was not delivered, `related` for
    dependency/impact questions, and `architecture --depth 1` for unfamiliar
@@ -406,61 +439,74 @@ several file reads — a recalled memory answers it for ~40-80.
 
 ## Agent integration
 
-RepoContext is agent-agnostic — any agent with shell access can use it. The
-fastest way to wire it in is to let `init` write the instructions for you:
+RepoContext is agent-agnostic — any agent with shell access can use it. Let
+`integrate` wire it into whichever agents this repository already uses:
 
 ```bash
-repoctx init --agents     # also create/update CLAUDE.md and AGENTS.md
+repoctx integrate            # detect the environment and write the managed files
+repoctx integrate --list     # what each client would get
+repoctx integrate --check    # CI-friendly drift check; writes nothing, exits 4 on drift
+repoctx integrate --remove   # take the managed blocks back out
 ```
 
-On an interactive terminal, plain `repoctx init` asks whether to do this; pass
-`--agents` to opt in without the prompt (e.g. in scripts) or `--no-agents` to
-skip it. The managed block is delimited by `<!-- BEGIN/END RepoContext -->`
-markers, so re-running `init` updates it in place without touching the rest of
-the file or duplicating the block. Any file that already exists is appended to,
-never overwritten.
+| Client | Detected by | Files it maintains |
+| --- | --- | --- |
+| `claude-code` | `.claude/`, `CLAUDE.md` | `CLAUDE.md` pointer, `.claude/skills/repocontext/SKILL.md`, `.mcp.json` |
+| `cursor` | `.cursor/`, `.cursorrules` | `.cursor/rules/repocontext.mdc` (`alwaysApply: false`), `.cursor/mcp.json` |
+| `copilot` | `.github/copilot-instructions.md`, `.vscode/` | `.github/copilot-instructions.md`, `.vscode/mcp.json` |
+| `windsurf` | `.windsurf/` | `.windsurf/rules/repocontext.md` |
+| `agents` | `AGENTS.md` (and the fallback when nothing is detected) | `AGENTS.md` |
 
-Claude Code reads `CLAUDE.md`; GitHub Copilot (agent mode), Cursor and most
-other agents read `AGENTS.md` — so a repository that ran `repoctx init --agents`
-works with all of them out of the box. (Copilot's inline completions and
-classic chat don't run tools, so RepoContext applies to agent mode only.)
+Pick explicitly with `--client claude-code --client cursor` if detection is not
+what you want.
 
-To add it by hand instead, drop a snippet like this into your agent
-instructions (e.g. `CLAUDE.md`, `AGENTS.md`):
+Two properties matter. **It never touches `repoctx.config.json`** — unlike
+`init --agents`, which needs `--force` on an initialized repository and would
+overwrite your configuration along the way. And **it never overwrites what it
+does not own**: instruction files are maintained through
+`<!-- BEGIN/END RepoContext -->` markers with everything outside them preserved
+byte-for-byte, and an MCP configuration file that already exists is reported and
+left alone, because it may register other servers.
 
-```markdown
-## Getting context
+### Why the instructions are short
 
-This repository is indexed by RepoContext (`repoctx`); token figures are real
-BPE counts. Start with one budgeted call, then escalate only on a concrete gap:
+`CLAUDE.md`, `AGENTS.md` and `.github/copilot-instructions.md` are loaded into
+**every** prompt of every session — including the ones RepoContext cannot help
+with. So the managed block in them is a pointer of about 100 tokens: what the
+tool is, the one call to start with, and where the rest lives. A test caps it at
+150 tokens and asserts it stays under a third of the full protocol, so this is a
+gate rather than a promise.
 
-1. Optionally orient with `repoctx prime` for a new, unfamiliar repository, but
-   only when the client can retain it behind a cache breakpoint.
-2. Working context: `repoctx context "<task>" --detail slices
-   --response-budget-tokens 2000 --format md` (`md` avoids JSON escaping for
-   embedded code; `--strip-comments` is a lossy option for comment banners).
-3. Only if a file is missing: `repoctx search "<term>" --symbols --format json`.
-4. Only if a symbol is missing: `repoctx outline <file> --format json`.
-5. Only for dependency or impact questions:
-   `repoctx related <file> --format json`.
-6. Only for unfamiliar boundaries:
-   `repoctx architecture --depth 1 --format md`.
-7. After editing: `repoctx changed --patch --format md`; when `stale`, run
-   `repoctx index`.
-8. If `context` leaves a concrete knowledge gap, use
-   `repoctx memory search "<topic>" --format json`; after completing difficult
-   work, record only a distilled finding with `repoctx memory add`.
-9. Stop once no evidence needed for the task is missing.
+The full protocol — escalation rules, evidence reuse, budgets, calibration —
+arrives only when a task actually needs it:
 
-Never pay twice, and never over-claim:
+- **Claude Code, Cursor, Windsurf** get it as a skill or project rule, loaded on
+  demand when its description matches the task.
+- **Every other agent** runs `repoctx guide`, which prints the same text. That
+  costs the protocol once per task instead of once per prompt.
 
-- `--seen <receipt>` suppresses exactly the pointer, span or symbol that receipt
-  came from; the rest of the file still arrives.
-- `--known <path>@<hash>` asserts you hold the **whole** file — never derive it
-  from a slice or outline.
-- `--session <name>` persists reuse bookkeeping locally without changing that
-  partial-versus-whole-file distinction.
+Prefer the old behaviour? `repoctx integrate --inline-playbook` puts the full
+protocol in the always-loaded files.
+
+`repoctx init --agents` still writes `CLAUDE.md` and `AGENTS.md` directly, with
+the same pointer block, so the two commands never fight over the region.
+
+### Ambient evidence reuse
+
+`--session <name>` is the cheapest reuse the tool offers: the agent echoes
+nothing, so it costs no output tokens at all. Its weakness is that it has to be
+remembered on every call. Set `REPOCTX_SESSION` and both the CLI and the MCP
+server use it when no session is passed; an explicit `--session` still wins.
+
+```bash
+REPOCTX_SESSION=my-agent repoctx context "change the login logic" --detail auto
 ```
+
+Choose a name that identifies **one** agent instance. A session records what was
+delivered, so two agents sharing a name in one repository would let the second
+receive reuse markers for evidence it never saw. That is why the generated MCP
+configuration deliberately does not set the variable for you — only whoever
+launches the agent knows how many are running.
 
 ## MCP server
 
@@ -634,14 +680,26 @@ Releases are cut by merging, not by hand:
 1. Bump `<VersionPrefix>` in `Directory.Build.props` inside the feature PR
    (contract changes bump the minor version while pre-1.0).
 2. Merge to `main`. The `Tag on version change` workflow notices the new
-   version, pushes `v<version>`, and `release.yml` publishes to NuGet, builds
-   the self-contained binaries and drafts the GitHub release.
+   version, pushes `v<version>`, and `release.yml` publishes to NuGet and npm,
+   builds the self-contained binaries and drafts the GitHub release.
 3. Review and publish the draft release.
 
 A merge that leaves `VersionPrefix` untouched releases nothing. One-time
 setup: an Actions secret `RELEASE_PAT` (fine-grained PAT, this repository
 only, Contents: Read and write) — required because tags pushed with the
-default workflow token do not trigger `release.yml`.
+default workflow token do not trigger `release.yml` — and an `NPM_TOKEN`
+secret (an npm automation token) for the npm publish. Without `NPM_TOKEN` the
+npm job still builds and validates the packages, it just does not publish them.
+
+The npm packages are assembled from the same self-contained publish output as
+the release archives, by `npm/build-packages.mjs`. `Directory.Build.props` stays
+the single source of the version: the builder reads `VersionPrefix` and pins
+every platform package to it. To inspect what a release would publish:
+
+```bash
+node npm/build-packages.mjs --dry-run --out npm/dist   # manifests only
+node --test npm/repocontext/test/platform.test.mjs     # launcher resolution
+```
 
 ## License
 

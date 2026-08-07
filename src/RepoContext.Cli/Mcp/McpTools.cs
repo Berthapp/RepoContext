@@ -49,9 +49,10 @@ public static class McpTools
                     CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Primary context tool. Ranks task-relevant files under response/read budgets. "
-                    + "detail: paths=locations, outline=symbols, slices=source spans. Reuse evidence "
-                    + "via seen receipts or session; known=path@hash requires a full-file read. "
-                    + "stripComments is lossy; matching memories are included by default.")),
+                    + "detail: auto=pick per task, paths=locations, outline=symbols, slices=source "
+                    + "spans. Reuse evidence via seen receipts or session; known=path@hash requires "
+                    + "a full-file read. stripComments is lossy; matching memories are included by "
+                    + "default.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
                 Describe("repoctx.get_related_files",
@@ -124,7 +125,7 @@ public static class McpTools
         int? responseBudgetTokens = null,
         [Description("Hard projected full-read token cap.")]
         int? projectedReadBudgetTokens = null,
-        [Description("Detail: paths, outline, or slices.")] string detail = "paths",
+        [Description("Detail: auto, paths, outline, or slices.")] string detail = "paths",
         [Description("Whole files held as path@hash; never use a slice/outline hash.")]
         string[]? known = null,
         [Description("Exact evidence receipts already held.")]
@@ -162,16 +163,22 @@ public static class McpTools
             return Fail($"Invalid seen receipt '{malformed}'. Pass a receipt exactly as returned.");
         }
 
-        ContextDetail? detailLevel = detail?.ToLowerInvariant() switch
+        // 'auto' is resolved further down, once the query can be analyzed against
+        // this repository's configuration. Until then it is not a level, so it
+        // cannot share the null sentinel that marks an unparseable value.
+        bool autoDetail = string.Equals(detail, "auto", StringComparison.OrdinalIgnoreCase);
+        ContextDetail? detailLevel = autoDetail
+            ? null
+            : detail?.ToLowerInvariant() switch
+            {
+                null or "" or "paths" => ContextDetail.Paths,
+                "outline" => ContextDetail.Outline,
+                "slices" => ContextDetail.Slices,
+                _ => null,
+            };
+        if (!autoDetail && detailLevel is null)
         {
-            null or "" or "paths" => ContextDetail.Paths,
-            "outline" => ContextDetail.Outline,
-            "slices" => ContextDetail.Slices,
-            _ => null,
-        };
-        if (detailLevel is null)
-        {
-            return Fail("detail must be 'paths', 'outline' or 'slices'.");
+            return Fail("detail must be 'auto', 'paths', 'outline' or 'slices'.");
         }
 
         Dictionary<string, string>? knownMap = null;
@@ -190,9 +197,24 @@ public static class McpTools
             }
         }
 
+        // An explicit session argument wins; REPOCTX_SESSION only fills the gap.
+        // An MCP server is launched per agent instance, so whoever writes that
+        // launcher's environment is exactly who can name a session safely
+        // (ADR 0018). Memory tools keep requiring an explicit session, because
+        // there the name scopes what is stored, not what is reused.
+        bool sessionFromEnvironment = false;
+        if (session is null && AmbientSession.TryGetName(out string? ambientSession))
+        {
+            session = ambientSession;
+            sessionFromEnvironment = true;
+        }
+
         if (session is not null && !SessionStore.IsValidName(session))
         {
-            return Fail("Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
+            return Fail(sessionFromEnvironment
+                ? $"Invalid {AmbientSession.VariableName} '{session}'. Use 1-64 characters from "
+                  + "A-Z, a-z, 0-9, '.', '_', '-'."
+                : "Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
         }
 
         if (Locate() is not { } layout)
@@ -225,6 +247,13 @@ public static class McpTools
             return outdated;
         }
 
+        // Resolved before the engine runs, so the response reports the concrete
+        // level exactly as if the caller had named it: no extra wire field, and
+        // the cost oracle measures the same bytes.
+        ContextDetail effectiveDetail = autoDetail
+            ? DetailPolicy.Resolve(QueryAnalyzer.Analyze(task ?? string.Empty, config).Terms).Detail
+            : detailLevel!.Value;
+
         TokenScale scale = TokenScale.From(config);
         var costModel = ContextCostModel.ForMcpText(scale);
         var engine = new ContextEngine(store, config);
@@ -234,7 +263,7 @@ public static class McpTools
             BudgetTokens = budgetTokens,
             ResponseBudgetTokens = responseBudgetTokens,
             ProjectedReadBudgetTokens = projectedReadBudgetTokens,
-            Detail = detailLevel.Value,
+            Detail = effectiveDetail,
             Known = knownMap,
             Seen = seenReceipts,
             StripComments = stripComments,

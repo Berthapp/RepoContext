@@ -86,13 +86,26 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        # Every runtime identifier here is also an npm platform package (see the
+        # npm job below), so this matrix and npm/repocontext/lib/platform.js must
+        # list the same set — the npm builder fails the release if one is missing.
         include:
           - rid: linux-x64
             os: ubuntu-latest
+          - rid: linux-arm64
+            os: ubuntu-24.04-arm
           - rid: win-x64
+            os: windows-latest
+          # Cross-published from the x64 Windows runner: GitHub offers no
+          # Windows-on-ARM runner, and the native dependencies ship win-arm64
+          # binaries, so the publish output is complete either way.
+          - rid: win-arm64
             os: windows-latest
           - rid: osx-arm64
             os: macos-latest
+          # macos-13 is the last Intel image; macos-latest is Apple silicon.
+          - rid: osx-x64
+            os: macos-13
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
@@ -121,9 +134,89 @@ jobs:
             repoctx-${{ matrix.rid }}.zip
           if-no-files-found: error
 
+  npm-publish:
+    name: npm packages
+    needs: [self-contained]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # Required for npm publish --provenance.
+      id-token: write
+    env:
+      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    steps:
+      - uses: actions/checkout@v7
+
+      # The runner image ships Node; no setup action is needed, which keeps this
+      # job free of a second action version to track.
+      - name: Unit-test the launcher
+        run: |
+          node --version
+          node --test npm/repocontext/test/platform.test.mjs
+
+      - name: Download self-contained archives
+        uses: actions/download-artifact@v8
+        with:
+          pattern: repoctx-*
+          path: archives
+          merge-multiple: true
+
+      # The npm packages carry the same payload as the release archives. Going
+      # through the archives (rather than uploading the publish directories
+      # directly) keeps the executable bit intact: an artifact upload does not
+      # preserve file modes, a tar does.
+      - name: Unpack archives per runtime identifier
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          for archive in archives/repoctx-*.tar.gz; do
+            rid=$(basename "$archive" .tar.gz); rid=${rid#repoctx-}
+            mkdir -p staging/"$rid"
+            tar -xzf "$archive" -C staging/"$rid"
+          done
+          for archive in archives/repoctx-*.zip; do
+            rid=$(basename "$archive" .zip); rid=${rid#repoctx-}
+            mkdir -p staging/"$rid"
+            unzip -q "$archive" -d staging/"$rid"
+          done
+          ls staging
+
+      - name: Build npm packages
+        run: node npm/build-packages.mjs --artifacts staging --out npm/dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: repoctx-npm
+          path: npm/dist/*/package.json
+
+      # Publish only for tag builds, and only when NPM_TOKEN is configured.
+      # Platform packages go first: the wrapper declares them as optional
+      # dependencies, so publishing it first would briefly resolve to nothing.
+      # `npm view` makes re-runs idempotent the way --skip-duplicate does for
+      # NuGet.
+      - name: Publish to npm
+        if: startsWith(github.ref, 'refs/tags/v') && env.NPM_TOKEN != ''
+        run: |
+          set -euo pipefail
+          # Written here rather than by setup-node; the token stays in the
+          # runner's home directory and never reaches a repository file.
+          printf '//registry.npmjs.org/:_authToken=%s\n' "$NPM_TOKEN" > "$HOME/.npmrc"
+          trap 'rm -f "$HOME/.npmrc"' EXIT
+          publish() {
+            name=$(node -p "require('./$1/package.json').name")
+            version=$(node -p "require('./$1/package.json').version")
+            if npm view "$name@$version" version >/dev/null 2>&1; then
+              echo "$name@$version already published, skipping."
+              return
+            fi
+            npm publish "$1" --access public --provenance
+          }
+          for dir in npm/dist/repocontext-*; do publish "$dir"; done
+          publish npm/dist/repocontext
+
   github-release:
     name: GitHub Release
-    needs: [pack-tool, self-contained]
+    needs: [pack-tool, self-contained, npm-publish]
     runs-on: ubuntu-latest
     # Only cut a release for pushed version tags.
     if: startsWith(github.ref, 'refs/tags/v')

@@ -441,6 +441,19 @@ FodyWeavers.xsd
 /CLAUDE.md
 /AGENTS.md
 
+# Locally generated client integrations follow the same rule as the instruction
+# files above: they are written per checkout, not committed for everyone.
+/.claude/skills/repocontext/
+/.cursor/rules/repocontext.mdc
+/.windsurf/rules/repocontext.md
+
+# The npm packages are assembled from a release build; never commit the output.
+/npm/dist/
+
+# ...but the launcher lives in a directory the MSBuild rules above ignore.
+!/npm/repocontext/bin/
+!/npm/repocontext/bin/*
+
 # Test fixtures must be committed verbatim, including the negative-case files
 # that the default rules above would normally ignore (.env, node_modules, ...).
 # The indexer's ignore/sensitive handling is exercised against them in CI.
