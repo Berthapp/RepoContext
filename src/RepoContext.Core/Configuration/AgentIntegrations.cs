@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace RepoContext.Core.Configuration;
 
 /// <summary>How a managed file is maintained.</summary>
@@ -51,6 +53,42 @@ public sealed record AgentClientDefinition
 /// <summary>What happened to one managed file.</summary>
 public sealed record IntegrationFileResult(string ClientId, string RelativePath, AgentFileChange Change);
 
+/// <summary>How generated MCP configuration starts the server.</summary>
+/// <remarks>
+/// <para>
+/// MCP clients spawn the server without a shell, and on Windows an npm install
+/// leaves no executable to spawn: the PATH entries are <c>repoctx</c> (a shell
+/// script), <c>repoctx.cmd</c> and <c>repoctx.ps1</c>. Windows cannot launch any
+/// of the three through <c>CreateProcess</c> — a <c>.cmd</c> file "is not
+/// executable on its own without a terminal" — so <c>"command": "repoctx"</c>
+/// fails to start for exactly the audience the npm package exists for.
+/// </para>
+/// <para>
+/// The usual workaround, <c>"command": "cmd", "args": ["/c", ...]</c>, is
+/// Windows-only, and these files are committed and shared: a config that depends
+/// on the author's operating system flips back and forth in the repository as
+/// developers on different machines run <c>integrate</c>. So the choice is made
+/// from the <i>repository</i>, which is the same for everyone, and never from
+/// <see cref="OperatingSystem"/>.
+/// </para>
+/// </remarks>
+public enum McpLaunch
+{
+    /// <summary>
+    /// Spawn <c>repoctx</c> from the PATH. Correct wherever the command is a real
+    /// executable — the .NET global tool and every Unix install.
+    /// </summary>
+    PathCommand,
+
+    /// <summary>
+    /// Spawn <c>node</c> with the launcher inside the repository's own
+    /// <c>node_modules</c>. <c>node</c> is a genuine executable on every platform,
+    /// so this skips the shims entirely and the identical file works on Windows,
+    /// macOS and Linux.
+    /// </summary>
+    LocalNpmPackage,
+}
+
 /// <summary>How much instruction text goes into the always-loaded files.</summary>
 public enum InstructionStyle
 {
@@ -96,13 +134,18 @@ public static class AgentIntegrations
     /// </summary>
     public const string FallbackClientId = "agents";
 
+    /// <summary>The npm package that carries the CLI, and its launcher inside it.</summary>
+    private const string NpmPackageName = "repocontext-tool";
+    private const string NpmLauncherPath = "node_modules/" + NpmPackageName + "/bin/repoctx.js";
+
     /// <summary>The catalog for an instruction style, ordered by id.</summary>
-    public static IReadOnlyList<AgentClientDefinition> All(InstructionStyle style) =>
+    public static IReadOnlyList<AgentClientDefinition> All(
+        InstructionStyle style, McpLaunch launch = McpLaunch.PathCommand) =>
     [
         Agents(style),
-        ClaudeCode(style),
-        Copilot(style),
-        Cursor(),
+        ClaudeCode(style, launch),
+        Copilot(style, launch),
+        Cursor(launch),
         Windsurf(),
     ];
 
@@ -111,8 +154,51 @@ public static class AgentIntegrations
         [.. All(InstructionStyle.Pointer).Select(c => c.Id)];
 
     /// <summary>Looks a client up by id (case-insensitive).</summary>
-    public static AgentClientDefinition? Find(string id, InstructionStyle style) =>
-        All(style).FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+    public static AgentClientDefinition? Find(
+        string id, InstructionStyle style, McpLaunch launch = McpLaunch.PathCommand) =>
+        All(style, launch).FirstOrDefault(c => string.Equals(c.Id, id, StringComparison.OrdinalIgnoreCase));
+
+    /// <summary>
+    /// How generated MCP configuration should start the server in
+    /// <paramref name="root"/>.
+    /// </summary>
+    /// <remarks>
+    /// A repository that pins <c>repocontext-tool</c> as an npm dependency carries
+    /// the launcher itself, so the server can be started through <c>node</c> and
+    /// no PATH shim is involved. The declaration in <c>package.json</c> is the
+    /// primary signal because it is committed and therefore identical for every
+    /// developer; a populated <c>node_modules</c> is accepted as well, for the
+    /// install that was never recorded. Unreadable or malformed manifests simply
+    /// do not match — this decides how to phrase a config, and guessing wrong
+    /// costs a startup failure.
+    /// </remarks>
+    public static McpLaunch DetectMcpLaunch(string root) =>
+        DeclaresNpmPackage(root) || File.Exists(FullPath(root, NpmLauncherPath))
+            ? McpLaunch.LocalNpmPackage
+            : McpLaunch.PathCommand;
+
+    private static bool DeclaresNpmPackage(string root)
+    {
+        string manifest = FullPath(root, "package.json");
+        if (!File.Exists(manifest))
+        {
+            return false;
+        }
+
+        try
+        {
+            using JsonDocument document = JsonDocument.Parse(File.ReadAllText(manifest));
+            string[] sections = ["dependencies", "devDependencies", "optionalDependencies"];
+            return sections.Any(section =>
+                document.RootElement.TryGetProperty(section, out JsonElement value)
+                && value.ValueKind == JsonValueKind.Object
+                && value.TryGetProperty(NpmPackageName, out _));
+        }
+        catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
 
     /// <summary>
     /// The clients whose environment is present in <paramref name="root"/>. Never
@@ -122,15 +208,16 @@ public static class AgentIntegrations
     /// </summary>
     public static IReadOnlyList<AgentClientDefinition> Detect(string root, InstructionStyle style)
     {
+        McpLaunch launch = DetectMcpLaunch(root);
         List<AgentClientDefinition> detected =
-            [.. All(style).Where(client => client.DetectionPaths.Any(path => Exists(root, path)))];
+            [.. All(style, launch).Where(client => client.DetectionPaths.Any(path => Exists(root, path)))];
 
         if (detected.Count > 0)
         {
             return detected;
         }
 
-        return [All(style).First(c => c.Id == FallbackClientId)];
+        return [All(style, launch).First(c => c.Id == FallbackClientId)];
     }
 
     /// <summary>Applies one client's integration, creating or refreshing its files.</summary>
@@ -224,7 +311,7 @@ public static class AgentIntegrations
 
     // ---- client definitions -------------------------------------------------
 
-    private static AgentClientDefinition ClaudeCode(InstructionStyle style) => new()
+    private static AgentClientDefinition ClaudeCode(InstructionStyle style, McpLaunch launch) => new()
     {
         Id = "claude-code",
         DisplayName = "Claude Code",
@@ -240,11 +327,11 @@ public static class AgentIntegrations
                 Preamble: FrontMatter(
                     "name: repocontext",
                     "description: " + SkillDescription)),
-            new ManagedFile(".mcp.json", ManagedFileKind.ClientConfig, McpServersJson()),
+            new ManagedFile(".mcp.json", ManagedFileKind.ClientConfig, McpServersJson(launch)),
         ],
     };
 
-    private static AgentClientDefinition Cursor() => new()
+    private static AgentClientDefinition Cursor(McpLaunch launch) => new()
     {
         Id = "cursor",
         DisplayName = "Cursor",
@@ -261,11 +348,11 @@ public static class AgentIntegrations
                 Preamble: FrontMatter(
                     "description: " + SkillDescription,
                     "alwaysApply: false")),
-            new ManagedFile(".cursor/mcp.json", ManagedFileKind.ClientConfig, McpServersJson()),
+            new ManagedFile(".cursor/mcp.json", ManagedFileKind.ClientConfig, McpServersJson(launch)),
         ],
     };
 
-    private static AgentClientDefinition Copilot(InstructionStyle style) => new()
+    private static AgentClientDefinition Copilot(InstructionStyle style, McpLaunch launch) => new()
     {
         Id = "copilot",
         DisplayName = "GitHub Copilot",
@@ -275,7 +362,7 @@ public static class AgentIntegrations
         [
             new ManagedFile(
                 ".github/copilot-instructions.md", ManagedFileKind.Instructions, Instructions(style)),
-            new ManagedFile(".vscode/mcp.json", ManagedFileKind.ClientConfig, VsCodeMcpJson()),
+            new ManagedFile(".vscode/mcp.json", ManagedFileKind.ClientConfig, VsCodeMcpJson(launch)),
         ],
     };
 
@@ -325,13 +412,13 @@ public static class AgentIntegrations
     /// rather than serialized so the generated file is stable, commentable and
     /// reviewable in a diff.
     /// </summary>
-    private static string McpServersJson() =>
-        """
+    private static string McpServersJson(McpLaunch launch) =>
+        $$"""
         {
           "mcpServers": {
             "repoctx": {
-              "command": "repoctx",
-              "args": ["mcp"]
+              "command": {{LaunchCommand(launch)}},
+              "args": [{{LaunchArguments(launch, workspacePrefix: null)}}]
             }
           }
         }
@@ -339,17 +426,30 @@ public static class AgentIntegrations
         """;
 
     /// <summary>VS Code (and Visual Studio) read <c>servers</c> with an explicit transport.</summary>
-    private static string VsCodeMcpJson() =>
-        """
+    /// <remarks>
+    /// The launcher path is prefixed with <c>${workspaceFolder}</c> here. VS Code
+    /// resolves that itself, and unlike a bare relative path it does not depend on
+    /// the working directory the client happens to spawn the server with.
+    /// </remarks>
+    private static string VsCodeMcpJson(McpLaunch launch) =>
+        $$"""
         {
           "servers": {
             "repoctx": {
               "type": "stdio",
-              "command": "repoctx",
-              "args": ["mcp"]
+              "command": {{LaunchCommand(launch)}},
+              "args": [{{LaunchArguments(launch, workspacePrefix: "${workspaceFolder}/")}}]
             }
           }
         }
 
         """;
+
+    private static string LaunchCommand(McpLaunch launch) =>
+        launch == McpLaunch.LocalNpmPackage ? "\"node\"" : "\"repoctx\"";
+
+    private static string LaunchArguments(McpLaunch launch, string? workspacePrefix) =>
+        launch == McpLaunch.LocalNpmPackage
+            ? $"\"{workspacePrefix}{NpmLauncherPath}\", \"mcp\""
+            : "\"mcp\"";
 }
