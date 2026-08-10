@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RepoContext — explainable, offline context for AI coding agents</title>
-<meta name="description" content="repoctx is a local-first CLI that deterministically indexes a repository and serves compact, explainable context to AI coding agents. No network, no telemetry, byte-identical output.">
+<meta name="description" content="repoctx is a local-first CLI that deterministically indexes a repository and serves compact, explainable context to AI coding agents. Install from npm or NuGet — no network, no telemetry, byte-identical output.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e141b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%2322c3d6' text-anchor='middle'%3E%24%3C/text%3E%3C/svg%3E">
 </head>
 <body>
@@ -272,6 +272,18 @@
   .code .comment { color: var(--code-dim); }
   .code .p { color: var(--code-dim); }
   .code .flag { color: var(--accent-ink); }
+  /* Caveats that belong to an install route but not in its shell block. */
+  .panel-note {
+    padding: 13px 20px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 13.5px;
+  }
+  .panel-note code { font-family: var(--mono); font-size: 12.5px; color: var(--accent-ink); }
+  .badge {
+    font-family: var(--mono); font-size: 11px; font-weight: 500; letter-spacing: 0.02em;
+    color: var(--accent-ink); background: var(--accent-wash);
+    border: 1px solid var(--accent); border-radius: 999px;
+    padding: 1px 8px; margin-left: 8px; vertical-align: 2px;
+  }
 
   /* Quickstart — a genuine ordered flow, so numbered. */
   .steps { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; counter-reset: step; }
@@ -362,6 +374,7 @@
           <span><i class="dot"></i> No telemetry</span>
           <span><i class="dot"></i> Byte-identical output</span>
           <span><i class="dot"></i> TypeScript · TSX · JavaScript · C#</span>
+          <span><i class="dot"></i> npm or NuGet — no runtime needed</span>
         </div>
       </div>
 
@@ -436,10 +449,30 @@
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">install</span>
-        <h2>Three ways in.</h2>
-        <p>Have the .NET 10 runtime? Install the global tool. Otherwise grab a self-contained binary — no runtime required. Tool installs blocked by policy? Add it as a plain NuGet package.</p>
+        <h2>Four ways in.</h2>
+        <p>Simplest route: <code>npm install</code> — it ships a self-contained binary, so no .NET runtime is involved. Already on .NET 10? Install the global tool. Prefer no package manager at all? Take a binary from Releases. Tool installs blocked by policy? Add it as a plain NuGet package.</p>
       </div>
       <div class="install-grid">
+        <div class="panel panel-wide">
+          <div class="panel-head">
+            <div>
+              <h3>npm <span class="badge">new</span></h3>
+              <p>No .NET runtime required — the package ships a self-contained binary. The natural route for a TypeScript / JavaScript repository. The package is <code>repocontext-tool</code>; the command it installs is <code>repoctx</code>.</p>
+            </div>
+            <button class="copy-btn" type="button" data-copy="npm install -g repocontext-tool" aria-label="Copy install command">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="12" height="12" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h10"/></svg>
+              <span>copy</span>
+            </button>
+          </div>
+          <div class="code"><pre><span class="comment"># globally — puts repoctx on your PATH</span>
+npm install <span class="flag">-g</span> repocontext-tool
+repoctx <span class="flag">--version</span>
+
+<span class="comment"># or pinned per repository, so the whole team gets the same version</span>
+npm install <span class="flag">--save-dev</span> repocontext-tool
+npx repoctx <span class="flag">--version</span></pre></div>
+          <p class="panel-note">Prebuilt for Linux <code>x64</code>/<code>arm64</code>, macOS <code>arm64</code>/<code>x64</code> and Windows <code>x64</code>/<code>arm64</code>. The platform payloads are optional dependencies, so npm downloads only the one matching your machine. Alpine and other musl-based distributions are not covered by the prebuilt binaries — use the .NET tool there.</p>
+        </div>
         <div class="panel">
           <div class="panel-head">
             <div>
@@ -592,6 +625,7 @@ claude mcp add repoctx <span class="p">--</span> repoctx mcp
     <div><span class="dollar" style="color:var(--accent);font-family:var(--mono);">$</span> <b style="font-family:var(--mono);">repoctx</b> · Apache-2.0 · runs entirely offline</div>
     <div class="foot-links">
       <a href="https://github.com/Berthapp/RepoContext">GitHub</a>
+      <a href="https://www.npmjs.com/package/repocontext-tool">npm</a>
       <a href="https://www.nuget.org/packages/RepoContext.Tool">NuGet</a>
       <a href="https://github.com/Berthapp/RepoContext/releases">Releases</a>
       <a href="https://modelcontextprotocol.io">MCP</a>
