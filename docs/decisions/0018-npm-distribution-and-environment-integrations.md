@@ -179,6 +179,37 @@ session are new.
    can know. Memory tools keep requiring an explicit session, because there the
    name scopes what is stored, not what is reused.
 
+6. **Generated MCP configuration is chosen by the repository, never by the
+   operating system.** MCP clients spawn the server without a shell, and an npm
+   install leaves nothing on Windows that `CreateProcess` can start: the PATH
+   carries `repoctx` (a shell script), `repoctx.cmd` and `repoctx.ps1`, and a
+   `.cmd` file "is not executable on its own without a terminal" (Node
+   `child_process` documentation). So `"command": "repoctx"` — correct for the
+   .NET tool and every Unix install — fails to start for exactly the audience
+   decision 1 added npm for.
+
+   The community workaround, `"command": "cmd", "args": ["/c", …]`, is rejected:
+   these files are committed and shared, so a config keyed on the author's
+   operating system flips back and forth in the repository as developers on
+   different machines run `integrate`, and `--check` reports drift on every
+   machine that did not write it last. **A generated file may depend on the
+   repository, which is the same for everyone; it may not depend on the
+   machine.**
+
+   When the repository pins `repocontext-tool` as an npm dependency it carries
+   the launcher itself, so the server is started through `node` — a genuine
+   executable on every platform — with `node_modules/repocontext-tool/bin/
+   repoctx.js`. One byte-identical file works on Windows, macOS and Linux, and
+   no shim is involved on any of them. `.vscode/mcp.json` anchors the path to
+   `${workspaceFolder}` rather than trusting the client's working directory.
+   Absent that dependency the PATH command stays, byte-for-byte as before.
+
+   This leaves one case open: a **global** npm install on Windows has no
+   repository-relative launcher, and nothing in the repository can name a
+   machine-specific path. Those users register `cmd /c` by hand (README) or
+   install the .NET tool. Closing it properly needs a client-side fix, not a
+   generated file.
+
 ## Consequences
 
 - **No schema change.** `RepoContextInfo.SchemaVersion` stays 3; no JSON field

@@ -549,6 +549,28 @@ Register it with an MCP-capable client, for example:
 }
 ```
 
+**On Windows, that `command` only works for the .NET tool.** An npm install puts
+no executable on the PATH — only the shims `repoctx`, `repoctx.cmd` and
+`repoctx.ps1` — and MCP clients spawn the server without a shell, which Windows
+cannot do for any of the three. When the repository pins `repocontext-tool` as
+an npm dependency, `repoctx integrate` therefore writes a `node`-based
+registration, identical on every platform and free of shims:
+
+```json
+{
+  "mcpServers": {
+    "repoctx": {
+      "command": "node",
+      "args": ["node_modules/repocontext-tool/bin/repoctx.js", "mcp"]
+    }
+  }
+}
+```
+
+With a *global* npm install there is no repository-relative launcher to point
+at; on Windows, register it by hand as `"command": "cmd"` with
+`"args": ["/c", "repoctx", "mcp"]`, or install the .NET tool instead.
+
 With Claude Code, run this inside the repository:
 
 ```bash

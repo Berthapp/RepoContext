@@ -1,3 +1,4 @@
+using System.Text.Json;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Indexing;
 
@@ -88,6 +89,88 @@ public sealed class AgentIntegrationsTests : IDisposable
             Assert.NotEmpty(client.DetectionPaths);
             Assert.All(client.Files, file => Assert.False(file.RelativePath.Contains('\\')));
         });
+    }
+
+    [Fact]
+    public void McpConfig_SpawnsNodeWithTheLocalLauncher_WhenTheRepositoryPinsTheNpmPackage()
+    {
+        // The case the npm package is built for: an MCP client spawns the server
+        // without a shell, and on Windows an npm install leaves nothing spawnable
+        // on the PATH — only `repoctx`, `repoctx.cmd` and `repoctx.ps1`. `node` is
+        // a real executable everywhere, so the launcher is invoked through it.
+        WritePackageJson("""{ "devDependencies": { "repocontext-tool": "^0.9.1" } }""");
+
+        string config = McpConfigOf(DetectedClient("claude-code"), ".mcp.json");
+
+        Assert.Contains("\"command\": \"node\"", config, StringComparison.Ordinal);
+        Assert.Contains(
+            "\"node_modules/repocontext-tool/bin/repoctx.js\", \"mcp\"", config, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void VsCodeMcpConfig_AnchorsTheLauncherToTheWorkspaceFolder()
+    {
+        // A bare relative path would depend on the working directory VS Code
+        // happens to spawn the server with; ${workspaceFolder} does not.
+        WritePackageJson("""{ "dependencies": { "repocontext-tool": "0.9.1" } }""");
+
+        string config = McpConfigOf(DetectedClient("copilot"), ".vscode/mcp.json");
+
+        Assert.Contains(
+            "\"${workspaceFolder}/node_modules/repocontext-tool/bin/repoctx.js\"",
+            config,
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void McpConfig_KeepsThePathCommand_WhenNoNpmDependencyIsDeclared()
+    {
+        // The .NET tool and the self-contained binary are real executables, so the
+        // plain command is right there — and shorter to read in a review.
+        string config = McpConfigOf(DetectedClient("claude-code"), ".mcp.json");
+
+        Assert.Contains("\"command\": \"repoctx\"", config, StringComparison.Ordinal);
+        Assert.DoesNotContain("node_modules", config, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void McpLaunch_FollowsAPopulatedNodeModules_WithoutAManifestEntry()
+    {
+        Directory.CreateDirectory(Path.Combine(_root, "node_modules", "repocontext-tool", "bin"));
+        File.WriteAllText(
+            Path.Combine(_root, "node_modules", "repocontext-tool", "bin", "repoctx.js"), "");
+
+        Assert.Equal(McpLaunch.LocalNpmPackage, AgentIntegrations.DetectMcpLaunch(_root));
+    }
+
+    [Fact]
+    public void McpLaunch_IgnoresAnUnrelatedOrMalformedManifest()
+    {
+        WritePackageJson("""{ "devDependencies": { "typescript": "^5" } }""");
+        Assert.Equal(McpLaunch.PathCommand, AgentIntegrations.DetectMcpLaunch(_root));
+
+        WritePackageJson("{ not json");
+        Assert.Equal(McpLaunch.PathCommand, AgentIntegrations.DetectMcpLaunch(_root));
+    }
+
+    [Theory]
+    [InlineData(McpLaunch.PathCommand)]
+    [InlineData(McpLaunch.LocalNpmPackage)]
+    public void EveryGeneratedMcpConfig_IsValidJson(McpLaunch launch)
+    {
+        // The configs are built as text so they stay reviewable in a diff, which
+        // means nothing but a test stops an interpolation from emitting garbage.
+        IEnumerable<string> configs = AgentIntegrations.All(InstructionStyle.Pointer, launch)
+            .SelectMany(c => c.Files)
+            .Where(f => f.Kind == ManagedFileKind.ClientConfig)
+            .Select(f => f.Content);
+
+        Assert.NotEmpty(configs);
+        foreach (string config in configs)
+        {
+            using JsonDocument document = JsonDocument.Parse(config);
+            Assert.Equal(JsonValueKind.Object, document.RootElement.ValueKind);
+        }
     }
 
     [Fact]
@@ -232,6 +315,16 @@ public sealed class AgentIntegrationsTests : IDisposable
     private static AgentClientDefinition Client(string id) =>
         AgentIntegrations.Find(id, InstructionStyle.Pointer)
         ?? throw new InvalidOperationException($"unknown client '{id}'");
+
+    private AgentClientDefinition DetectedClient(string id) =>
+        AgentIntegrations.Find(id, InstructionStyle.Pointer, AgentIntegrations.DetectMcpLaunch(_root))
+        ?? throw new InvalidOperationException($"unknown client '{id}'");
+
+    private void WritePackageJson(string content) =>
+        File.WriteAllText(Path.Combine(_root, "package.json"), content);
+
+    private static string McpConfigOf(AgentClientDefinition client, string relativePath) =>
+        client.Files.Single(f => f.RelativePath == relativePath).Content;
 
     private string Read(string relativePath) =>
         File.ReadAllText(Path.Combine(_root, relativePath.Replace('/', Path.DirectorySeparatorChar)));

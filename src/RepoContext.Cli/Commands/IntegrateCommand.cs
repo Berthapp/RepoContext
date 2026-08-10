@@ -133,10 +133,13 @@ public static class IntegrateCommand
             return true;
         }
 
+        // An explicit --client must produce the same files detection would, so the
+        // MCP launch shape is resolved from the repository here too.
+        McpLaunch launch = AgentIntegrations.DetectMcpLaunch(root);
         var resolved = new List<AgentClientDefinition>();
         foreach (string id in requested)
         {
-            AgentClientDefinition? definition = AgentIntegrations.Find(id, style);
+            AgentClientDefinition? definition = AgentIntegrations.Find(id, style, launch);
             if (definition is null)
             {
                 Console.Error.WriteLine(
