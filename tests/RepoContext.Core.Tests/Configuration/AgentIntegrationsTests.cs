@@ -64,6 +64,19 @@ public sealed class AgentIntegrationsTests : IDisposable
     }
 
     [Fact]
+    public void BothTexts_NameTheWindowsCmdShim()
+    {
+        // npm writes `repoctx`, `repoctx.cmd` and `repoctx.ps1` side by side;
+        // PowerShell picks the `.ps1`, which a restrictive execution policy
+        // refuses to load. An agent that hits that and does not know the
+        // one-word fix falls back to reading files broadly — precisely the cost
+        // this tool exists to remove. The pointer must carry it too: for clients
+        // without on-demand loading it is the only text that ever arrives.
+        Assert.Contains("repoctx.cmd", AgentInstructions.PointerBlock, StringComparison.Ordinal);
+        Assert.Contains("repoctx.cmd", AgentInstructions.Playbook, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void EveryClient_HasAUniqueIdAndAtLeastOneManagedFile()
     {
         IReadOnlyList<AgentClientDefinition> all = AgentIntegrations.All(InstructionStyle.Pointer);
