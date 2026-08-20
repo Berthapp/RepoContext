@@ -126,9 +126,16 @@ Hashing, the one pass that must still touch every file, now runs in parallel and
 writes into a pre-sized array by scan index, so the result is identical to a
 sequential run. Unchanged files are never opened a second time.
 
+Type resolution was rewritten alongside it. It scanned every declared type for
+every C# file — O(files x types), which only stopped being the second-order
+problem once the disk reads were gone; declarations are now looked up by name.
+
 The evaluation golden records the effect: repository bytes read per index run
 fall from 16,456 to 8,228 — exactly half, the entire graph pass — on cold,
-no-op and one-file-change runs alike.
+no-op and one-file-change runs alike. On a generated 14,000-file repository a
+no-op index falls from 2.2 s to 1.1 s at half the bytes read, while a cold
+index costs 5 % more because it now also extracts references and outlines
+documents (`docs/benchmark.md`).
 
 ### 5. `trace` answers exact lookups
 

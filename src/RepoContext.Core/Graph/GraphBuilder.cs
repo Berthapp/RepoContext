@@ -56,7 +56,7 @@ public sealed class GraphBuilder
         var idByPath = files.ToDictionary(f => f.Path, f => f.Id, StringComparer.Ordinal);
         var pathSet = new HashSet<string>(idByPath.Keys, StringComparer.Ordinal);
         var byBasename = BuildBasenameIndex(files);
-        IReadOnlyList<TypeDef> typeDefs = _store.GetTypeDefiners();
+        Dictionary<string, List<TypeDef>> typeDefs = BuildTypeIndex(_store.GetTypeDefiners());
         Dictionary<long, List<FileReference>> refsByFile = _store.GetRefsByFile();
         Dictionary<string, long> uniqueSymbols = _artifacts.LinkSymbols
             ? _store.GetUniqueSymbolDefiners()
@@ -136,33 +136,65 @@ public sealed class GraphBuilder
     /// names a file, so proximity is the available signal (ADR 0006).
     /// </summary>
     private void AddTypeEdges(
-        FileRow file, List<FileReference> references, IReadOnlyList<TypeDef> typeDefs,
+        FileRow file, List<FileReference> references, Dictionary<string, List<TypeDef>> typeDefs,
         SqliteTransaction tx)
     {
-        var referenced = new HashSet<string>(StringComparer.Ordinal);
         foreach (FileReference reference in references)
         {
-            if (reference.Kind == RefKind.Type)
+            if (reference.Kind != RefKind.Type
+                || !typeDefs.TryGetValue(reference.Value, out List<TypeDef>? declarations))
             {
-                referenced.Add(reference.Value);
+                continue;
+            }
+
+            TypeDef? nearest = null;
+            int bestDistance = int.MaxValue;
+            foreach (TypeDef declaration in declarations)
+            {
+                if (declaration.Path == file.Path)
+                {
+                    continue;
+                }
+
+                int distance = DirectoryDistance(file.Path, declaration.Path);
+                if (distance < bestDistance
+                    || (distance == bestDistance
+                        && nearest is { } current
+                        && string.CompareOrdinal(declaration.Path, current.Path) < 0))
+                {
+                    nearest = declaration;
+                    bestDistance = distance;
+                }
+            }
+
+            if (nearest is { } target)
+            {
+                _store.InsertEdge(file.Id, target.FileId, EdgeKind.Import, tx);
             }
         }
+    }
 
-        if (referenced.Count == 0)
+    /// <summary>
+    /// Declared types grouped by name. Resolving a file's type uses by lookup
+    /// rather than by scanning every declaration is what keeps the rebuild
+    /// linear in stored references: the previous shape was O(files x types),
+    /// which only stopped mattering once the disk reads were gone.
+    /// </summary>
+    private static Dictionary<string, List<TypeDef>> BuildTypeIndex(IReadOnlyList<TypeDef> typeDefs)
+    {
+        var index = new Dictionary<string, List<TypeDef>>(StringComparer.Ordinal);
+        foreach (TypeDef definition in typeDefs)
         {
-            return;
+            if (!index.TryGetValue(definition.Name, out List<TypeDef>? declarations))
+            {
+                declarations = [];
+                index[definition.Name] = declarations;
+            }
+
+            declarations.Add(definition);
         }
 
-        foreach (IGrouping<string, TypeDef> group in typeDefs
-            .Where(d => referenced.Contains(d.Name) && d.Path != file.Path)
-            .GroupBy(d => d.Name, StringComparer.Ordinal))
-        {
-            TypeDef nearest = group
-                .OrderBy(d => DirectoryDistance(file.Path, d.Path))
-                .ThenBy(d => d.Path, StringComparer.Ordinal)
-                .First();
-            _store.InsertEdge(file.Id, nearest.FileId, EdgeKind.Import, tx);
-        }
+        return index;
     }
 
     /// <summary>
