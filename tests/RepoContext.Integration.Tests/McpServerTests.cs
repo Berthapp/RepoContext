@@ -101,6 +101,24 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task Trace_ResolvesASymbolToItsDeclaration()
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+
+        CallToolResult result = await client.CallToolAsync(
+            "repoctx.trace",
+            new Dictionary<string, object?> { ["reference"] = "loginUser" });
+
+        Assert.True(result.IsError is not true);
+        using JsonDocument response = JsonDocument.Parse(TextOf(result));
+        Assert.Equal("trace", response.RootElement.GetProperty("command").GetString());
+        Assert.Contains(
+            response.RootElement.GetProperty("definitions").EnumerateArray(),
+            d => d.GetProperty("path").GetString() == "src/auth/login.ts");
+    }
+
+    [Fact]
     public async Task GetChanges_ReportsAModifiedFile()
     {
         using FixtureWorkspace ws = Indexed();
