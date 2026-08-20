@@ -237,12 +237,21 @@ public sealed class IndexStore : IDisposable
         }
     }
 
-    /// <summary>All stored references grouped by file id, each list in stored order.</summary>
-    public Dictionary<long, List<FileReference>> GetRefsByFile()
+    /// <summary>
+    /// Stored references of the files whose ids fall in
+    /// <c>[minFileId, maxFileId]</c>, grouped by file id and in stored order.
+    /// The range exists so the graph rebuild can page through a large
+    /// repository instead of holding every reference in memory at once.
+    /// </summary>
+    public Dictionary<long, List<FileReference>> GetRefsByFile(long minFileId, long maxFileId)
     {
         var map = new Dictionary<long, List<FileReference>>();
         using SqliteCommand cmd = _connection.CreateCommand();
-        cmd.CommandText = "SELECT file_id, kind, value, line FROM refs ORDER BY file_id, id";
+        cmd.CommandText =
+            "SELECT file_id, kind, value, line FROM refs WHERE file_id BETWEEN $lo AND $hi " +
+            "ORDER BY file_id, id";
+        cmd.Parameters.AddWithValue("$lo", minFileId);
+        cmd.Parameters.AddWithValue("$hi", maxFileId);
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -375,20 +384,29 @@ public sealed class IndexStore : IDisposable
         return rows;
     }
 
-    /// <summary>Symbol names declared in more than one file, used to reject ambiguous links.</summary>
+    /// <summary>
+    /// Symbol names that some document actually mentions and that exactly one
+    /// file declares, mapped to that file. A name declared in two places is
+    /// absent: an ambiguous link would point an agent at the wrong file.
+    /// </summary>
+    /// <remarks>
+    /// Restricted to referenced names on purpose. The unrestricted grouping is
+    /// one row per declared symbol in the repository, which on a large one is
+    /// a large map built to answer a handful of lookups.
+    /// </remarks>
     public Dictionary<string, long> GetUniqueSymbolDefiners()
     {
         var single = new Dictionary<string, long>(StringComparer.Ordinal);
         using SqliteCommand cmd = _connection.CreateCommand();
         cmd.CommandText =
-            "SELECT name, min(file_id), count(DISTINCT file_id) FROM symbols GROUP BY name";
+            "SELECT s.name, min(s.file_id) FROM symbols s " +
+            "WHERE s.name IN (SELECT value FROM refs WHERE kind = $k) " +
+            "GROUP BY s.name HAVING count(DISTINCT s.file_id) = 1";
+        cmd.Parameters.AddWithValue("$k", RefKind.Symbol);
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
-            if (reader.GetInt32(2) == 1)
-            {
-                single[reader.GetString(0)] = reader.GetInt64(1);
-            }
+            single[reader.GetString(0)] = reader.GetInt64(1);
         }
 
         return single;

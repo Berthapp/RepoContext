@@ -29,6 +29,9 @@ public sealed class GraphBuilder
     /// </summary>
     private const int MaxReferenceEdgesPerFile = 64;
 
+    /// <summary>Files whose references are held in memory at once while resolving.</summary>
+    private const int ResolutionBatchSize = 4096;
+
     private readonly IndexStore _store;
     private readonly ArtifactOptions _artifacts;
 
@@ -57,7 +60,6 @@ public sealed class GraphBuilder
         var pathSet = new HashSet<string>(idByPath.Keys, StringComparer.Ordinal);
         var byBasename = BuildBasenameIndex(files);
         Dictionary<string, List<TypeDef>> typeDefs = BuildTypeIndex(_store.GetTypeDefiners());
-        Dictionary<long, List<FileReference>> refsByFile = _store.GetRefsByFile();
         Dictionary<string, long> uniqueSymbols = _artifacts.LinkSymbols
             ? _store.GetUniqueSymbolDefiners()
             : [];
@@ -65,20 +67,34 @@ public sealed class GraphBuilder
         FilesAnalyzed = 0;
         ReferenceEdges = 0;
 
+        // Files are walked in id order in pages, and each page loads only its
+        // own references. Holding every reference of a very large repository in
+        // memory at once is the one thing about this rebuild that would not
+        // scale, and paging costs nothing: resolution is per file anyway.
+        List<FileRow> byId = [.. files.OrderBy(f => f.Id)];
+
         _store.ClearEdges();
         using (SqliteTransaction tx = _store.BeginTransaction())
         {
-            foreach (FileRow file in files)
+            for (int start = 0; start < byId.Count; start += ResolutionBatchSize)
             {
-                if (!refsByFile.TryGetValue(file.Id, out List<FileReference>? references))
-                {
-                    continue;
-                }
+                int end = Math.Min(start + ResolutionBatchSize, byId.Count);
+                Dictionary<long, List<FileReference>> refsByFile =
+                    _store.GetRefsByFile(byId[start].Id, byId[end - 1].Id);
 
-                FilesAnalyzed++;
-                AddImportEdges(file, references, pathSet, idByPath, tx);
-                AddTypeEdges(file, references, typeDefs, tx);
-                AddReferenceEdges(file, references, pathSet, idByPath, byBasename, uniqueSymbols, tx);
+                for (int i = start; i < end; i++)
+                {
+                    FileRow file = byId[i];
+                    if (!refsByFile.TryGetValue(file.Id, out List<FileReference>? references))
+                    {
+                        continue;
+                    }
+
+                    FilesAnalyzed++;
+                    AddImportEdges(file, references, pathSet, idByPath, tx);
+                    AddTypeEdges(file, references, typeDefs, tx);
+                    AddReferenceEdges(file, references, pathSet, idByPath, byBasename, uniqueSymbols, tx);
+                }
             }
 
             AddTestEdges(files, idByPath, tx);

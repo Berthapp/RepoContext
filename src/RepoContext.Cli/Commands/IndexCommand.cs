@@ -41,7 +41,9 @@ public static class IndexCommand
             Console.WriteLine(
                 $"  files: {stats.TotalFiles} (+{stats.Added} ~{stats.Changed} -{stats.Deleted} ={stats.Unchanged})");
             Console.WriteLine(
-                $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  edges: {stats.TotalEdges}");
+                $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  "
+                + $"edges: {stats.TotalEdges} ({stats.ReferenceEdges} cross-artifact)  "
+                + $"refs: {stats.TotalRefs}");
             Console.WriteLine(
                 $"  work: {stats.BytesRead} bytes read  {stats.FilesParsed} files parsed  "
                 + $"{stats.GraphFilesAnalyzed} graph files analyzed  "
