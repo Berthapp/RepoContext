@@ -145,6 +145,64 @@ public sealed class ArtifactRepositoryTests
             Paths(doc.RootElement, "mentions"));
     }
 
+    /// <summary>
+    /// A dot-prefixed name is a file name, not a path prefix. Stripping the dot
+    /// turned <c>.editorconfig</c> into <c>editorconfig</c>, which resolves to
+    /// nothing - so a dotfile was reported as unknown rather than as indexed.
+    /// </summary>
+    [Fact]
+    public void Trace_OfADotfile_ResolvesToTheIndexedFile()
+    {
+        using FixtureWorkspace ws = Indexed();
+        File.WriteAllText(ws.PathOf(".editorconfig"), "root = true\n");
+        Assert.Equal(0, ws.Run("index").ExitCode);
+
+        CliResult result = ws.Run("trace", ".editorconfig", "--format", "json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument doc = JsonDocument.Parse(result.StdOut);
+        Assert.Equal(
+            [".editorconfig"],
+            doc.RootElement.GetProperty("resolved").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    /// <summary>
+    /// Every token figure in one response has to be on the same scale, or the
+    /// per-file numbers contradict the total the agent budgets against.
+    /// </summary>
+    [Fact]
+    public void Trace_TokenFiguresUseTheConfiguredCalibration()
+    {
+        using FixtureWorkspace ws = Indexed();
+
+        CliResult raw = ws.Run("trace", "PAY-142", "--format", "json");
+        Assert.Equal(0, raw.ExitCode);
+
+        string configPath = ws.PathOf("repoctx.config.json");
+        File.WriteAllText(
+            configPath,
+            File.ReadAllText(configPath).Replace(
+                "\"profile\": \"o200k\"", "\"profile\": \"claude\"", StringComparison.Ordinal));
+
+        CliResult scaled = ws.Run("trace", "PAY-142", "--format", "json");
+        Assert.Equal(0, scaled.ExitCode);
+
+        using JsonDocument rawDoc = JsonDocument.Parse(raw.StdOut);
+        using JsonDocument scaledDoc = JsonDocument.Parse(scaled.StdOut);
+
+        static (int Sum, int Total) Figures(JsonDocument doc) =>
+            (doc.RootElement.GetProperty("mentions").EnumerateArray()
+                .Sum(m => m.GetProperty("file_tokens").GetInt32()),
+             doc.RootElement.GetProperty("projected_read_tokens").GetInt32());
+
+        (int rawSum, int rawTotal) = Figures(rawDoc);
+        (int scaledSum, int scaledTotal) = Figures(scaledDoc);
+
+        Assert.Equal(rawSum, rawTotal);
+        Assert.Equal(scaledSum, scaledTotal);
+        Assert.True(scaledTotal > rawTotal, "the claude profile scales counts up");
+    }
+
     [Fact]
     public void Related_ReportsTheDocumentsThatDescribeAFile()
     {

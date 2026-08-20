@@ -164,6 +164,43 @@ public class ReferenceExtractorTests
             File("docs/policy.md", FileKind.Doc, SourceLanguage.Markdown), content, options));
     }
 
+    /// <summary>
+    /// A pathological configured pattern must cost one file its keys, not the
+    /// whole index run. <c>Regex.Matches</c> is lazy, so the timeout fires while
+    /// the collection is enumerated - which is why the enumeration has to happen
+    /// inside the guarded region.
+    /// </summary>
+    [Fact]
+    public void ACatastrophicallyBacktrackingPattern_DoesNotAbortTheIndex()
+    {
+        var options = new ArtifactOptions { KeyPatterns = ["(a+)+$"] };
+        string content = "PAY-142 " + new string('a', 40) + "b\n";
+
+        IReadOnlyList<FileReference> refs = Extract(
+            File("docs/policy.md", FileKind.Doc, SourceLanguage.Markdown), content, options);
+
+        Assert.Equal(["PAY-142"], Values(refs, RefKind.Key));
+    }
+
+    /// <summary>
+    /// Type references are the sole input to a C# file's import edges, so the
+    /// artifact bound must not truncate them: doing so drops real dependencies
+    /// from the graph, alphabetically and silently.
+    /// </summary>
+    [Fact]
+    public void TypeReferences_AreNotSubjectToTheArtifactBound()
+    {
+        var options = new ArtifactOptions { MaxRefsPerFile = 2 };
+        string content = string.Join(
+            '\n',
+            Enumerable.Range(0, 50).Select(i => $"var x{i} = new Type{i:D3}();"));
+
+        IReadOnlyList<FileReference> refs = Extract(
+            File("src/A.cs", FileKind.Source, SourceLanguage.CSharp), content, options);
+
+        Assert.Equal(50, Values(refs, RefKind.Type).Count(v => v.StartsWith("Type", StringComparison.Ordinal)));
+    }
+
     [Fact]
     public void LinkingCanBeTurnedOff()
     {

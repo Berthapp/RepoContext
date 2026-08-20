@@ -141,3 +141,7 @@ here. The oversize warning of ADR 0019 still names the paths and the fix.
 - A text file whose format none of the extractors knows (`.txt`, a log, an
   unusual config) is still indexed — its content is searchable and its
   references are extracted — it simply has no skeleton to show.
+- A path *mention* must carry a lowercase extension to be recognised, so a
+  document naming a dot-file (`.editorconfig`) does not create a reference edge
+  to it. Loosening that would make every mention of `.NET` a path. `trace` still
+  resolves such a file and reports it as indexed.

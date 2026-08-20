@@ -61,20 +61,53 @@ public sealed class PathScope
             }
 
             inputs.Add(raw.Trim());
-            if (normalized.AsSpan().IndexOfAny('*', '?', '[') >= 0)
+            foreach (string candidate in Expand(normalized))
             {
-                // "**" is spelled by users who think in gitignore; under GLOB a
-                // single "*" already crosses directory separators.
-                globs.Add(normalized.Replace("**", "*", StringComparison.Ordinal));
-            }
-            else
-            {
-                globs.Add(normalized);
-                globs.Add(normalized + "/*");
+                // Every pattern also selects the subtree below it, so naming a
+                // directory - however it is spelled - includes its files.
+                globs.Add(candidate);
+                globs.Add(candidate + "/*");
             }
         }
 
         return globs.Count == 0 ? null : new PathScope(globs, inputs);
+    }
+
+    /// <summary>
+    /// The GLOB patterns one written pattern stands for.
+    /// </summary>
+    /// <remarks>
+    /// A leading <c>**/</c> is gitignore for "at any depth, including here", and
+    /// GLOB has no optional segment - so it becomes two patterns rather than
+    /// one. Collapsing it to <c>*/</c> instead, as this first did, silently
+    /// excluded every match at the repository root.
+    /// </remarks>
+    private static IEnumerable<string> Expand(string normalized)
+    {
+        if (normalized.StartsWith("**/", StringComparison.Ordinal))
+        {
+            string rest = normalized[3..];
+            if (rest.Length > 0)
+            {
+                yield return Collapse(rest);
+                yield return "*/" + Collapse(rest);
+                yield break;
+            }
+        }
+
+        yield return Collapse(normalized);
+    }
+
+    /// <summary>Under GLOB a single <c>*</c> already crosses directory separators.</summary>
+    private static string Collapse(string pattern)
+    {
+        string collapsed = pattern;
+        while (collapsed.Contains("**", StringComparison.Ordinal))
+        {
+            collapsed = collapsed.Replace("**", "*", StringComparison.Ordinal);
+        }
+
+        return collapsed;
     }
 
     private static string Normalize(string raw)

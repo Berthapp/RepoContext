@@ -134,28 +134,33 @@ public sealed class Indexer
                     continue;
                 }
 
+                bool known = existing.TryGetValue(file.RelativePath, out FileRecord record);
+                if (known && record.ContentHash == hash)
+                {
+                    seen.Add(file.RelativePath);
+                    indexedFiles++;
+                    unchanged++;
+                    continue;
+                }
+
+                // Read before touching the index: a file that became unreadable
+                // between hashing and reading must be left out entirely rather
+                // than removed from the index and counted as if it were there.
+                if (ReadText(file.AbsolutePath) is not { } content)
+                {
+                    continue;
+                }
+
                 seen.Add(file.RelativePath);
                 indexedFiles++;
-
-                if (existing.TryGetValue(file.RelativePath, out FileRecord record))
+                if (known)
                 {
-                    if (record.ContentHash == hash)
-                    {
-                        unchanged++;
-                        continue;
-                    }
-
                     store.DeleteFile(record.Id, tx);
                     changed++;
                 }
                 else
                 {
                     added++;
-                }
-
-                if (ReadText(file.AbsolutePath) is not { } content)
-                {
-                    continue;
                 }
 
                 filesParsed++;

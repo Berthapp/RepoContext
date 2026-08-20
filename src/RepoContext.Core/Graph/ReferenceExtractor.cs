@@ -93,6 +93,12 @@ public sealed partial class ReferenceExtractor
         ".props", ".targets", ".sln", ".slnx", ".config", ".tf", ".tfvars", ".hcl", ".mk",
     };
 
+    /// <summary>
+    /// Bound for <see cref="RefKind.Type"/>, independent of the artifact bound.
+    /// Sized so no hand-written file reaches it.
+    /// </summary>
+    private const int MaxTypeRefsPerFile = 5_000;
+
     private readonly ArtifactOptions _options;
     private readonly IReadOnlyList<Regex> _keyPatterns;
 
@@ -197,7 +203,6 @@ public sealed partial class ReferenceExtractor
     /// </summary>
     private IReadOnlyList<FileReference> Cap(Dictionary<(string Kind, string Value), int> found)
     {
-        int cap = Math.Max(_options.MaxRefsPerFile, 0);
         return
         [
             .. found
@@ -205,10 +210,26 @@ public sealed partial class ReferenceExtractor
                 .OrderBy(group => group.Key, StringComparer.Ordinal)
                 .SelectMany(group => group
                     .OrderBy(entry => entry.Key.Value, StringComparer.Ordinal)
-                    .Take(cap)
+                    .Take(CapFor(group.Key))
                     .Select(entry => new FileReference(group.Key, entry.Key.Value, entry.Value)))
         ];
     }
+
+    /// <summary>
+    /// The bound for one reference kind.
+    /// </summary>
+    /// <remarks>
+    /// <c>type</c> is exempt from the configured artifact bound. It is not an
+    /// artifact reference that costs index size for a marginal link: it is every
+    /// capitalized token of a C# file, and it is the sole input to that file's
+    /// import edges. Truncating it alphabetically drops real dependencies from
+    /// the graph - and the margin was nil, since the largest file in this
+    /// repository carries 389 distinct such tokens against a default of 400.
+    /// Its own bound exists only to stop a generated monster file, not to trade
+    /// edges for bytes.
+    /// </remarks>
+    private int CapFor(string kind) =>
+        kind == RefKind.Type ? MaxTypeRefsPerFile : Math.Max(_options.MaxRefsPerFile, 0);
 
     private IEnumerable<string> Keys(string line)
     {
@@ -222,22 +243,29 @@ public sealed partial class ReferenceExtractor
 
         foreach (Regex pattern in _keyPatterns)
         {
-            MatchCollection matches;
+            // Materialized inside the try: Matches() is lazy, so a timeout on a
+            // pathological pattern fires during enumeration, and enumerating
+            // outside the try would abort the whole index run rather than
+            // degrade this one file.
+            List<string> matches = [];
             try
             {
-                matches = pattern.Matches(line);
+                foreach (Match match in pattern.Matches(line))
+                {
+                    if (match.Length > 0)
+                    {
+                        matches.Add(match.Value.ToUpperInvariant());
+                    }
+                }
             }
             catch (RegexMatchTimeoutException)
             {
                 continue;
             }
 
-            foreach (Match match in matches)
+            foreach (string match in matches)
             {
-                if (match.Length > 0)
-                {
-                    yield return match.Value.ToUpperInvariant();
-                }
+                yield return match;
             }
         }
     }

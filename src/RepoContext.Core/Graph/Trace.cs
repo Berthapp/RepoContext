@@ -88,7 +88,11 @@ public static class Trace
             {
                 if (!mentions.TryGetValue(row.Path, out MentionAccumulator? accumulator))
                 {
-                    accumulator = new MentionAccumulator(row.Path, row.Kind, row.FileTokens);
+                    // Calibrated here, like every other per-file figure the tool
+                    // reports: an uncalibrated per-file count would disagree with
+                    // this response's own total and with outline/context.
+                    accumulator = new MentionAccumulator(
+                        row.Path, row.Kind, scale.Apply(row.FileTokens));
                     mentions[row.Path] = accumulator;
                 }
 
@@ -114,9 +118,26 @@ public static class Trace
 
             // A term that names an indexed file is traced as that file, so a
             // document mentioning only its basename is still found.
-            string path = trimmed.Replace('\\', '/').TrimStart('.', '/');
+            // Only a "./" prefix and leading separators are stripped: the dot of
+            // ".gitignore" is part of its name, and trimming it would make the
+            // file untraceable.
+            string path = trimmed.Replace('\\', '/');
+            while (path.StartsWith("./", StringComparison.Ordinal))
+            {
+                path = path[2..];
+            }
+
+            path = path.TrimStart('/');
             if (store.FindFile(path) is { } file)
             {
+                // Recorded even when nothing mentions it: "this file is indexed,
+                // and nothing points at it" is an answer, and it is a different
+                // answer from "I did not recognise that term".
+                if (!resolved.Contains(file.Path, StringComparer.Ordinal))
+                {
+                    resolved.Add(file.Path);
+                }
+
                 Collect(RefKind.Path, store.FindPathRefs(file.Path, scope), file.Path);
             }
             else
@@ -148,7 +169,7 @@ public static class Trace
                 .Where(d => !kept.Any(m => m.Path == d.Path))
                 .Select(d => d.Path)
                 .Distinct(StringComparer.Ordinal)
-                .Sum(path => store.FindFile(path)?.TokenCount ?? 0);
+                .Sum(path => scale.Apply(store.FindFile(path)?.TokenCount ?? 0));
 
         IReadOnlyList<string> suggestions = ordered.Count == 0 && definitions.Count == 0
             ? Suggest(store, trimmed)
@@ -161,7 +182,7 @@ public static class Trace
             kept,
             ordered.Count,
             ordered.Count - kept.Count,
-            scale.Apply(projected),
+            projected,
             suggestions);
     }
 
