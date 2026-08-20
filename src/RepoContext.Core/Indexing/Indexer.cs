@@ -49,6 +49,12 @@ public sealed record IndexStats
     /// <summary>Reference edges (document names file/symbol) in the rebuilt graph.</summary>
     public int ReferenceEdges { get; init; }
 
+    /// <summary>Text files skipped for exceeding <c>indexing.maxFileSizeKb</c>.</summary>
+    public int SkippedTooLarge { get; init; }
+
+    /// <summary>The first few skipped paths, so the report names something actionable.</summary>
+    public IReadOnlyList<string> SkippedTooLargeSample { get; init; } = [];
+
     /// <summary>Wall-clock duration, reported separately from deterministic goldens.</summary>
     public long ElapsedMilliseconds { get; init; }
 }
@@ -212,6 +218,8 @@ public sealed class Indexer
             GraphFilesAnalyzed = graphBuilder.FilesAnalyzed,
             TotalRefs = totalRefs,
             ReferenceEdges = graphBuilder.ReferenceEdges,
+            SkippedTooLarge = scanner.OversizedCount,
+            SkippedTooLargeSample = scanner.OversizedSample,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
     }

@@ -170,7 +170,17 @@ specification or ticket describing the code an agent just changed is the first
 thing that may have gone stale, and it is the trigger for the reconcile half of
 the workflow this ADR serves.
 
-### 8. What this costs
+### 8. The size limit reports what it drops
+
+`indexing.maxFileSizeKb` (512 KB) excluded text files silently. Coverage has
+been subtractive since ADR 0017, and a subtractive rule is only safe while it
+fails visibly: a 900 KB exported specification that never enters the index is,
+to an agent, indistinguishable from one that does not exist — and exported
+artifacts are exactly what this limit tends to catch. `index` now writes a
+warning naming the count and the first few paths, on stderr, exit code
+unchanged. Binary files stay silent: they are not candidates in the first place.
+
+### 9. What this costs
 
 The MCP session surface (server instructions plus every tool schema) grew from
 1,363 to 1,602 tokens, and the test gate moved from 1,500 to 1,700. That is a

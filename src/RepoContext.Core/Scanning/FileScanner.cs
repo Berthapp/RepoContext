@@ -19,10 +19,14 @@ public sealed class FileScanner
 {
     private const int SniffBytes = 8000;
 
+    /// <summary>Oversized paths remembered for the report; the count is exact, the list is not.</summary>
+    private const int MaxReportedOversized = 5;
+
     private readonly string _repoRoot;
     private readonly RepoctxConfig _config;
     private readonly GitignoreMatcher _sensitive;
     private readonly IgnoreScope _exclude;
+    private readonly List<string> _oversized = [];
 
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
@@ -31,6 +35,18 @@ public sealed class FileScanner
         _sensitive = GitignoreMatcher.FromGlobs(config.SensitiveFiles);
         _exclude = new IgnoreScope(string.Empty, GitignoreMatcher.FromGlobs(config.Exclude));
     }
+
+    /// <summary>
+    /// How many files the last scan skipped for exceeding
+    /// <c>indexing.maxFileSizeKb</c>. A skipped file is invisible to every
+    /// query, and an unreported one is invisible to the user too - the silent
+    /// coverage gap ADR 0017 set out to remove. Large exported artifacts are
+    /// exactly the files this limit tends to catch.
+    /// </summary>
+    public int OversizedCount { get; private set; }
+
+    /// <summary>The first few oversized paths, for a report the user can act on.</summary>
+    public IReadOnlyList<string> OversizedSample => _oversized;
 
     /// <summary>Returns whether a repo-relative path is treated as sensitive.</summary>
     public bool IsSensitive(string relativePath) => _sensitive.IsIgnored(relativePath, isDirectory: false);
@@ -54,6 +70,8 @@ public sealed class FileScanner
     /// <summary>Scans the repository and returns the selected files, ordered by path.</summary>
     public IReadOnlyList<ScannedFile> Scan()
     {
+        OversizedCount = 0;
+        _oversized.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
 
@@ -187,6 +205,16 @@ public sealed class FileScanner
         var info = new FileInfo(absolutePath);
         if (info.Length > (long)_config.Indexing.MaxFileSizeKb * 1024)
         {
+            // Reported rather than silently dropped: see OversizedCount.
+            if (!FileClassifier.IsBinaryExtension(rel))
+            {
+                OversizedCount++;
+                if (_oversized.Count < MaxReportedOversized)
+                {
+                    _oversized.Add(rel);
+                }
+            }
+
             return;
         }
 

@@ -781,6 +781,7 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | Symptom | Fix |
 | --- | --- |
 | `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
+| `index` warns that text files exceed `indexing.maxFileSizeKb` | Those files are not indexed at all. Raise the limit in `repoctx.config.json` (large exported specifications routinely pass 512 KB), or list them in `.repoctxignore` to accept the gap deliberately. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
 | `index` reports `files: 0`, or a project below the root is missing | An older config pins `include` to root-level directories. Remove the key (or set it to `[]`) to scan the whole repository and re-run `repoctx index`. |
 | Results look stale | Re-run `repoctx index`; unchanged files are neither reparsed nor re-read — only the hash pass touches them. |

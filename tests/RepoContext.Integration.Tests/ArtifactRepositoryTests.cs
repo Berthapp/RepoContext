@@ -217,6 +217,27 @@ public sealed class ArtifactRepositoryTests
     }
 
     [Fact]
+    public void Index_NamesTheFilesTheSizeLimitExcluded()
+    {
+        using FixtureWorkspace ws = Indexed();
+        // A realistic large export: coverage is subtractive, so the one rule
+        // that silently drops a text file has to say so (ADR 0017/0019).
+        File.WriteAllText(
+            ws.PathOf("artifacts/confluence/huge-export.md"),
+            "# Export\n\n" + string.Concat(Enumerable.Repeat("Refund policy text. PAY-142.\n", 30_000)));
+
+        CliResult result = ws.Run("index");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("exceed indexing.maxFileSizeKb", result.StdErr, StringComparison.Ordinal);
+        Assert.Contains("artifacts/confluence/huge-export.md", result.StdErr, StringComparison.Ordinal);
+
+        // ... and it is genuinely absent, rather than half-indexed.
+        CliResult trace = ws.Run("trace", "PAY-142", "--format", "json");
+        Assert.DoesNotContain("huge-export.md", trace.StdOut, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Index_RebuildsTheGraphWithoutReReadingTheRepository()
     {
         using FixtureWorkspace ws = Indexed();

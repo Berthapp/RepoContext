@@ -35,6 +35,7 @@ public static class IndexCommand
             IndexStats stats = indexer.Run(parseResult.GetValue(full));
 
             WarnAboutMissingIncludeRoots(layout, config, stats);
+            WarnAboutOversizedFiles(config, stats);
 
             string mode = stats.FullRebuild ? "full" : "incremental";
             Console.WriteLine($"Indexed {layout.Root} ({mode})");
@@ -52,6 +53,38 @@ public static class IndexCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Warns about text files the size limit excluded. Coverage is subtractive
+    /// (ADR 0017), and a subtractive rule is only safe while it fails visibly:
+    /// a 900 KB exported specification that silently never enters the index is
+    /// indistinguishable, to an agent, from one that does not exist.
+    /// </summary>
+    private static void WarnAboutOversizedFiles(RepoctxConfig config, IndexStats stats)
+    {
+        if (stats.SkippedTooLarge == 0)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"Warning: {stats.SkippedTooLarge} text file(s) exceed "
+            + $"indexing.maxFileSizeKb ({config.Indexing.MaxFileSizeKb} KB) and are not indexed.");
+        foreach (string path in stats.SkippedTooLargeSample)
+        {
+            Console.Error.WriteLine($"  {path}");
+        }
+
+        if (stats.SkippedTooLarge > stats.SkippedTooLargeSample.Count)
+        {
+            Console.Error.WriteLine(
+                $"  ... and {stats.SkippedTooLarge - stats.SkippedTooLargeSample.Count} more");
+        }
+
+        Console.Error.WriteLine(
+            "  Raise indexing.maxFileSizeKb in repoctx.config.json to include them, or add them "
+            + "to .repoctxignore to accept the gap deliberately.");
     }
 
     /// <summary>
