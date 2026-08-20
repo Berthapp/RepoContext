@@ -27,8 +27,12 @@ public static class ProducerVersions
     /// Tree-sitter parser + symbol extraction (ADR 0001/0005). v2 adds
     /// structure symbols for non-code artifacts - Markdown/AsciiDoc/HTML
     /// headings, YAML/JSON keys, Gherkin scenarios, SQL objects (ADR 0019).
+    /// v3 completes the coverage: declarations for every source language
+    /// without a bundled grammar, and structure for the remaining text
+    /// formats - XML, reStructuredText, properties, delimited tables,
+    /// Makefile, Dockerfile, HCL (ADR 0020).
     /// </summary>
-    public const int Parser = 2;
+    public const int Parser = 3;
 
     /// <summary>Line/heading chunker and synthetic symbol chunks (ADR 0004/0005).</summary>
     public const int Chunker = 1;

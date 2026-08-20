@@ -45,6 +45,15 @@ public static class IndexCommand
                 $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  "
                 + $"edges: {stats.TotalEdges} ({stats.ReferenceEdges} cross-artifact)  "
                 + $"refs: {stats.TotalRefs}");
+            if (stats.SkippedBinary + stats.SkippedTooLarge > 0)
+            {
+                // Only the exclusions RepoContext chose itself; ignore rules are
+                // the user's own decision and are not second-guessed here.
+                Console.WriteLine(
+                    $"  skipped: {stats.SkippedBinary} binary  "
+                    + $"{stats.SkippedTooLarge} over {config.Indexing.MaxFileSizeKb} KB");
+            }
+
             Console.WriteLine(
                 $"  work: {stats.BytesRead} bytes read  {stats.FilesParsed} files parsed  "
                 + $"{stats.GraphFilesAnalyzed} graph files analyzed  "

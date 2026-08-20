@@ -52,6 +52,9 @@ public sealed record IndexStats
     /// <summary>Text files skipped for exceeding <c>indexing.maxFileSizeKb</c>.</summary>
     public int SkippedTooLarge { get; init; }
 
+    /// <summary>Files skipped because they are binary - the one category that cannot be described.</summary>
+    public int SkippedBinary { get; init; }
+
     /// <summary>The first few skipped paths, so the report names something actionable.</summary>
     public IReadOnlyList<string> SkippedTooLargeSample { get; init; } = [];
 
@@ -157,9 +160,8 @@ public sealed class Indexer
 
                 filesParsed++;
                 IReadOnlyList<Chunk> chunks = Chunker.Chunk(file.Language, content);
-                IReadOnlyList<Symbol> symbols = parser.Supports(file.Language)
-                    ? parser.Parse(file.Language, file.RelativePath, content)
-                    : StructureExtractor.Extract(file.RelativePath, content);
+                IReadOnlyList<Symbol> symbols =
+                    SymbolExtraction.For(parser, file.Language, file.RelativePath, content);
                 IReadOnlyList<FileReference> references =
                     referenceExtractor.Extract(file, content, parser);
                 int lineCount = CountLines(content);
@@ -220,6 +222,7 @@ public sealed class Indexer
             ReferenceEdges = graphBuilder.ReferenceEdges,
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
+            SkippedBinary = scanner.BinaryCount,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
     }

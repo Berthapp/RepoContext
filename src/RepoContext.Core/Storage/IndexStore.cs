@@ -629,14 +629,23 @@ public sealed class IndexStore : IDisposable
         return rows;
     }
 
-    /// <summary>Top-level type definitions (class/interface/struct/record/enum) for C# resolution.</summary>
+    /// <summary>
+    /// Top-level C# type definitions (class/interface/struct/record/enum), the
+    /// input to C# import-edge resolution.
+    /// </summary>
+    /// <remarks>
+    /// Restricted to C# since ADR 0020. The declarations of every other
+    /// language are extracted now too, and a C# file naming <c>Config</c> must
+    /// not be linked to a Python class that happens to share the name - only
+    /// C# type uses are resolved this way, so only C# declarations belong here.
+    /// </remarks>
     public IReadOnlyList<TypeDef> GetTypeDefiners()
     {
         var defs = new List<TypeDef>();
         using SqliteCommand cmd = _connection.CreateCommand();
         cmd.CommandText =
             "SELECT s.name, s.file_id, f.path FROM symbols s JOIN files f ON f.id = s.file_id " +
-            "WHERE s.kind IN ('class','interface','struct','record','enum')";
+            "WHERE f.language = 'csharp' AND s.kind IN ('class','interface','struct','record','enum')";
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {

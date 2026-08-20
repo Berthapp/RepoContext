@@ -156,9 +156,103 @@ public class StructureExtractorTests
     }
 
     [Fact]
+    public void Xml_ElementsAreLabelledByTheirIdentifyingAttribute()
+    {
+        const string content = """
+            <Project Sdk="Microsoft.NET.Sdk">
+              <ItemGroup>
+                <PackageReference Include="Serilog" Version="4.0.0" />
+              </ItemGroup>
+            </Project>
+            """;
+
+        IReadOnlyList<Symbol> symbols = StructureExtractor.Extract("App.csproj", content);
+
+        // "ItemGroup" alone says nothing; the package name is the point.
+        Assert.Equal(
+            ["Project Microsoft.NET.Sdk", "ItemGroup", "PackageReference Serilog"],
+            symbols.Select(s => s.Name));
+        Assert.All(symbols, s => Assert.Equal(SymbolKind.Key, s.Kind));
+    }
+
+    [Fact]
+    public void DelimitedTables_AreDescribedByTheirColumns()
+    {
+        IReadOnlyList<Symbol> csv = StructureExtractor.Extract(
+            "matrix.csv", "requirement,ticket,test\nREQ-1,PAY-142,refund.test.ts\n");
+
+        Symbol columns = Assert.Single(csv);
+        Assert.Equal("columns", columns.Name);
+        Assert.Equal("columns: requirement, ticket, test", columns.Signature);
+
+        // A symbol per row would turn a traceability matrix into thousands of
+        // useless outline entries.
+        Assert.Single(StructureExtractor.Extract(
+            "matrix.tsv", "a\tb\n1\t2\n3\t4\n5\t6\n"));
+    }
+
+    [Fact]
+    public void ReStructuredText_AssignsLevelsInOrderOfFirstAppearance()
+    {
+        const string content = """
+            Title
+            =====
+
+            Section
+            -------
+
+            Another
+            =======
+            """;
+
+        IReadOnlyList<Symbol> symbols = StructureExtractor.Extract("docs/index.rst", content);
+
+        Assert.Equal(["Title", "Section", "Another"], symbols.Select(s => s.Name));
+
+        // "=" was seen first, so it outranks "-": Title closes at Another.
+        Assert.Equal(1, symbols[0].StartLine);
+        Assert.Equal(6, symbols[0].EndLine);
+    }
+
+    [Fact]
+    public void PropertiesAreGroupedByTheirKeyPrefix()
+    {
+        IReadOnlyList<Symbol> symbols = StructureExtractor.Extract(
+            "app.properties",
+            "spring.datasource.url=x\nspring.datasource.user=y\nlogging.level=INFO\n");
+
+        Assert.Equal(["spring", "logging"], symbols.Select(s => s.Name));
+    }
+
+    [Fact]
+    public void BuildAndInfrastructureFilesAreCovered()
+    {
+        Assert.Equal(
+            ["build", "test"],
+            StructureExtractor.Extract("Makefile", "build:\n\tgo build\ntest:\n\tgo test\n")
+                .Select(s => s.Name));
+
+        Assert.Equal(
+            ["builder", "golang:1.22"],
+            StructureExtractor.Extract(
+                "Dockerfile",
+                "FROM node:20 AS builder\nRUN npm ci\nFROM golang:1.22\nRUN go build\n")
+                .Select(s => s.Name));
+
+        Assert.Equal(
+            ["resource.aws_s3_bucket.logs", "variable.region"],
+            StructureExtractor.Extract(
+                "main.tf",
+                "resource \"aws_s3_bucket\" \"logs\" {\n  acl = \"private\"\n}\n"
+                + "variable \"region\" {\n  default = \"eu-central-1\"\n}\n")
+                .Select(s => s.Name));
+    }
+
+    [Fact]
     public void UnknownFormats_AndEmptyContent_YieldNothing()
     {
         Assert.False(StructureExtractor.Supports("src/app.ts"));
+        Assert.False(StructureExtractor.Supports("notes.bin"));
         Assert.Empty(StructureExtractor.Extract("src/app.ts", "export const a = 1;"));
         Assert.Empty(StructureExtractor.Extract("docs/policy.md", string.Empty));
     }

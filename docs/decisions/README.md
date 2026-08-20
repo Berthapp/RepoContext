@@ -42,3 +42,9 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   index (schema v5 `refs`), cross-artifact `reference` edges, the `trace`
   command, `--path` query scope, and a graph rebuilt from the index instead of
   from a second full read of the working tree.
+- `0020-every-file-type.md` — declarations extracted by line for every source
+  language without a bundled grammar (Python, Go, JVM, Rust, Ruby, PHP, Swift,
+  C/C++, shell, proto, GraphQL, …), structure for the remaining text formats
+  (XML, reStructuredText, properties, delimited tables, Makefile, Dockerfile,
+  HCL), named languages in the reported mix, C#-only type resolution, and a
+  reported count of what the tool itself excluded.

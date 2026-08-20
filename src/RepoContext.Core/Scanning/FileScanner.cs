@@ -48,6 +48,14 @@ public sealed class FileScanner
     /// <summary>The first few oversized paths, for a report the user can act on.</summary>
     public IReadOnlyList<string> OversizedSample => _oversized;
 
+    /// <summary>
+    /// How many files the last scan skipped because they are binary. Reported
+    /// so "everything is indexed" stays an auditable claim rather than a
+    /// promise: binary files are the one category RepoContext cannot describe,
+    /// and the user is entitled to know how big it is.
+    /// </summary>
+    public int BinaryCount { get; private set; }
+
     /// <summary>Returns whether a repo-relative path is treated as sensitive.</summary>
     public bool IsSensitive(string relativePath) => _sensitive.IsIgnored(relativePath, isDirectory: false);
 
@@ -71,6 +79,7 @@ public sealed class FileScanner
     public IReadOnlyList<ScannedFile> Scan()
     {
         OversizedCount = 0;
+        BinaryCount = 0;
         _oversized.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
@@ -220,6 +229,7 @@ public sealed class FileScanner
 
         if (FileClassifier.IsBinaryExtension(rel) || IsBinaryContent(absolutePath))
         {
+            BinaryCount++;
             return;
         }
 

@@ -83,10 +83,14 @@ public sealed partial class ReferenceExtractor
     private static readonly HashSet<string> PathExtensions = new(StringComparer.Ordinal)
     {
         ".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".cs", ".go", ".py",
-        ".rb", ".java", ".rs", ".c", ".h", ".cpp", ".hpp", ".php", ".swift", ".kt", ".sql",
-        ".md", ".mdx", ".markdown", ".rst", ".adoc", ".asciidoc", ".txt", ".json", ".yaml",
-        ".yml", ".toml", ".ini", ".xml", ".html", ".htm", ".csv", ".feature", ".csproj",
-        ".props", ".targets", ".sln", ".slnx", ".config",
+        ".pyi", ".rb", ".rake", ".java", ".kt", ".kts", ".scala", ".groovy", ".dart", ".rs",
+        ".c", ".h", ".cpp", ".hpp", ".cc", ".hh", ".cxx", ".php", ".swift", ".sql", ".ddl",
+        ".sh", ".bash", ".zsh", ".ps1", ".psm1", ".lua", ".ex", ".exs", ".pl", ".pm", ".r",
+        ".proto", ".graphql", ".gql",
+        ".md", ".mdx", ".markdown", ".rst", ".adoc", ".asciidoc", ".txt", ".json", ".jsonl",
+        ".yaml", ".yml", ".toml", ".ini", ".cfg", ".properties", ".conf", ".xml", ".xsd",
+        ".html", ".htm", ".csv", ".tsv", ".feature", ".csproj", ".vbproj", ".fsproj",
+        ".props", ".targets", ".sln", ".slnx", ".config", ".tf", ".tfvars", ".hcl", ".mk",
     };
 
     private readonly ArtifactOptions _options;

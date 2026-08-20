@@ -11,12 +11,21 @@ It runs entirely offline. **No source code leaves the machine, there is no
 telemetry, and no LLM or embedding calls are ever made.** The same query on the
 same index always produces byte-identical output.
 
-Supported languages: **TypeScript, TSX, JavaScript, C#**.
+**Parsed with a full grammar:** TypeScript, TSX, JavaScript, C#.
 
-It indexes more than source: Markdown, AsciiDoc and HTML pages, YAML/JSON
-exports, Gherkin feature files, TOML/INI and SQL get a real outline too, and are
-cross-linked with the code through the paths, work-item keys, links and symbols
-they name. See [Working with artifacts](#working-with-artifacts-tickets-specs-requirements).
+**Outlined by line patterns** — declarations, with names, kinds and ranges:
+Python, Go, Java, Kotlin, Scala, Groovy, Rust, Ruby, PHP, Swift, Dart, C, C++,
+shell, PowerShell, Lua, Elixir, Perl, R, Protobuf, GraphQL.
+
+**Structured as artifacts:** Markdown, MDX, AsciiDoc, reStructuredText, HTML,
+XML (including `.csproj`, `.wsdl`, `.xsd`, `.resx`), YAML, JSON/JSONL, Gherkin
+`.feature`, TOML, INI, `.properties`, CSV/TSV, SQL, Makefile, Dockerfile,
+Terraform/HCL.
+
+Everything else that is text is still indexed and searchable, and every file's
+references are extracted, so the whole repository is cross-linked. Binary files
+are the only category that cannot be described — and `index` reports how many
+there were. See [Working with artifacts](#working-with-artifacts-tickets-specs-requirements).
 
 ## Why: tokens are the bill
 
@@ -458,9 +467,11 @@ requirement*.
 RepoContext indexes those files as first-class artifacts.
 
 **They get an outline.** A 900-line YAML requirements file, a Confluence export,
-a `.feature` file — `repoctx outline` returns their structure (headings, keys,
-scenarios) with line ranges and the exact cost of reading the whole thing, so an
-agent can decide what to open instead of reading it to find out.
+a `.feature` file, an XML contract, a traceability `.csv` — `repoctx outline`
+returns their structure (headings, keys, scenarios, columns) with line ranges
+and the exact cost of reading the whole thing, so an agent can decide what to
+open instead of reading it to find out. The same holds for code in any language
+listed above, grammar or not.
 
 **They get linked to the code.** Every file's references are extracted at index
 time: repository paths it names, work-item keys (`ABC-123`), absolute links, and
@@ -800,6 +811,7 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | `index` warns that text files exceed `indexing.maxFileSizeKb` | Those files are not indexed at all. Raise the limit in `repoctx.config.json` (large exported specifications routinely pass 512 KB), or list them in `.repoctxignore` to accept the gap deliberately. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
 | `index` reports `files: 0`, or a project below the root is missing | An older config pins `include` to root-level directories. Remove the key (or set it to `[]`) to scan the whole repository and re-run `repoctx index`. |
+| `outline` is empty for a file | Its format has no structure RepoContext knows (a `.txt`, a log, an unusual config). The file is still indexed and searchable; only the skeleton is missing. Binary files are not indexed at all — `index` reports how many. |
 | Results look stale | Re-run `repoctx index`; unchanged files are neither reparsed nor re-read — only the hash pass touches them. |
 | `trace` finds nothing for a ticket key | Keys are matched uppercase in the `ABC-123` shape. Add your project's shape to `artifacts.keyPatterns` and re-run `repoctx index`. `trace` lists the keys sharing your prefix when it finds none. |
 | Fetched tickets/pages are missing from the index | They are probably git-ignored, and `respectGitignore` is on. Add a `.repoctxignore` with `!<dir>/` to re-include the directory for RepoContext only, then re-run `repoctx index`. |

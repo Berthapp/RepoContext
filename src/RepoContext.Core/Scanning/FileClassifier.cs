@@ -10,7 +10,16 @@ public enum FileKind
     Other,
 }
 
-/// <summary>Language identifier used for chunking and (from M2) parsing.</summary>
+/// <summary>
+/// Language identifier used for chunking, parsing and the language mix
+/// reported by <c>architecture</c> and <c>prime</c>.
+/// </summary>
+/// <remarks>
+/// Only the first four are parsed by a bundled tree-sitter grammar; the rest
+/// are recognised so a polyglot repository is described honestly (ADR 0020).
+/// Before this, every Python, Go or Java file was reported as language
+/// <c>none</c>.
+/// </remarks>
 public enum SourceLanguage
 {
     None,
@@ -20,6 +29,33 @@ public enum SourceLanguage
     CSharp,
     Markdown,
     Json,
+    Python,
+    Go,
+    Java,
+    Kotlin,
+    Scala,
+    Groovy,
+    Rust,
+    Ruby,
+    Php,
+    Swift,
+    Dart,
+    C,
+    Cpp,
+    Shell,
+    PowerShell,
+    Lua,
+    Elixir,
+    Perl,
+    R,
+    Sql,
+    Proto,
+    GraphQl,
+    Yaml,
+    Xml,
+    Html,
+    Toml,
+    Csv,
 }
 
 /// <summary>Classifies files by kind, language and binary-ness.</summary>
@@ -76,8 +112,36 @@ public static class FileClassifier
             ".tsx" => SourceLanguage.Tsx,
             ".js" or ".jsx" or ".mjs" or ".cjs" => SourceLanguage.JavaScript,
             ".cs" => SourceLanguage.CSharp,
-            ".md" or ".mdx" => SourceLanguage.Markdown,
-            ".json" => SourceLanguage.Json,
+            ".md" or ".mdx" or ".markdown" => SourceLanguage.Markdown,
+            ".json" or ".jsonl" or ".ndjson" or ".jsonc" => SourceLanguage.Json,
+            ".py" or ".pyi" => SourceLanguage.Python,
+            ".go" => SourceLanguage.Go,
+            ".java" => SourceLanguage.Java,
+            ".kt" or ".kts" => SourceLanguage.Kotlin,
+            ".scala" => SourceLanguage.Scala,
+            ".groovy" => SourceLanguage.Groovy,
+            ".rs" => SourceLanguage.Rust,
+            ".rb" or ".rake" => SourceLanguage.Ruby,
+            ".php" => SourceLanguage.Php,
+            ".swift" => SourceLanguage.Swift,
+            ".dart" => SourceLanguage.Dart,
+            ".c" or ".h" => SourceLanguage.C,
+            ".cpp" or ".hpp" or ".cc" or ".hh" or ".cxx" => SourceLanguage.Cpp,
+            ".sh" or ".bash" or ".zsh" => SourceLanguage.Shell,
+            ".ps1" or ".psm1" => SourceLanguage.PowerShell,
+            ".lua" => SourceLanguage.Lua,
+            ".ex" or ".exs" => SourceLanguage.Elixir,
+            ".pl" or ".pm" => SourceLanguage.Perl,
+            ".r" => SourceLanguage.R,
+            ".sql" or ".ddl" => SourceLanguage.Sql,
+            ".proto" => SourceLanguage.Proto,
+            ".graphql" or ".gql" => SourceLanguage.GraphQl,
+            ".yaml" or ".yml" => SourceLanguage.Yaml,
+            ".xml" or ".xsd" or ".xsl" or ".xslt" or ".wsdl" or ".resx" or ".csproj"
+                or ".vbproj" or ".fsproj" or ".props" or ".targets" => SourceLanguage.Xml,
+            ".html" or ".htm" or ".xhtml" => SourceLanguage.Html,
+            ".toml" => SourceLanguage.Toml,
+            ".csv" or ".tsv" => SourceLanguage.Csv,
             _ => SourceLanguage.None,
         };
     }
@@ -107,13 +171,28 @@ public static class FileClassifier
             return true;
         }
 
+        if (ext is ".properties" or ".conf" or ".tf" or ".tfvars" or ".hcl" or ".lock")
+        {
+            return true;
+        }
+
         return name is "package.json" or "tsconfig.json" or ".gitignore" or ".repoctxignore"
+            or "Makefile" or "Dockerfile"
             || name.StartsWith("appsettings", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("Dockerfile", StringComparison.OrdinalIgnoreCase)
             || name.StartsWith("tsconfig", StringComparison.OrdinalIgnoreCase);
     }
 
+    /// <summary>
+    /// Extensions treated as source code. Kept in step with the languages
+    /// RepoContext can actually describe (ADR 0020): a file whose declarations
+    /// are extracted is source, not "other".
+    /// </summary>
     private static bool IsSourceExtension(string ext) =>
         ext is ".ts" or ".tsx" or ".js" or ".jsx" or ".mjs" or ".cjs" or ".mts" or ".cts"
-            or ".cs" or ".go" or ".py" or ".rb" or ".java" or ".rs" or ".c" or ".h"
-            or ".cpp" or ".hpp" or ".php" or ".swift" or ".kt";
+            or ".cs" or ".go" or ".py" or ".pyi" or ".rb" or ".rake" or ".java" or ".rs"
+            or ".c" or ".h" or ".cpp" or ".hpp" or ".cc" or ".hh" or ".cxx"
+            or ".php" or ".swift" or ".kt" or ".kts" or ".scala" or ".groovy" or ".dart"
+            or ".sh" or ".bash" or ".zsh" or ".ps1" or ".psm1" or ".lua" or ".ex" or ".exs"
+            or ".pl" or ".pm" or ".r" or ".sql" or ".proto" or ".graphql" or ".gql";
 }
