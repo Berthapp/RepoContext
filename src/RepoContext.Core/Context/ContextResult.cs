@@ -137,6 +137,13 @@ public sealed record ContextOptions
     public IReadOnlyList<Memory.MemoryEntry>? Memories { get; init; }
 
     /// <summary>
+    /// Restricts candidate generation to part of the repository (ADR 0019).
+    /// Null - the default - considers everything indexed. Narrowing happens
+    /// before ranking, so the excluded area costs neither relevance nor tokens.
+    /// </summary>
+    public Query.PathScope? Scope { get; init; }
+
+    /// <summary>
     /// The canonical option string used for <c>evidence_id</c>. Omitted and
     /// explicitly-defaulted options normalise to the same value here, so two
     /// requests that mean the same thing share an identity (Q4). Raw
@@ -156,6 +163,7 @@ public sealed record ContextOptions
         $"max_reused_listed={MaxReusedListed}",
         $"serialized_charging={SerializedCharging}",
         $"strip_comments={StripComments}",
+        $"scope={(Scope is null ? "-" : Canonical.JoinRecords(Scope.Patterns))}",
     ]);
 
     private static string Invariant(int? value) =>

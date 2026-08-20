@@ -2,6 +2,7 @@ using System.Security.Cryptography;
 using System.Diagnostics;
 using Microsoft.Data.Sqlite;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Graph;
 using RepoContext.Core.Identity;
 using RepoContext.Core.Parsing;
 using RepoContext.Core.Scanning;
@@ -41,6 +42,12 @@ public sealed record IndexStats
 
     /// <summary>Source files analyzed while rebuilding dependency/test facts.</summary>
     public int GraphFilesAnalyzed { get; init; }
+
+    /// <summary>Cross-artifact references stored in the index (ADR 0019).</summary>
+    public int TotalRefs { get; init; }
+
+    /// <summary>Reference edges (document names file/symbol) in the rebuilt graph.</summary>
+    public int ReferenceEdges { get; init; }
 
     /// <summary>Wall-clock duration, reported separately from deterministic goldens.</summary>
     public long ElapsedMilliseconds { get; init; }
@@ -94,19 +101,32 @@ public sealed class Indexer
         IReadOnlyList<ScannedFile> scanned = scanner.Scan();
 
         int added = 0, changed = 0, unchanged = 0, deleted = 0;
-        long bytesRead = 0;
         int filesParsed = 0;
+        int indexedFiles = 0;
 
+        // One parallel pass computes every content hash. It is the only pass
+        // that has to touch each file: unchanged files are then skipped without
+        // being opened again, and the graph is rebuilt from stored references
+        // rather than from a second full read of the working tree (ADR 0019).
+        FileDigest[] digests = HashAll(scanned);
+        long bytesRead = digests.Sum(digest => digest.Bytes);
+
+        var referenceExtractor = new ReferenceExtractor(_config.Artifacts);
         using ILanguageParser parser = new TreeSitterParser();
         using (SqliteTransaction tx = store.BeginTransaction())
         {
-            foreach (ScannedFile file in scanned)
+            for (int i = 0; i < scanned.Count; i++)
             {
-                seen.Add(file.RelativePath);
+                ScannedFile file = scanned[i];
+                if (digests[i].Hash is not { } hash)
+                {
+                    // Unreadable (removed or locked between scan and hash): it is
+                    // not part of this index state, so it is treated as absent.
+                    continue;
+                }
 
-                byte[] bytes = File.ReadAllBytes(file.AbsolutePath);
-                bytesRead += bytes.LongLength;
-                string hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
+                seen.Add(file.RelativePath);
+                indexedFiles++;
 
                 if (existing.TryGetValue(file.RelativePath, out FileRecord record))
                 {
@@ -124,18 +144,24 @@ public sealed class Indexer
                     added++;
                 }
 
-                string content = DecodeUtf8(bytes);
+                if (ReadText(file.AbsolutePath) is not { } content)
+                {
+                    continue;
+                }
+
                 filesParsed++;
                 IReadOnlyList<Chunk> chunks = Chunker.Chunk(file.Language, content);
                 IReadOnlyList<Symbol> symbols = parser.Supports(file.Language)
                     ? parser.Parse(file.Language, file.RelativePath, content)
-                    : [];
+                    : StructureExtractor.Extract(file.RelativePath, content);
+                IReadOnlyList<FileReference> references =
+                    referenceExtractor.Extract(file, content, parser);
                 int lineCount = CountLines(content);
                 int tokenCount = Tokens.Count(content);
                 var labels = new FileKindLabel(Label(file.Kind), Label(file.Language));
                 store.InsertFile(
                     file.RelativePath, labels, file.SizeBytes, lineCount, tokenCount, hash,
-                    chunks, symbols, tx);
+                    chunks, symbols, tx, references);
             }
 
             foreach ((string path, FileRecord record) in existing)
@@ -150,22 +176,23 @@ public sealed class Indexer
             tx.Commit();
         }
 
-        var graphBuilder = new Graph.GraphBuilder(store, _layout.Root, parser);
+        var graphBuilder = new GraphBuilder(store, _config.Artifacts);
         int totalEdges = graphBuilder.Rebuild();
-        bytesRead += graphBuilder.BytesRead;
 
         int totalChunks = store.CountChunks();
         int totalSymbols = store.CountSymbols();
+        int totalRefs = store.CountRefs();
         store.SetMeta(MetaKeys.StateHash, ComputeStateHash(store));
         store.SetMeta(MetaKeys.AnalysisProducerVersion, ProducerVersions.AnalysisProducerVersion);
         store.SetMeta(MetaKeys.SchemaVersion, IndexSchema.Version.ToString());
         store.SetMeta(MetaKeys.ToolVersion, _toolVersion);
         store.SetMeta(MetaKeys.ConfigHash, configHash);
         store.SetMeta(MetaKeys.IndexedAtUtc, DateTimeOffset.UtcNow.ToString("O"));
-        store.SetMeta(MetaKeys.FileCount, scanned.Count.ToString());
+        store.SetMeta(MetaKeys.FileCount, indexedFiles.ToString());
         store.SetMeta(MetaKeys.ChunkCount, totalChunks.ToString());
         store.SetMeta(MetaKeys.SymbolCount, totalSymbols.ToString());
         store.SetMeta(MetaKeys.EdgeCount, totalEdges.ToString());
+        store.SetMeta(MetaKeys.RefCount, totalRefs.ToString());
         stopwatch.Stop();
 
         return new IndexStats
@@ -174,7 +201,7 @@ public sealed class Indexer
             Changed = changed,
             Deleted = deleted,
             Unchanged = unchanged,
-            TotalFiles = scanned.Count,
+            TotalFiles = indexedFiles,
             TotalChunks = totalChunks,
             TotalSymbols = totalSymbols,
             TotalEdges = totalEdges,
@@ -183,8 +210,61 @@ public sealed class Indexer
             FilesParsed = filesParsed,
             EdgesRecomputed = totalEdges,
             GraphFilesAnalyzed = graphBuilder.FilesAnalyzed,
+            TotalRefs = totalRefs,
+            ReferenceEdges = graphBuilder.ReferenceEdges,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
+    }
+
+    /// <summary>One file's content hash and the bytes read to compute it.</summary>
+    private readonly record struct FileDigest(string? Hash, long Bytes);
+
+    /// <summary>
+    /// Hashes every scanned file in parallel, preserving scan order in the
+    /// result. Hashing is I/O bound and embarrassingly parallel, and it is the
+    /// pass that decides what the rest of the run has to do at all — on a large
+    /// repository it dominates an incremental index. Results are written to a
+    /// pre-sized array by index, so the output is identical to a sequential run.
+    /// </summary>
+    private static FileDigest[] HashAll(IReadOnlyList<ScannedFile> scanned)
+    {
+        var digests = new FileDigest[scanned.Count];
+        Parallel.For(0, scanned.Count, i =>
+        {
+            try
+            {
+                using FileStream stream = File.OpenRead(scanned[i].AbsolutePath);
+                byte[] hash = SHA256.HashData(stream);
+                digests[i] = new FileDigest(Convert.ToHexStringLower(hash), stream.Length);
+            }
+            catch (IOException)
+            {
+                digests[i] = new FileDigest(null, 0);
+            }
+            catch (UnauthorizedAccessException)
+            {
+                digests[i] = new FileDigest(null, 0);
+            }
+        });
+
+        return digests;
+    }
+
+    /// <summary>Reads and decodes a file, or null when it became unreadable.</summary>
+    private static string? ReadText(string absolutePath)
+    {
+        try
+        {
+            return DecodeUtf8(File.ReadAllBytes(absolutePath));
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>

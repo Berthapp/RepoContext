@@ -23,8 +23,12 @@ public static class ProducerVersions
     /// <summary>Byte decoding and newline normalisation feeding chunk/symbol text.</summary>
     public const int Decoder = 1;
 
-    /// <summary>Tree-sitter parser + symbol extraction (ADR 0001/0005).</summary>
-    public const int Parser = 1;
+    /// <summary>
+    /// Tree-sitter parser + symbol extraction (ADR 0001/0005). v2 adds
+    /// structure symbols for non-code artifacts - Markdown/AsciiDoc/HTML
+    /// headings, YAML/JSON keys, Gherkin scenarios, SQL objects (ADR 0019).
+    /// </summary>
+    public const int Parser = 2;
 
     /// <summary>Line/heading chunker and synthetic symbol chunks (ADR 0004/0005).</summary>
     public const int Chunker = 1;
@@ -32,21 +36,28 @@ public static class ProducerVersions
     /// <summary>Offline BPE tokenizer (<c>o200k_base</c>, ADR 0010).</summary>
     public const int Tokenizer = 1;
 
-    /// <summary>Import/test graph construction (ADR 0006).</summary>
-    public const int Graph = 1;
+    /// <summary>
+    /// Import/test graph construction (ADR 0006). v2 stores per-file references
+    /// and adds cross-artifact reference edges (ADR 0019).
+    /// </summary>
+    public const int Graph = 2;
 
     /// <summary>Canonical indexed content-state fingerprint layout (ADR 0015).</summary>
     public const int StateFingerprint = 2;
 
-    /// <summary>Weighted ranking + diversity + vendor penalty formula (ADR 0006).</summary>
-    public const int Ranking = 1;
+    /// <summary>
+    /// Weighted ranking + diversity + vendor penalty formula (ADR 0006). v2
+    /// seeds candidates from work-item keys and links, and expands over
+    /// reference edges (ADR 0019).
+    /// </summary>
+    public const int Ranking = 2;
 
     /// <summary>
     /// Evidence selection and receipt canonicalisation (Q1/Q2, ADR 0015). Bumped
     /// when the delivered evidence for the same query/content would change, which
     /// must invalidate outstanding receipts even though the source is unchanged.
     /// </summary>
-    public const int Evidence = 1;
+    public const int Evidence = 2;
 
     /// <summary>Output DTO shape / canonical body encoding (ADR 0009/0012).</summary>
     public const int Representation = 1;

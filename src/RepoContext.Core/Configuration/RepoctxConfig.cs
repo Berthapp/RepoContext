@@ -30,6 +30,12 @@ public sealed record RepoctxConfig
 
     public IndexingOptions Indexing { get; init; } = new();
 
+    /// <summary>
+    /// How non-code artifacts (specs, tickets, exported documentation) are
+    /// structured and cross-linked with the code (ADR 0019).
+    /// </summary>
+    public ArtifactOptions Artifacts { get; init; } = new();
+
     public RankingOptions Ranking { get; init; } = new();
 
     public TokenOptions Tokens { get; init; } = new();
@@ -53,6 +59,7 @@ public sealed record RepoctxConfig
             IncludeTests = true,
             IncludeDocs = true,
         },
+        Artifacts = new ArtifactOptions(),
         Ranking = new RankingOptions
         {
             Weights = new RankingWeights { Fts = 0.4, Symbol = 0.3, Graph = 0.2, Path = 0.1 },
@@ -118,6 +125,41 @@ public sealed record IndexingOptions
     public bool IncludeTests { get; init; } = true;
 
     public bool IncludeDocs { get; init; } = true;
+}
+
+/// <summary>
+/// Artifact awareness (ADR 0019): the repository of a working agent team holds
+/// more than code - requirement documents, exported tickets, API contracts,
+/// acceptance criteria. These settings decide which cross-artifact references
+/// are extracted at index time and therefore what <c>trace</c>, <c>related</c>
+/// and <c>context</c> can link together.
+/// </summary>
+public sealed record ArtifactOptions
+{
+    /// <summary>
+    /// Extra regular expressions for external work-item keys, in addition to the
+    /// built-in Jira/requirement shape (<c>ABC-123</c>). Each match becomes a
+    /// <c>key</c> reference that <c>trace</c> resolves across code, tests and
+    /// documents. Invalid or non-terminating patterns are ignored rather than
+    /// failing the index.
+    /// </summary>
+    public IReadOnlyList<string> KeyPatterns { get; init; } = [];
+
+    /// <summary>Link a document to the files whose repo-relative path it names.</summary>
+    public bool LinkPaths { get; init; } = true;
+
+    /// <summary>
+    /// Link a document to the file that uniquely defines a symbol it names.
+    /// Ambiguous names (defined in more than one file) are never linked.
+    /// </summary>
+    public bool LinkSymbols { get; init; } = true;
+
+    /// <summary>
+    /// Upper bound on stored references per file and reference kind. A bound is
+    /// required: a generated or vendored artifact can otherwise contribute
+    /// unbounded rows to an index whose size is a cost the user pays for.
+    /// </summary>
+    public int MaxRefsPerFile { get; init; } = 400;
 }
 
 /// <summary>

@@ -120,6 +120,13 @@ public static class ChangeDetector
                 store.GetNeighbors(record.Id, EdgeKind.Import, outgoing: false), "imports:" + file.Path);
             Collect(impact, changedPaths,
                 store.GetNeighbors(record.Id, EdgeKind.Test, outgoing: false), "test-of:" + file.Path);
+
+            // Documents that describe the file are impacted too: a specification
+            // or ticket that names the code an agent just changed is the first
+            // thing that may now be out of date (ADR 0019).
+            Collect(impact, changedPaths,
+                store.GetNeighbors(record.Id, EdgeKind.Reference, outgoing: false),
+                "mentions:" + file.Path);
         }
 
         List<ImpactedFile> impacted = impact

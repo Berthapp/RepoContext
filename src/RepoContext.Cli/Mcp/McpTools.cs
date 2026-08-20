@@ -40,19 +40,24 @@ public static class McpTools
         return new McpServerPrimitiveCollection<McpServerTool>
         {
             McpServerTool.Create(
-                (Func<string, int, bool, CallToolResult>)Search,
+                (Func<string, int, bool, string[]?, CallToolResult>)Search,
                 Describe("repoctx.search",
                     "Find indexed files or symbols by term; returns ranked paths, lines, "
-                    + "scores, kinds, and reasons.")),
+                    + "scores, kinds, and reasons; path narrows the scope.")),
             McpServerTool.Create(
                 (Func<string, int, int?, int?, int?, string, string[]?, string[]?, string?, bool, bool,
-                    CallToolResult>)GetContext,
+                    string[]?, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Primary context tool. Ranks task-relevant files under response/read budgets. "
                     + "detail: auto=pick per task, paths=locations, outline=symbols, slices=source "
                     + "spans. Reuse evidence via seen receipts or session; known=path@hash requires "
                     + "a full-file read. stripComments is lossy; matching memories are included by "
-                    + "default.")),
+                    + "default; path narrows the scope.")),
+            McpServerTool.Create(
+                (Func<string, int, string[]?, CallToolResult>)TraceRef,
+                Describe("repoctx.trace",
+                    "Resolve an exact key (ABC-123), link, symbol or path to every file "
+                    + "declaring or mentioning it, with lines and read cost.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
                 Describe("repoctx.get_related_files",
@@ -83,7 +88,8 @@ public static class McpTools
     private static CallToolResult Search(
         [Description("Text to find.")] string query,
         [Description("Maximum results.")] int top = 10,
-        [Description("Search symbols only.")] bool symbols = false)
+        [Description("Search symbols only.")] bool symbols = false,
+        [Description("Restrict to directories or globs.")] string[]? path = null)
     {
         if (top <= 0)
         {
@@ -108,7 +114,7 @@ public static class McpTools
             return outdated;
         }
 
-        IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols);
+        IReadOnlyList<SearchHit> hits = store.Search(match, top, symbols, PathScope.From(path));
         string rendered = SearchOutput.Render(query ?? string.Empty, hits, OutputFormat.Json);
         UsageRecorder.Record(layout, "search", UsageSources.Mcp, rendered,
             scale: TokenScale.From(config));
@@ -135,7 +141,8 @@ public static class McpTools
         [Description("Lossy removal of full-line comments and blank runs from slices.")]
         bool stripComments = false,
         [Description("Include relevant local memories.")]
-        bool includeMemory = true)
+        bool includeMemory = true,
+        [Description("Restrict to directories or globs.")] string[]? path = null)
     {
         if (top <= 0)
         {
@@ -227,9 +234,9 @@ public static class McpTools
             SessionState state = SessionStore.LoadState(layout, session);
             var merged = new Dictionary<string, string>(
                 state.Known, StringComparer.Ordinal);
-            foreach ((string path, string hash) in knownMap ?? new Dictionary<string, string>())
+            foreach ((string knownPath, string hash) in knownMap ?? new Dictionary<string, string>())
             {
-                merged[path] = hash;
+                merged[knownPath] = hash;
             }
 
             knownMap = merged;
@@ -271,6 +278,7 @@ public static class McpTools
             Memories = includeMemory
                 ? Commands.ContextCommand.VisibleMemories(layout, session)
                 : null,
+            Scope = PathScope.From(path),
         }, responseBudgetTokens is null ? null : costModel);
 
         if (result.Shortfall is { } shortfall)
@@ -285,7 +293,7 @@ public static class McpTools
         string rendered = ContextOutput.Render(result, OutputFormat.Json, Surfaces.McpText);
         UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
             UsageMeter.ReplacedTokens(result,
-                path => store.FindFile(path) is { } f ? scale.Apply(f.TokenCount) : null),
+                filePath => store.FindFile(filePath) is { } f ? scale.Apply(f.TokenCount) : null),
             files: result.Items.Count,
             unchanged: result.ReusedFilesCount,
             scale: scale);
@@ -294,6 +302,40 @@ public static class McpTools
             SessionStore.Save(layout, session, result, knownMap, seenReceipts);
         }
 
+        return Ok(rendered);
+    }
+
+    private static CallToolResult TraceRef(
+        [Description("Key, link, symbol or path.")] string reference,
+        [Description("Maximum files.")] int top = 20,
+        [Description("Restrict to directories or globs.")] string[]? path = null)
+    {
+        if (top <= 0)
+        {
+            return Fail("top must be greater than zero.");
+        }
+
+        if (string.IsNullOrWhiteSpace(reference))
+        {
+            return Fail("reference must not be empty.");
+        }
+
+        if (Locate() is not { } layout)
+        {
+            return NoIndex();
+        }
+
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+        using IndexStore store = IndexStore.Open(layout.DatabasePath);
+        if (OutdatedIndex(store, config) is { } outdated)
+        {
+            return outdated;
+        }
+
+        TokenScale scale = TokenScale.From(config);
+        TraceResult result = Trace.Query(store, reference, top, PathScope.From(path), scale);
+        string rendered = TraceOutput.Render(result, OutputFormat.Json);
+        UsageRecorder.Record(layout, "trace", UsageSources.Mcp, rendered, scale: scale);
         return Ok(rendered);
     }
 

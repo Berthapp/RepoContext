@@ -1,0 +1,10 @@
+requirements:
+  REQ-4711:
+    title: Refund window
+    ticket: PAY-142
+    rule: A captured payment can be refunded within 30 days of capture.
+    verifies: tests/billing/refund.test.ts
+  REQ-4712:
+    title: Refund audit trail
+    ticket: PAY-142
+    rule: Every refund writes an audit entry.

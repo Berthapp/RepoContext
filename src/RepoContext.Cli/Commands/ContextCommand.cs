@@ -75,6 +75,7 @@ public static class ContextCommand
         {
             Description = "Exclude stored agent memories from the bundle.",
         };
+        var path = CommandSupport.PathScopeOption();
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -97,6 +98,7 @@ public static class ContextCommand
             session,
             stripComments,
             noMemory,
+            path,
             format,
         };
 
@@ -222,6 +224,7 @@ public static class ContextCommand
                 Memories = parseResult.GetValue(noMemory)
                     ? null
                     : VisibleMemories(layout, sessionName),
+                Scope = Core.Query.PathScope.From(parseResult.GetValue(path)),
             }, responseBudgetTokens is null ? null : costModel);
 
             if (result.Shortfall is { } shortfall)

@@ -1,7 +1,9 @@
 using Microsoft.Data.Sqlite;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Graph;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Parsing;
+using RepoContext.Core.Query;
 
 namespace RepoContext.Core.Storage;
 
@@ -20,6 +22,9 @@ public static class MetaKeys
     public const string ChunkCount = "chunk_count";
     public const string SymbolCount = "symbol_count";
     public const string EdgeCount = "edge_count";
+
+    /// <summary>Number of stored cross-artifact references (ADR 0019).</summary>
+    public const string RefCount = "ref_count";
 
     /// <summary>SHA-256 over all (path, content_hash) pairs: identifies the index state.</summary>
     public const string StateHash = "state_hash";
@@ -165,7 +170,8 @@ public sealed class IndexStore : IDisposable
     public void InsertFile(
         string path, FileKindLabel labels, long sizeBytes, int lineCount, int tokenCount,
         string contentHash, IReadOnlyList<Chunk> chunks, IReadOnlyList<Symbol> symbols,
-        SqliteTransaction transaction)
+        SqliteTransaction transaction,
+        IReadOnlyList<FileReference>? references = null)
     {
         long fileId;
         using (SqliteCommand cmd = _connection.CreateCommand())
@@ -192,8 +198,200 @@ public sealed class IndexStore : IDisposable
         foreach (Symbol symbol in symbols)
         {
             InsertSymbol(fileId, symbol, transaction);
-            InsertChunk(fileId, SymbolChunk.From(symbol), transaction);
+            if (SymbolChunk.IsSearchable(symbol.Kind))
+            {
+                InsertChunk(fileId, SymbolChunk.From(symbol), transaction);
+            }
         }
+
+        if (references is { Count: > 0 })
+        {
+            InsertRefs(fileId, references, transaction);
+        }
+    }
+
+    /// <summary>
+    /// Stores the references a file makes (ADR 0019). They are written once,
+    /// with the file, so a later index run can rebuild the whole graph without
+    /// opening a single source file again.
+    /// </summary>
+    public void InsertRefs(
+        long fileId, IReadOnlyList<FileReference> references, SqliteTransaction transaction)
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.Transaction = transaction;
+        cmd.CommandText = "INSERT INTO refs(file_id, kind, value, line) VALUES($f, $k, $v, $l)";
+        SqliteParameter file = cmd.Parameters.Add("$f", SqliteType.Integer);
+        SqliteParameter kind = cmd.Parameters.Add("$k", SqliteType.Text);
+        SqliteParameter value = cmd.Parameters.Add("$v", SqliteType.Text);
+        SqliteParameter line = cmd.Parameters.Add("$l", SqliteType.Integer);
+        file.Value = fileId;
+        cmd.Prepare();
+
+        foreach (FileReference reference in references)
+        {
+            kind.Value = reference.Kind;
+            value.Value = reference.Value;
+            line.Value = reference.Line;
+            cmd.ExecuteNonQuery();
+        }
+    }
+
+    /// <summary>All stored references grouped by file id, each list in stored order.</summary>
+    public Dictionary<long, List<FileReference>> GetRefsByFile()
+    {
+        var map = new Dictionary<long, List<FileReference>>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT file_id, kind, value, line FROM refs ORDER BY file_id, id";
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            long fileId = reader.GetInt64(0);
+            if (!map.TryGetValue(fileId, out List<FileReference>? list))
+            {
+                list = [];
+                map[fileId] = list;
+            }
+
+            list.Add(new FileReference(reader.GetString(1), reader.GetString(2), reader.GetInt32(3)));
+        }
+
+        return map;
+    }
+
+    /// <summary>Total number of stored references.</summary>
+    public int CountRefs()
+    {
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText = "SELECT count(*) FROM refs";
+        return Convert.ToInt32(cmd.ExecuteScalar());
+    }
+
+    /// <summary>
+    /// Every file that references <paramref name="value"/> under
+    /// <paramref name="kind"/>, ordered deterministically by path then line.
+    /// </summary>
+    public IReadOnlyList<RefMention> FindRefs(string kind, string value, PathScope? scope = null)
+    {
+        var rows = new List<RefMention>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT f.path, f.kind, r.line, f.token_count FROM refs r JOIN files f ON f.id = r.file_id " +
+            "WHERE r.kind = $k AND r.value = $v" + PathScopeSql.Filter(scope, "f") +
+            " ORDER BY f.path COLLATE BINARY ASC, r.line ASC";
+        cmd.Parameters.AddWithValue("$k", kind);
+        cmd.Parameters.AddWithValue("$v", value);
+        PathScopeSql.Bind(cmd, scope);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new RefMention(
+                reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// Files that mention <paramref name="indexedPath"/>, including the ones
+    /// that name it only by a path suffix (<c>login.ts</c> for
+    /// <c>src/auth/login.ts</c>). The suffix test is written with
+    /// <c>substr</c> rather than <c>LIKE</c> so that an underscore in a file
+    /// name cannot act as a wildcard.
+    /// </summary>
+    public IReadOnlyList<RefMention> FindPathRefs(string indexedPath, PathScope? scope = null)
+    {
+        var rows = new List<RefMention>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT f.path, f.kind, r.line, f.token_count FROM refs r JOIN files f ON f.id = r.file_id " +
+            "WHERE r.kind = $k AND (r.value = $p OR substr($p, -(length(r.value) + 1)) = '/' || r.value)" +
+            PathScopeSql.Filter(scope, "f") +
+            " ORDER BY f.path COLLATE BINARY ASC, r.line ASC";
+        cmd.Parameters.AddWithValue("$k", RefKind.Path);
+        cmd.Parameters.AddWithValue("$p", indexedPath);
+        PathScopeSql.Bind(cmd, scope);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new RefMention(
+                reader.GetString(0), reader.GetString(1), reader.GetInt32(2), reader.GetInt32(3)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>
+    /// The distinct values of a reference kind that start with
+    /// <paramref name="prefix"/> (case-insensitively), capped and ordered - used
+    /// to tell an agent which keys exist when the one it asked for does not.
+    /// </summary>
+    public IReadOnlyList<string> SuggestRefValues(string kind, string prefix, int top)
+    {
+        var values = new List<string>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT DISTINCT value FROM refs WHERE kind = $k AND value LIKE $p " +
+            "ORDER BY value COLLATE BINARY ASC LIMIT $n";
+        cmd.Parameters.AddWithValue("$k", kind);
+        // LIKE wildcards are stripped rather than escaped: the suggestion prefix
+        // is a key or symbol name, and no escape clause means no escape bugs.
+        cmd.Parameters.AddWithValue(
+            "$p", prefix.Replace("%", string.Empty, StringComparison.Ordinal)
+                .Replace("_", string.Empty, StringComparison.Ordinal) + "%");
+        cmd.Parameters.AddWithValue("$n", Math.Max(top, 0));
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            values.Add(reader.GetString(0));
+        }
+
+        return values;
+    }
+
+    /// <summary>
+    /// Files declaring a symbol named <paramref name="name"/>, with the symbol's
+    /// kind and line range. Ordered by path then line.
+    /// </summary>
+    public IReadOnlyList<SymbolDefinition> FindSymbolDefinitions(string name, PathScope? scope = null)
+    {
+        var rows = new List<SymbolDefinition>();
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT f.path, f.kind, s.name, s.kind, s.start_line, s.end_line, s.signature, f.token_count " +
+            "FROM symbols s JOIN files f ON f.id = s.file_id WHERE s.name = $n" +
+            PathScopeSql.Filter(scope, "f") +
+            " ORDER BY f.path COLLATE BINARY ASC, s.start_line ASC";
+        cmd.Parameters.AddWithValue("$n", name);
+        PathScopeSql.Bind(cmd, scope);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            rows.Add(new SymbolDefinition(
+                reader.GetString(0), reader.GetString(1), reader.GetString(2), reader.GetString(3),
+                reader.GetInt32(4), reader.GetInt32(5), reader.GetString(6), reader.GetInt32(7)));
+        }
+
+        return rows;
+    }
+
+    /// <summary>Symbol names declared in more than one file, used to reject ambiguous links.</summary>
+    public Dictionary<string, long> GetUniqueSymbolDefiners()
+    {
+        var single = new Dictionary<string, long>(StringComparer.Ordinal);
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT name, min(file_id), count(DISTINCT file_id) FROM symbols GROUP BY name";
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        while (reader.Read())
+        {
+            if (reader.GetInt32(2) == 1)
+            {
+                single[reader.GetString(0)] = reader.GetInt64(1);
+            }
+        }
+
+        return single;
     }
 
     private void InsertSymbol(long fileId, Symbol symbol, SqliteTransaction transaction)
@@ -249,7 +447,8 @@ public sealed class IndexStore : IDisposable
 
     /// <summary>Runs a BM25 full-text search and returns the best chunk per file.</summary>
     /// <param name="symbolsOnly">When true, only symbol chunks are considered.</param>
-    public IReadOnlyList<SearchHit> Search(string matchExpression, int top, bool symbolsOnly = false)
+    public IReadOnlyList<SearchHit> Search(
+        string matchExpression, int top, bool symbolsOnly = false, PathScope? scope = null)
     {
         var best = new List<SearchHit>();
         using (SqliteCommand cmd = _connection.CreateCommand())
@@ -263,6 +462,7 @@ public sealed class IndexStore : IDisposable
                 "  JOIN files f ON f.id = c.file_id " +
                 "  WHERE chunks_fts MATCH $q " +
                 (symbolsOnly ? "AND c.kind = 'symbol' " : string.Empty) +
+                PathScopeSql.Filter(scope, "f") + " " +
                 "), ranked AS (" +
                 "  SELECT *, row_number() OVER (" +
                 "    PARTITION BY path ORDER BY score ASC, start_line ASC, end_line ASC, " +
@@ -276,6 +476,7 @@ public sealed class IndexStore : IDisposable
                 "LIMIT $cap";
             cmd.Parameters.AddWithValue("$q", matchExpression);
             cmd.Parameters.AddWithValue("$cap", top);
+            PathScopeSql.Bind(cmd, scope);
             using SqliteDataReader reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -308,7 +509,8 @@ public sealed class IndexStore : IDisposable
     /// <param name="globalCap">Maximum hits returned overall.</param>
     /// <param name="symbolsOnly">When true, only symbol chunks are considered.</param>
     public IReadOnlyList<SearchHit> SearchEvidence(
-        string matchExpression, int perFileCap, int globalCap, bool symbolsOnly = false)
+        string matchExpression, int perFileCap, int globalCap, bool symbolsOnly = false,
+        PathScope? scope = null)
     {
         var all = new List<SearchHit>();
         using (SqliteCommand cmd = _connection.CreateCommand())
@@ -322,6 +524,7 @@ public sealed class IndexStore : IDisposable
                 "  JOIN files f ON f.id = c.file_id " +
                 "  WHERE chunks_fts MATCH $q " +
                 (symbolsOnly ? "AND c.kind = 'symbol' " : "AND c.kind <> 'symbol' ") +
+                PathScopeSql.Filter(scope, "f") + " " +
                 "), ranked AS (" +
                 "  SELECT *, row_number() OVER (" +
                 "    PARTITION BY path ORDER BY score ASC, start_line ASC, end_line ASC, " +
@@ -336,6 +539,7 @@ public sealed class IndexStore : IDisposable
             cmd.Parameters.AddWithValue("$q", matchExpression);
             cmd.Parameters.AddWithValue("$per_file", Math.Max(perFileCap, 0));
             cmd.Parameters.AddWithValue("$cap", Math.Max(globalCap, 0));
+            PathScopeSql.Bind(cmd, scope);
             using SqliteDataReader reader = cmd.ExecuteReader();
             while (reader.Read())
             {
@@ -391,11 +595,13 @@ public sealed class IndexStore : IDisposable
         reader.GetInt64(4), reader.GetInt32(5), reader.GetInt32(6), reader.GetString(7));
 
     /// <summary>All indexed files with id, path, language, kind and metrics.</summary>
-    public IReadOnlyList<FileRow> GetFiles()
+    public IReadOnlyList<FileRow> GetFiles(PathScope? scope = null)
     {
         var rows = new List<FileRow>();
         using SqliteCommand cmd = _connection.CreateCommand();
-        cmd.CommandText = $"SELECT {FileRowColumns} FROM files ORDER BY path";
+        cmd.CommandText = $"SELECT {FileRowColumns} FROM files WHERE 1 = 1"
+            + PathScopeSql.Filter(scope, "files") + " ORDER BY path";
+        PathScopeSql.Bind(cmd, scope);
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {
@@ -658,3 +864,17 @@ public readonly record struct FileMetric(string Path, string Language, string Ki
 
 /// <summary>A file and how many other files import it.</summary>
 public readonly record struct Centrality(string Path, int Dependents);
+
+/// <summary>One file that mentions a traced reference, with the line it appears on.</summary>
+public readonly record struct RefMention(string Path, string Kind, int Line, int FileTokens);
+
+/// <summary>One declaration of a symbol, used to answer "where is this defined".</summary>
+public readonly record struct SymbolDefinition(
+    string Path,
+    string FileKind,
+    string Name,
+    string SymbolKind,
+    int StartLine,
+    int EndLine,
+    string Signature,
+    int FileTokens);

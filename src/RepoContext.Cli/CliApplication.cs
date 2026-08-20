@@ -76,6 +76,7 @@ public static class CliApplication
         root.Subcommands.Add(IndexCommand.Build());
         root.Subcommands.Add(SearchCommand.Build());
         root.Subcommands.Add(RelatedCommand.Build());
+        root.Subcommands.Add(TraceCommand.Build());
         root.Subcommands.Add(ContextCommand.Build());
         root.Subcommands.Add(OutlineCommand.Build());
         root.Subcommands.Add(ChangedCommand.Build());

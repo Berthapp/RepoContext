@@ -58,14 +58,20 @@ public static class ConfigStore
     /// force stored chunks/symbols/edges to be rebuilt.
     /// </summary>
     public static string ComputeIndexHash(RepoctxConfig config) => Canonical.Hash(
-        "index_config.v1",
+        "index_config.v2",
         Canonical.JoinRecords(config.Include),
         Canonical.JoinRecords(config.Exclude),
         config.RespectGitignore ? "true" : "false",
         Canonical.JoinRecords(config.SensitiveFiles),
         config.Indexing.MaxFileSizeKb.ToString(System.Globalization.CultureInfo.InvariantCulture),
         config.Indexing.IncludeTests ? "true" : "false",
-        config.Indexing.IncludeDocs ? "true" : "false");
+        config.Indexing.IncludeDocs ? "true" : "false",
+        // Artifact settings decide which references are extracted and stored,
+        // so they belong to the stored-corpus identity, not to live ranking.
+        Canonical.JoinRecords(config.Artifacts.KeyPatterns),
+        config.Artifacts.LinkPaths ? "true" : "false",
+        config.Artifacts.LinkSymbols ? "true" : "false",
+        config.Artifacts.MaxRefsPerFile.ToString(System.Globalization.CultureInfo.InvariantCulture));
 
     private static string Invariant(double value) =>
         value.ToString("R", System.Globalization.CultureInfo.InvariantCulture);

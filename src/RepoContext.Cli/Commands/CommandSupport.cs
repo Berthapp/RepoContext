@@ -1,3 +1,4 @@
+using System.CommandLine;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Indexing;
@@ -8,6 +9,17 @@ namespace RepoContext.Cli.Commands;
 /// <summary>Small helpers shared by the query commands.</summary>
 internal static class CommandSupport
 {
+    /// <summary>
+    /// The shared <c>--path</c> option: narrow a query to part of the
+    /// repository (ADR 0019). Repeatable, so an agent responsible for two
+    /// areas can name both.
+    /// </summary>
+    public static Option<string[]> PathScopeOption() => new("--path")
+    {
+        Description = "Restrict results to a directory or glob (repeatable). '*' matches any "
+                      + "characters including '/'; a plain path selects it and everything below it.",
+    };
+
     /// <summary>Resolves the repository's query-time token calibration (ADR 0012).</summary>
     public static TokenScale ScaleFor(RepoLayout layout) =>
         TokenScale.From(ConfigStore.Load(layout.ConfigPath));

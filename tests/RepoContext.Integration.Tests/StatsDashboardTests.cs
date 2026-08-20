@@ -64,7 +64,9 @@ public class StatsDashboardTests
     {
         using FixtureWorkspace ws = Indexed();
 
-        CliResult result = ws.Run("outline", "docs/architecture.md", "--format", "json");
+        // A re-export barrel declares nothing, so its outline is empty even
+        // though documents and data files now carry structure symbols (ADR 0019).
+        CliResult result = ws.Run("outline", "src/lib/index.ts", "--format", "json");
 
         Assert.Equal(0, result.ExitCode);
         using JsonDocument response = JsonDocument.Parse(result.StdOut);

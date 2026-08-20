@@ -96,6 +96,8 @@ public static class RelatedOutput
         Relation.ImportedBy => "imported_by",
         Relation.Tests => "tests",
         Relation.TestedBy => "tested_by",
+        Relation.References => "references",
+        Relation.ReferencedBy => "referenced_by",
         _ => relation.ToString().ToLowerInvariant(),
     };
 
