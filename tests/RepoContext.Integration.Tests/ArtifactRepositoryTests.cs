@@ -19,6 +19,16 @@ public sealed class ArtifactRepositoryTests
     private static FixtureWorkspace Indexed()
     {
         var ws = new FixtureWorkspace("artifact-repo");
+
+        // Guard against a fixture file that never reached the checkout: an
+        // ignored directory name silently costs the corpus its artifacts, and
+        // the resulting failures point at the product rather than the fixture.
+        string[] required = ["exports/jira/PAY-142.json", "exports/confluence/refund-policy.md"];
+        foreach (string path in required)
+        {
+            Assert.True(File.Exists(ws.PathOf(path)), $"missing fixture file: {path}");
+        }
+
         Assert.Equal(0, ws.Run("init").ExitCode);
         Assert.Equal(0, ws.Run("index").ExitCode);
         return ws;
@@ -41,9 +51,9 @@ public sealed class ArtifactRepositoryTests
         Assert.Equal("trace", root.GetProperty("command").GetString());
         Assert.Equal(
             [
-                "artifacts/confluence/refund-policy.md",
-                "artifacts/jira/PAY-142.json",
-                "artifacts/jira/PAY-155.json",
+                "exports/confluence/refund-policy.md",
+                "exports/jira/PAY-142.json",
+                "exports/jira/PAY-155.json",
                 "requirements/REQ-payments.yaml",
                 "src/billing/refund.ts",
                 "tests/billing/refund.test.ts",
@@ -72,7 +82,7 @@ public sealed class ArtifactRepositoryTests
         Assert.Equal(0, result.ExitCode);
         using JsonDocument doc = JsonDocument.Parse(result.StdOut);
         Assert.Equal(
-            ["artifacts/confluence/refund-policy.md", "artifacts/jira/PAY-142.json"],
+            ["exports/confluence/refund-policy.md", "exports/jira/PAY-142.json"],
             Paths(doc.RootElement, "mentions"));
     }
 
@@ -86,7 +96,7 @@ public sealed class ArtifactRepositoryTests
         Assert.Equal(0, result.ExitCode);
         using JsonDocument doc = JsonDocument.Parse(result.StdOut);
         Assert.Equal(["src/billing/audit.ts"], Paths(doc.RootElement, "definitions"));
-        Assert.Contains("artifacts/confluence/refund-policy.md", Paths(doc.RootElement, "mentions"));
+        Assert.Contains("exports/confluence/refund-policy.md", Paths(doc.RootElement, "mentions"));
     }
 
     [Fact]
@@ -137,7 +147,7 @@ public sealed class ArtifactRepositoryTests
         ];
 
         Assert.Equal(
-            ["artifacts/confluence/refund-policy.md", "artifacts/jira/PAY-142.json"],
+            ["exports/confluence/refund-policy.md", "exports/jira/PAY-142.json"],
             referencedBy.Order(StringComparer.Ordinal));
     }
 
@@ -175,7 +185,7 @@ public sealed class ArtifactRepositoryTests
 
         Assert.Contains(items, i => i.GetProperty("path").GetString() == "src/billing/refund.ts");
         Assert.All(
-            items.Where(i => i.GetProperty("path").GetString()!.StartsWith("artifacts/", StringComparison.Ordinal)),
+            items.Where(i => i.GetProperty("path").GetString()!.StartsWith("exports/", StringComparison.Ordinal)),
             i => Assert.Contains(
                 i.GetProperty("reasons").EnumerateArray().Select(r => r.GetString()),
                 reason => reason == "ref:PAY-142"));
@@ -212,8 +222,8 @@ public sealed class ArtifactRepositoryTests
         using JsonDocument doc = JsonDocument.Parse(result.StdOut);
         IReadOnlyList<string> impacted = Paths(doc.RootElement, "impacted");
 
-        Assert.Contains("artifacts/confluence/refund-policy.md", impacted);
-        Assert.Contains("artifacts/jira/PAY-142.json", impacted);
+        Assert.Contains("exports/confluence/refund-policy.md", impacted);
+        Assert.Contains("exports/jira/PAY-142.json", impacted);
     }
 
     [Fact]
@@ -223,14 +233,14 @@ public sealed class ArtifactRepositoryTests
         // A realistic large export: coverage is subtractive, so the one rule
         // that silently drops a text file has to say so (ADR 0017/0019).
         File.WriteAllText(
-            ws.PathOf("artifacts/confluence/huge-export.md"),
+            ws.PathOf("exports/confluence/huge-export.md"),
             "# Export\n\n" + string.Concat(Enumerable.Repeat("Refund policy text. PAY-142.\n", 30_000)));
 
         CliResult result = ws.Run("index");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Contains("exceed indexing.maxFileSizeKb", result.StdErr, StringComparison.Ordinal);
-        Assert.Contains("artifacts/confluence/huge-export.md", result.StdErr, StringComparison.Ordinal);
+        Assert.Contains("exports/confluence/huge-export.md", result.StdErr, StringComparison.Ordinal);
 
         // ... and it is genuinely absent, rather than half-indexed.
         CliResult trace = ws.Run("trace", "PAY-142", "--format", "json");
