@@ -37,3 +37,8 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   `repoctx integrate` /
   `repoctx guide`, on-demand instructions via skills and rules, `--detail auto`,
   and the `REPOCTX_SESSION` ambient session.
+- `0019-artifact-graph-and-scale.md` — the artifact layer: structure symbols for
+  documents, tickets, contracts and feature files, a stored per-file reference
+  index (schema v5 `refs`), cross-artifact `reference` edges, the `trace`
+  command, `--path` query scope, and a graph rebuilt from the index instead of
+  from a second full read of the working tree.
