@@ -227,6 +227,27 @@ public sealed class ArtifactRepositoryTests
     }
 
     [Fact]
+    public void GitIgnoredArtifacts_AreReIncludedByRepoctxignore()
+    {
+        using var ws = new FixtureWorkspace("artifact-repo");
+
+        // The layout this feature exists for: tickets and pages are fetched
+        // into the working tree and never committed, so git ignores them.
+        File.WriteAllText(ws.PathOf(".gitignore"), "exports/\n");
+        Assert.Equal(0, ws.Run("init").ExitCode);
+        Assert.Equal(0, ws.Run("index").ExitCode);
+
+        CliResult withoutExports = ws.Run("trace", "PAY-142", "--format", "json");
+        Assert.DoesNotContain("exports/jira/PAY-142.json", withoutExports.StdOut, StringComparison.Ordinal);
+
+        File.WriteAllText(ws.PathOf(".repoctxignore"), "!exports/\n");
+        Assert.Equal(0, ws.Run("index").ExitCode);
+
+        CliResult withExports = ws.Run("trace", "PAY-142", "--format", "json");
+        Assert.Contains("exports/jira/PAY-142.json", withExports.StdOut, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void Index_NamesTheFilesTheSizeLimitExcluded()
     {
         using FixtureWorkspace ws = Indexed();

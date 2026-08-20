@@ -211,6 +211,12 @@ context window, which are not.
   re-read; it now counts files whose stored references were resolved. In the
   evaluation corpus that is 4 rather than 6, because two files contribute no
   references at all.
+- **Fetched artifacts may need re-including.** Tickets and pages pulled into a
+  repository are frequently git-ignored, and `respectGitignore` is on by
+  default, so they are outside the index until a `.repoctxignore` re-includes
+  them (`!artifacts/`). The per-directory ignore stack of ADR 0017 already
+  supports this; it is now documented, because this is the layout the artifact
+  layer exists for. Sensitive patterns remain non-re-includable.
 - **Artifact linking can be turned off.** `artifacts.linkPaths` and
   `artifacts.linkSymbols` disable the two reference-edge sources; structure
   symbols and key/link tracing remain.

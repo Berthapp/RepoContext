@@ -500,6 +500,22 @@ Work-item detection covers the `ABC-123` shape (uppercase, so `UTF-8` and
 `SHA-256` are not mistaken for tickets). Add your own shapes with
 `artifacts.keyPatterns` in `repoctx.config.json`.
 
+### If the artifacts are not committed
+
+Fetched tickets and exported pages often live in a git-ignored directory, and
+RepoContext honours `.gitignore` by default — so they would not be indexed at
+all. Re-include them for RepoContext only, with a `.repoctxignore` next to the
+`.gitignore` that excludes them:
+
+```
+!artifacts/
+```
+
+`.repoctxignore` is evaluated after `.gitignore` at the same level, so this
+brings the directory back into the index without touching what git does. The
+index stays git-ignored either way, and `sensitiveFiles` still cannot be
+re-included.
+
 ### Scoping a query to one area
 
 In a large repository each agent usually owns one area. `--path` narrows
@@ -786,6 +802,7 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | `index` reports `files: 0`, or a project below the root is missing | An older config pins `include` to root-level directories. Remove the key (or set it to `[]`) to scan the whole repository and re-run `repoctx index`. |
 | Results look stale | Re-run `repoctx index`; unchanged files are neither reparsed nor re-read — only the hash pass touches them. |
 | `trace` finds nothing for a ticket key | Keys are matched uppercase in the `ABC-123` shape. Add your project's shape to `artifacts.keyPatterns` and re-run `repoctx index`. `trace` lists the keys sharing your prefix when it finds none. |
+| Fetched tickets/pages are missing from the index | They are probably git-ignored, and `respectGitignore` is on. Add a `.repoctxignore` with `!<dir>/` to re-include the directory for RepoContext only, then re-run `repoctx index`. |
 | A document is not linked to the code it describes | Linking needs the document to name the repository path or a symbol declared in exactly one file. Check `artifacts.linkPaths` / `artifacts.linkSymbols` and re-index. |
 | Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 
