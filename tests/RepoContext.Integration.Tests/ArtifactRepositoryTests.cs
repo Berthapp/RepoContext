@@ -100,6 +100,21 @@ public sealed class ArtifactRepositoryTests
     }
 
     [Fact]
+    public void Trace_OfAPath_FindsDocumentsThatNameItByFileNameAlone()
+    {
+        using FixtureWorkspace ws = Indexed();
+
+        CliResult result = ws.Run("trace", "src/billing/audit.ts", "--format", "json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument doc = JsonDocument.Parse(result.StdOut);
+
+        // The specification names the full path; the point of the suffix match
+        // is that "audit.ts" alone would have been found too.
+        Assert.Contains("exports/confluence/refund-policy.md", Paths(doc.RootElement, "mentions"));
+    }
+
+    [Fact]
     public void Trace_OfAnUnknownKey_OffersTheKeysThatDoExist()
     {
         using FixtureWorkspace ws = Indexed();
