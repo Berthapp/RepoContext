@@ -194,6 +194,14 @@ public sealed class Indexer
                     chunks, symbols, tx, references);
             }
 
+            // A file the scan could not open never reached the loop above, so it
+            // is held on to here for the same reason: a moment's lock must not
+            // cost an indexed file its row.
+            foreach (string path in scanner.UnreadablePaths)
+            {
+                Keep(existing.ContainsKey(path), path, seen, ref indexedFiles);
+            }
+
             foreach ((string path, FileRecord record) in existing)
             {
                 if (!seen.Contains(path))

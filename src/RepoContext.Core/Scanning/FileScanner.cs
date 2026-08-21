@@ -27,6 +27,7 @@ public sealed class FileScanner
     private readonly GitignoreMatcher _sensitive;
     private readonly IgnoreScope _exclude;
     private readonly List<string> _oversized = [];
+    private readonly List<string> _unreadable = [];
 
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
@@ -62,7 +63,14 @@ public sealed class FileScanner
     /// binary, and above all not thrown: one unreadable file must not abort an
     /// index run over a repository of thousands.
     /// </summary>
-    public int UnreadableCount { get; private set; }
+    public int UnreadableCount => _unreadable.Count;
+
+    /// <summary>
+    /// The repo-relative paths the last scan could not open. Callers need the
+    /// paths, not just the count: a file that is already indexed has to be held
+    /// on to, or a moment's lock costs it its index row.
+    /// </summary>
+    public IReadOnlyList<string> UnreadablePaths => _unreadable;
 
     /// <summary>Returns whether a repo-relative path is treated as sensitive.</summary>
     public bool IsSensitive(string relativePath) => _sensitive.IsIgnored(relativePath, isDirectory: false);
@@ -88,8 +96,8 @@ public sealed class FileScanner
     {
         OversizedCount = 0;
         BinaryCount = 0;
-        UnreadableCount = 0;
         _oversized.Clear();
+        _unreadable.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
 
@@ -227,12 +235,12 @@ public sealed class FileScanner
         }
         catch (IOException)
         {
-            UnreadableCount++;
+            _unreadable.Add(rel);
             return;
         }
         catch (UnauthorizedAccessException)
         {
-            UnreadableCount++;
+            _unreadable.Add(rel);
             return;
         }
 
@@ -263,7 +271,7 @@ public sealed class FileScanner
                 BinaryCount++;
                 return;
             case Content.Unreadable:
-                UnreadableCount++;
+                _unreadable.Add(rel);
                 return;
             default:
                 break;

@@ -411,6 +411,38 @@ public sealed class ArtifactRepositoryTests
         Assert.DoesNotContain("huge-export.md", trace.StdOut, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// A file that is locked for the duration of a run keeps its index row. The
+    /// alternative - deleting it and rediscovering it later - loses coverage for
+    /// as long as the lock lasts, and reports a deletion that never happened.
+    /// </summary>
+    [Fact]
+    public void Index_KeepsTheRowOfAFileItCannotOpen()
+    {
+        using FixtureWorkspace ws = Indexed();
+        string locked = ws.PathOf("src/billing/refund.ts");
+
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            CliResult result = ws.Run("index");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("-0 ", result.StdOut, StringComparison.Ordinal);
+            Assert.Contains("1 unreadable", result.StdOut, StringComparison.Ordinal);
+
+            // Still answerable from the index while the lock is held...
+            CliResult outline = ws.Run("outline", "src/billing/refund.ts", "--format", "json");
+            Assert.Equal(0, outline.ExitCode);
+            using JsonDocument doc = JsonDocument.Parse(outline.StdOut);
+            Assert.NotEmpty(doc.RootElement.GetProperty("symbols").EnumerateArray());
+
+            // ...and not reported as a deletion, which it is not.
+            CliResult changed = ws.Run("changed", "--format", "json");
+            Assert.Equal(0, changed.ExitCode);
+            Assert.DoesNotContain("deleted", changed.StdOut, StringComparison.Ordinal);
+        }
+    }
+
     [Fact]
     public void Index_RebuildsTheGraphWithoutReReadingTheRepository()
     {

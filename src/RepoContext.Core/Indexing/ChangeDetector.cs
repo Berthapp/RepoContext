@@ -73,10 +73,19 @@ public static class ChangeDetector
         // the same path would share a fingerprint.
         var delta = new List<(string Status, string Path, string? ContentHash)>();
 
-        foreach (ScannedFile file in new FileScanner(layout.Root, config).Scan())
+        var scanner = new FileScanner(layout.Root, config);
+        foreach (ScannedFile file in scanner.Scan())
         {
+            if (Hash(file.AbsolutePath) is not { } hash)
+            {
+                // Unreadable right now says nothing about the working tree: it
+                // is not a deletion, and reporting one would send an agent to
+                // re-create a file that is merely locked.
+                seen.Add(file.RelativePath);
+                continue;
+            }
+
             seen.Add(file.RelativePath);
-            string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(file.AbsolutePath)));
 
             if (!existing.TryGetValue(file.RelativePath, out FileRecord record))
             {
@@ -92,6 +101,12 @@ public static class ChangeDetector
                     : new ChangedFile(file.RelativePath, ChangedFile.Modified));
                 delta.Add((ChangedFile.Modified, file.RelativePath, hash));
             }
+        }
+
+        // Files the scan itself could not open are in the same position.
+        foreach (string path in scanner.UnreadablePaths)
+        {
+            seen.Add(path);
         }
 
         foreach (string path in existing.Keys)
@@ -142,6 +157,26 @@ public static class ChangeDetector
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
         };
+    }
+
+    /// <summary>
+    /// The content hash of a file, or null when it cannot be read right now.
+    /// An unreadable file used to abort the whole command.
+    /// </summary>
+    private static string? Hash(string absolutePath)
+    {
+        try
+        {
+            return Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(absolutePath)));
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
