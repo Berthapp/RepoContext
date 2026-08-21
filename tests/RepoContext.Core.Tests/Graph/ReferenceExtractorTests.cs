@@ -206,8 +206,14 @@ public class ReferenceExtractorTests
             options);
         Assert.Equal(50, Values(typescript, RefKind.Import).Count());
 
-        // The artifact kinds stay bounded, which is what the setting is for.
-        Assert.True(Values(csharp, RefKind.Symbol).Count() <= 2);
+        // The artifact kinds stay bounded, which is what the setting is for -
+        // asserted on a document, since that is where those kinds are extracted.
+        IReadOnlyList<FileReference> document = Extract(
+            File("docs/policy.md", FileKind.Doc, SourceLanguage.Markdown),
+            string.Join('\n', Enumerable.Range(0, 50).Select(i => $"See fileName{i:D3} in src/mod{i:D3}.ts.")),
+            options);
+        Assert.Equal(2, Values(document, RefKind.Symbol).Count());
+        Assert.Equal(2, Values(document, RefKind.Path).Count());
     }
 
     [Fact]

@@ -56,6 +56,14 @@ public sealed class FileScanner
     /// </summary>
     public int BinaryCount { get; private set; }
 
+    /// <summary>
+    /// How many files the last scan could not open at all - a permission the
+    /// process lacks, or a lock held elsewhere. Counted rather than mistaken for
+    /// binary, and above all not thrown: one unreadable file must not abort an
+    /// index run over a repository of thousands.
+    /// </summary>
+    public int UnreadableCount { get; private set; }
+
     /// <summary>Returns whether a repo-relative path is treated as sensitive.</summary>
     public bool IsSensitive(string relativePath) => _sensitive.IsIgnored(relativePath, isDirectory: false);
 
@@ -80,6 +88,7 @@ public sealed class FileScanner
     {
         OversizedCount = 0;
         BinaryCount = 0;
+        UnreadableCount = 0;
         _oversized.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
@@ -211,8 +220,23 @@ public sealed class FileScanner
             return;
         }
 
-        var info = new FileInfo(absolutePath);
-        if (info.Length > (long)_config.Indexing.MaxFileSizeKb * 1024)
+        long length;
+        try
+        {
+            length = new FileInfo(absolutePath).Length;
+        }
+        catch (IOException)
+        {
+            UnreadableCount++;
+            return;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            UnreadableCount++;
+            return;
+        }
+
+        if (length > (long)_config.Indexing.MaxFileSizeKb * 1024)
         {
             // Reported rather than silently dropped: see OversizedCount.
             if (!FileClassifier.IsBinaryExtension(rel))
@@ -227,10 +251,22 @@ public sealed class FileScanner
             return;
         }
 
-        if (FileClassifier.IsBinaryExtension(rel) || IsBinaryContent(absolutePath))
+        if (FileClassifier.IsBinaryExtension(rel))
         {
             BinaryCount++;
             return;
+        }
+
+        switch (Sniff(absolutePath))
+        {
+            case Content.Binary:
+                BinaryCount++;
+                return;
+            case Content.Unreadable:
+                UnreadableCount++;
+                return;
+            default:
+                break;
         }
 
         FileKind kind = FileClassifier.ClassifyKind(rel);
@@ -250,7 +286,7 @@ public sealed class FileScanner
             RelativePath = rel,
             Kind = kind,
             Language = FileClassifier.DetectLanguage(rel),
-            SizeBytes = info.Length,
+            SizeBytes = length,
         });
     }
 
@@ -331,18 +367,36 @@ public sealed class FileScanner
         }
     }
 
-    private static bool IsBinaryContent(string path)
+    /// <summary>What sniffing a file's first bytes established about it.</summary>
+    private enum Content
+    {
+        Text,
+        Binary,
+        Unreadable,
+    }
+
+    /// <summary>
+    /// Classifies a file by its first bytes. A file that cannot be opened is
+    /// reported as such rather than as binary: the two have different causes and
+    /// different fixes, and calling a locked file binary hides it inside a
+    /// category the user is told is unfixable.
+    /// </summary>
+    private static Content Sniff(string path)
     {
         try
         {
             using FileStream stream = File.OpenRead(path);
             Span<byte> buffer = stackalloc byte[SniffBytes];
             int read = stream.Read(buffer);
-            return FileClassifier.LooksBinary(buffer[..read]);
+            return FileClassifier.LooksBinary(buffer[..read]) ? Content.Binary : Content.Text;
         }
         catch (IOException)
         {
-            return true;
+            return Content.Unreadable;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return Content.Unreadable;
         }
     }
 

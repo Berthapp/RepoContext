@@ -49,8 +49,9 @@ public static class IndexCommand
             {
                 // Only the exclusions RepoContext chose itself; ignore rules are
                 // the user's own decision and are not second-guessed here.
-                // Unreadable files kept their previous content, so they are named
-                // rather than folded into "unchanged", which means verified.
+                // Unreadable files are named rather than folded into "unchanged",
+                // which means verified: an already-indexed one kept its previous
+                // content, and one that was never indexed is simply absent.
                 Console.WriteLine(
                     $"  skipped: {stats.SkippedBinary} binary  "
                     + $"{stats.SkippedTooLarge} over {config.Indexing.MaxFileSizeKb} KB  "

@@ -56,10 +56,10 @@ public sealed record IndexStats
     public int SkippedBinary { get; init; }
 
     /// <summary>
-    /// Files that could not be read this run. An already-indexed one keeps
-    /// whatever the index holds; a new one is absent from it. Counted separately
-    /// from <see cref="Unchanged"/>, which means "verified identical" - here
-    /// nothing was verified.
+    /// Files that could not be opened this run, whether during the scan or
+    /// afterwards. An already-indexed one keeps whatever the index holds; a new
+    /// one is absent from it. Counted separately from <see cref="Unchanged"/>,
+    /// which means "verified identical" - here nothing was verified.
     /// </summary>
     public int Unreadable { get; init; }
 
@@ -245,7 +245,7 @@ public sealed class Indexer
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
             SkippedBinary = scanner.BinaryCount,
-            Unreadable = unreadable,
+            Unreadable = unreadable + scanner.UnreadableCount,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
     }
