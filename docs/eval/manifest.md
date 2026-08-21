@@ -13,6 +13,7 @@ implementation were introduced together.
 | Source state | the version 0.7.0 source tree containing this manifest; the base commit alone cannot reconstruct it |
 | Re-baselined | 0.8.0 (ADR 0017). The default exclude list feeds the config hash, and hash-derived identifiers are rendered into responses, so token counts moved by −5…+4. Every relevance metric and the selected corpus are unchanged. |
 | Re-baselined | 0.10.0 (ADR 0019). The artifact layer moves the config hash and the evidence identity, so token counts moved by −11…+3, and the MCP session surface grew from 1,363 to 1,602 tokens with the eighth tool. Repository bytes read per index run halved, because the graph is no longer rebuilt from a second full read. Every relevance metric and the selected corpus are unchanged. |
+| Re-baselined | 0.10.0 (ADR 0020). Naming the artifact formats moves the scanner producer version, which is part of the rendered analysis identity, so token counts moved by +1…+7. `content_state` is byte-identical for every task — the corpus indexes to exactly the same bytes — and every relevance metric is unchanged. |
 | OS | Windows 11 Pro 10.0.26200 (x64) |
 | Runtime / SDK | .NET SDK 10.0.301, target `net10.0` |
 | Build configuration | `Release` |

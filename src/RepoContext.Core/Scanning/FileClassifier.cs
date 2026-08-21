@@ -56,6 +56,14 @@ public enum SourceLanguage
     Html,
     Toml,
     Csv,
+    AsciiDoc,
+    ReStructuredText,
+    Ini,
+    Properties,
+    Makefile,
+    Dockerfile,
+    Hcl,
+    Gherkin,
 }
 
 /// <summary>Classifies files by kind, language and binary-ness.</summary>
@@ -84,7 +92,8 @@ public static class FileClassifier
             return FileKind.Test;
         }
 
-        if (ext is ".md" or ".mdx" or ".rst" || name.Equals("README", StringComparison.OrdinalIgnoreCase))
+        if (ext is ".md" or ".mdx" or ".markdown" or ".rst" or ".adoc" or ".asciidoc"
+            || name.Equals("README", StringComparison.OrdinalIgnoreCase))
         {
             return FileKind.Doc;
         }
@@ -94,7 +103,11 @@ public static class FileClassifier
             return FileKind.Config;
         }
 
-        if (DetectLanguage(path) != SourceLanguage.None || IsSourceExtension(ext))
+        // Deliberately not "has a language label": since ADR 0020 names the
+        // artifact formats too, that test would classify a CSV matrix or an
+        // exported HTML page as source. Source is where declarations are
+        // extracted, which is exactly what this list holds.
+        if (IsSourceExtension(ext))
         {
             return FileKind.Source;
         }
@@ -105,7 +118,24 @@ public static class FileClassifier
     /// <summary>Detects the language for chunking/parsing, or <see cref="SourceLanguage.None"/>.</summary>
     public static SourceLanguage DetectLanguage(string relativePath)
     {
+        string name = System.IO.Path.GetFileName(relativePath);
         string ext = System.IO.Path.GetExtension(relativePath).ToLowerInvariant();
+
+        // Build files are named rather than typed, and are the reason this
+        // takes a path instead of an extension.
+        if (name.StartsWith("Dockerfile", StringComparison.OrdinalIgnoreCase)
+            || name.StartsWith("Containerfile", StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceLanguage.Dockerfile;
+        }
+
+        if (ext.Length == 0
+            && System.IO.Path.GetFileNameWithoutExtension(name)
+                .Equals("Makefile", StringComparison.OrdinalIgnoreCase))
+        {
+            return SourceLanguage.Makefile;
+        }
+
         return ext switch
         {
             ".ts" or ".mts" or ".cts" => SourceLanguage.TypeScript,
@@ -142,6 +172,13 @@ public static class FileClassifier
             ".html" or ".htm" or ".xhtml" => SourceLanguage.Html,
             ".toml" => SourceLanguage.Toml,
             ".csv" or ".tsv" => SourceLanguage.Csv,
+            ".adoc" or ".asciidoc" => SourceLanguage.AsciiDoc,
+            ".rst" => SourceLanguage.ReStructuredText,
+            ".ini" or ".cfg" or ".editorconfig" => SourceLanguage.Ini,
+            ".properties" or ".conf" or ".env" => SourceLanguage.Properties,
+            ".mk" or ".make" or ".mak" => SourceLanguage.Makefile,
+            ".tf" or ".tfvars" or ".hcl" or ".nomad" => SourceLanguage.Hcl,
+            ".feature" => SourceLanguage.Gherkin,
             _ => SourceLanguage.None,
         };
     }
@@ -194,5 +231,5 @@ public static class FileClassifier
             or ".c" or ".h" or ".cpp" or ".hpp" or ".cc" or ".hh" or ".cxx"
             or ".php" or ".swift" or ".kt" or ".kts" or ".scala" or ".groovy" or ".dart"
             or ".sh" or ".bash" or ".zsh" or ".ps1" or ".psm1" or ".lua" or ".ex" or ".exs"
-            or ".pl" or ".pm" or ".r" or ".sql" or ".proto" or ".graphql" or ".gql";
+            or ".pl" or ".pm" or ".r" or ".sql" or ".ddl" or ".proto" or ".graphql" or ".gql";
 }

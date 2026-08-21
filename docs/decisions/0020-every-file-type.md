@@ -84,13 +84,22 @@ underline character, which is what the format itself specifies.
 Both extractors share one line-scanning core (`StructureAnchors`), so ranges,
 summaries, caps and determinism behave identically everywhere.
 
-### 3. Languages are named
+### 3. Languages are named — and a name is not a promotion
 
 `SourceLanguage` gains the languages and formats above, so `architecture` and
 `prime` describe a polyglot repository correctly instead of reporting `none`.
 Only the original four are *parsed* by a grammar; the rest are recognised for
-labelling and dispatch. The label is stored on the file row, so this needs the
-same rebuild the parser-version bump already forces.
+labelling and dispatch. Build files are named rather than typed, so
+`Dockerfile` and `Makefile` are matched by name. The label is stored on the file
+row, so this needs the same rebuild the parser-version bump already forces.
+
+Naming a format is not the same as calling it code, and the first
+implementation conflated the two: `kind` was "source" for anything that had a
+language label, so the moment CSV, HTML and JSONL acquired one, a traceability
+matrix and an exported page became source files — outranking the code for a
+task about code. `kind` is decided by the extensions whose *declarations* are
+extracted; documentation formats are `doc`, settings formats are `config`, and
+everything else stays `other`.
 
 ### 4. C# type resolution is restricted to C# declarations
 
@@ -154,7 +163,10 @@ area churn through several rounds of review:
   the point; `outline` on a file is what replaces reading it.
 - **`kind` changes for some files.** Extensions whose declarations are now
   extracted are classified `source` rather than `other` (`.sh`, `.scala`,
-  `.dart`, `.lua`, `.proto`, …), and settings formats are classified `config`.
+  `.dart`, `.lua`, `.proto`, `.ddl`, …); settings formats are classified
+  `config`; `.markdown`, `.adoc` and `.asciidoc` join `.md` and `.rst` as
+  `doc`. Data and markup formats (`.csv`, `.tsv`, `.html`, `.jsonl`) keep the
+  `other` they had before — see decision 3.
 - **Relevance is unchanged.** Every metric in `docs/eval/baseline.md` is
   identical; token counts move by a few because the producer version is part of
   the rendered analysis identity.

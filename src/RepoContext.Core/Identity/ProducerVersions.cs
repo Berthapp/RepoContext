@@ -17,8 +17,14 @@ namespace RepoContext.Core.Identity;
 /// </remarks>
 public static class ProducerVersions
 {
-    /// <summary>Scanner + file classification (which files, kind/language labels).</summary>
-    public const int Scanner = 1;
+    /// <summary>
+    /// Scanner + file classification (which files, kind/language labels). v2
+    /// names the artifact formats ADR 0020 gave structure to - AsciiDoc,
+    /// reStructuredText, properties, INI, Makefile, Dockerfile, HCL, Gherkin -
+    /// and stops a language label alone promoting a file to <c>source</c>,
+    /// which had made a CSV matrix and an exported HTML page source files.
+    /// </summary>
+    public const int Scanner = 2;
 
     /// <summary>Byte decoding and newline normalisation feeding chunk/symbol text.</summary>
     public const int Decoder = 1;
