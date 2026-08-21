@@ -68,6 +68,13 @@ public sealed record ChangedResult(
 /// </summary>
 public static class ChangeDetector
 {
+    /// <summary>
+    /// Delta marker for a file nothing could be established about. Distinct from
+    /// every real status, so the fingerprint of "could not check" differs from
+    /// both "unchanged" and any actual change.
+    /// </summary>
+    private const string UnreadableStatus = "unreadable";
+
     public static ChangedResult Run(
         RepoLayout layout, RepoctxConfig config, IndexStore store,
         bool patch = false, TokenScale scale = default)
@@ -94,6 +101,7 @@ public static class ChangeDetector
                 seen.Add(file.RelativePath);
                 unreadable.Add(file.RelativePath);
                 continue;
+
             }
 
             seen.Add(file.RelativePath);
@@ -114,11 +122,25 @@ public static class ChangeDetector
             }
         }
 
-        // Files the scan itself could not open are in the same position.
+        // Anything the scan could not look at is in the same position: an
+        // unreadable file, or an indexed file under a directory it could not
+        // enter. Reporting those as deleted would send an agent to re-create
+        // files that are merely inaccessible.
+        foreach (string path in existing.Keys)
+        {
+            if (!seen.Contains(path) && scanner.WasSkipped(path))
+            {
+                seen.Add(path);
+                unreadable.Add(path);
+            }
+        }
+
         foreach (string path in scanner.UnreadablePaths)
         {
-            seen.Add(path);
-            unreadable.Add(path);
+            if (seen.Add(path))
+            {
+                unreadable.Add(path);
+            }
         }
 
         foreach (string path in existing.Keys)
@@ -160,6 +182,16 @@ public static class ChangeDetector
             .Select(e => new ImpactedFile(e.Key, ReasonCompression.Compress(e.Value)))
             .ToList();
 
+        // An unreadable file enters the fingerprint too. Without it a modified
+        // but locked file yields a worktree_state byte-identical to a verified
+        // clean tree, and an agent using that as its cheap staleness key would
+        // keep serving pre-edit content.
+        unreadable.Sort(StringComparer.Ordinal);
+        foreach (string path in unreadable)
+        {
+            delta.Add((UnreadableStatus, path, null));
+        }
+
         string contentState = store.GetMeta(MetaKeys.StateHash) ?? string.Empty;
         string worktreeState = Fingerprints.WorktreeState(contentState, delta);
         return new ChangedResult(
@@ -168,7 +200,7 @@ public static class ChangeDetector
         {
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
-            Unreadable = [.. unreadable.Order(StringComparer.Ordinal)],
+            Unreadable = unreadable,
         };
     }
 

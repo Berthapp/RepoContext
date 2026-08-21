@@ -28,6 +28,7 @@ public sealed class FileScanner
     private readonly IgnoreScope _exclude;
     private readonly List<string> _oversized = [];
     private readonly List<string> _unreadable = [];
+    private readonly List<string> _unreadableDirectories = [];
 
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
@@ -72,6 +73,34 @@ public sealed class FileScanner
     /// </summary>
     public IReadOnlyList<string> UnreadablePaths => _unreadable;
 
+    /// <summary>
+    /// Whether the last scan failed to look at <paramref name="relativePath"/> -
+    /// the file itself was unreadable, or a directory above it could not be
+    /// entered. A caller holding an index must retain such a path: the scan
+    /// says nothing about it, and treating silence as deletion wipes a subtree
+    /// on a transient mount failure.
+    /// </summary>
+    public bool WasSkipped(string relativePath)
+    {
+        if (_unreadable.Contains(relativePath, StringComparer.Ordinal))
+        {
+            return true;
+        }
+
+        foreach (string directory in _unreadableDirectories)
+        {
+            if (directory.Length == 0
+                || (relativePath.Length > directory.Length
+                    && relativePath.StartsWith(directory, StringComparison.Ordinal)
+                    && relativePath[directory.Length] == '/'))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
     /// <summary>Returns whether a repo-relative path is treated as sensitive.</summary>
     public bool IsSensitive(string relativePath) => _sensitive.IsIgnored(relativePath, isDirectory: false);
 
@@ -98,6 +127,7 @@ public sealed class FileScanner
         BinaryCount = 0;
         _oversized.Clear();
         _unreadable.Clear();
+        _unreadableDirectories.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
 
@@ -159,12 +189,16 @@ public sealed class FileScanner
         }
         catch (UnauthorizedAccessException)
         {
+            _unreadableDirectories.Add(ToRelative(directory));
             return;
         }
         catch (IOException)
         {
             // Removed mid-walk, or an unreadable mount point. One directory the
-            // scan cannot enumerate is not a reason to abandon the repository.
+            // scan cannot enumerate is not a reason to abandon the repository -
+            // but it is a reason to remember it, because everything already
+            // indexed below it would otherwise look deleted.
+            _unreadableDirectories.Add(ToRelative(directory));
             return;
         }
 
@@ -172,7 +206,15 @@ public sealed class FileScanner
 
         foreach (string entry in entries)
         {
-            if (IsSymlink(entry))
+            if (!TryGetAttributes(entry, out FileAttributes attributes))
+            {
+                // Present but inaccessible: it cannot even be classified, so it
+                // is recorded and skipped rather than crashing the scan.
+                _unreadable.Add(ToRelative(entry));
+                continue;
+            }
+
+            if ((attributes & FileAttributes.ReparsePoint) != 0)
             {
                 continue;
             }
@@ -353,10 +395,14 @@ public sealed class FileScanner
             }
             catch (IOException)
             {
-                // An unreadable ignore file must not abort the scan.
+                // An unreadable ignore file must not abort the scan - but its
+                // rules are then not applied, which changes what gets indexed,
+                // so it is reported rather than silently skipped.
+                _unreadable.Add(ToRelative(path));
             }
             catch (UnauthorizedAccessException)
             {
+                _unreadable.Add(ToRelative(path));
             }
         }
     }
@@ -368,21 +414,41 @@ public sealed class FileScanner
     private string ToRelative(string absolutePath) =>
         Path.GetRelativePath(_repoRoot, absolutePath).Replace('\\', '/');
 
-    private static bool IsSymlink(string path)
+    /// <summary>
+    /// Reads an entry's attributes. Returns false when it is present but
+    /// inaccessible - a permission the process lacks. A vanished entry reports
+    /// success with default attributes, since "not there" is not a failure the
+    /// caller has to surface.
+    /// </summary>
+    private static bool TryGetAttributes(string path, out FileAttributes attributes)
     {
+        attributes = default;
         try
         {
-            return (File.GetAttributes(path) & FileAttributes.ReparsePoint) != 0;
+            attributes = File.GetAttributes(path);
+            return true;
         }
         catch (FileNotFoundException)
         {
-            return false;
+            return true;
         }
         catch (DirectoryNotFoundException)
+        {
+            return true;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+        catch (IOException)
         {
             return false;
         }
     }
+
+    private static bool IsSymlink(string path) =>
+        TryGetAttributes(path, out FileAttributes attributes)
+        && (attributes & FileAttributes.ReparsePoint) != 0;
 
     /// <summary>What sniffing a file's first bytes established about it.</summary>
     private enum Content

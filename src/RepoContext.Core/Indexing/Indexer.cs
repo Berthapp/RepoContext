@@ -194,12 +194,17 @@ public sealed class Indexer
                     chunks, symbols, tx, references);
             }
 
-            // A file the scan could not open never reached the loop above, so it
-            // is held on to here for the same reason: a moment's lock must not
-            // cost an indexed file its row.
-            foreach (string path in scanner.UnreadablePaths)
+            // Anything the scan could not look at - an unreadable file, or a
+            // whole subtree under a directory it could not enter - never reached
+            // the loop above. It is held on to here for the same reason: silence
+            // from the scan is not evidence of deletion.
+            foreach (string path in existing.Keys)
             {
-                Keep(existing.ContainsKey(path), path, seen, ref indexedFiles);
+                if (!seen.Contains(path) && scanner.WasSkipped(path))
+                {
+                    Keep(known: true, path, seen, ref indexedFiles);
+                    unreadable++;
+                }
             }
 
             foreach ((string path, FileRecord record) in existing)
@@ -253,7 +258,7 @@ public sealed class Indexer
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
             SkippedBinary = scanner.BinaryCount,
-            Unreadable = unreadable + scanner.UnreadableCount,
+            Unreadable = unreadable,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
     }
