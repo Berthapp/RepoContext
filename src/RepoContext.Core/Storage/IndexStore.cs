@@ -655,12 +655,18 @@ public sealed class IndexStore : IDisposable
         return defs;
     }
 
-    /// <summary>Finds a file by its repo-relative path.</summary>
-    public FileRow? FindFile(string relativePath)
+    /// <summary>
+    /// Finds a file by its repo-relative path, optionally only within
+    /// <paramref name="scope"/> - a file the caller excluded is not a result,
+    /// however exactly its path was named.
+    /// </summary>
+    public FileRow? FindFile(string relativePath, PathScope? scope = null)
     {
         using SqliteCommand cmd = _connection.CreateCommand();
-        cmd.CommandText = $"SELECT {FileRowColumns} FROM files WHERE path = $p";
+        cmd.CommandText = $"SELECT {FileRowColumns} FROM files WHERE path = $p"
+            + PathScopeSql.Filter(scope, "files");
         cmd.Parameters.AddWithValue("$p", relativePath);
+        PathScopeSql.Bind(cmd, scope);
         using SqliteDataReader reader = cmd.ExecuteReader();
         return reader.Read() ? ReadFileRow(reader) : null;
     }

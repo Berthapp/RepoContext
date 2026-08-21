@@ -74,28 +74,57 @@ public sealed class PathScope
     }
 
     /// <summary>
+    /// How many <c>**/</c> segments are expanded before the rest are treated as
+    /// plain wildcards. Each one doubles the pattern count, and no real scope
+    /// uses more than a couple.
+    /// </summary>
+    private const int MaxDoubleStarSegments = 4;
+
+    /// <summary>
     /// The GLOB patterns one written pattern stands for.
     /// </summary>
     /// <remarks>
-    /// A leading <c>**/</c> is gitignore for "at any depth, including here", and
-    /// GLOB has no optional segment - so it becomes two patterns rather than
-    /// one. Collapsing it to <c>*/</c> instead, as this first did, silently
-    /// excluded every match at the repository root.
+    /// <c>**/</c> is gitignore for "zero or more directories here", and GLOB has
+    /// no optional segment - so each occurrence becomes two alternatives, with
+    /// and without it. Collapsing it to <c>*/</c> instead, as this first did,
+    /// silently required at least one intermediate directory: <c>**/services</c>
+    /// missed a top-level <c>services/</c>, and <c>docs/**/*.md</c> missed
+    /// <c>docs/a.md</c>.
     /// </remarks>
     private static IEnumerable<string> Expand(string normalized)
     {
-        if (normalized.StartsWith("**/", StringComparison.Ordinal))
+        List<string> patterns = [normalized];
+        for (int round = 0; round < MaxDoubleStarSegments; round++)
         {
-            string rest = normalized[3..];
-            if (rest.Length > 0)
+            List<string> next = [];
+            bool expanded = false;
+            foreach (string pattern in patterns)
             {
-                yield return Collapse(rest);
-                yield return "*/" + Collapse(rest);
-                yield break;
+                int at = pattern.IndexOf("**/", StringComparison.Ordinal);
+                if (at < 0)
+                {
+                    next.Add(pattern);
+                    continue;
+                }
+
+                expanded = true;
+                string head = pattern[..at];
+                string tail = pattern[(at + 3)..];
+                next.Add(head + tail);          // zero directories
+                next.Add(head + "*/" + tail);   // one or more
+            }
+
+            patterns = next;
+            if (!expanded)
+            {
+                break;
             }
         }
 
-        yield return Collapse(normalized);
+        return patterns
+            .Select(Collapse)
+            .Where(pattern => pattern.Length > 0)
+            .Distinct(StringComparer.Ordinal);
     }
 
     /// <summary>Under GLOB a single <c>*</c> already crosses directory separators.</summary>

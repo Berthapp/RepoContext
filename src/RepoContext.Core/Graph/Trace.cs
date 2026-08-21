@@ -118,17 +118,8 @@ public static class Trace
 
             // A term that names an indexed file is traced as that file, so a
             // document mentioning only its basename is still found.
-            // Only a "./" prefix and leading separators are stripped: the dot of
-            // ".gitignore" is part of its name, and trimming it would make the
-            // file untraceable.
-            string path = trimmed.Replace('\\', '/');
-            while (path.StartsWith("./", StringComparison.Ordinal))
-            {
-                path = path[2..];
-            }
-
-            path = path.TrimStart('/');
-            if (store.FindFile(path) is { } file)
+            string path = RelativePath(trimmed);
+            if (store.FindFile(path, scope) is { } file)
             {
                 // Recorded even when nothing mentions it: "this file is indexed,
                 // and nothing points at it" is an answer, and it is a different
@@ -169,7 +160,7 @@ public static class Trace
                 .Where(d => !kept.Any(m => m.Path == d.Path))
                 .Select(d => d.Path)
                 .Distinct(StringComparer.Ordinal)
-                .Sum(path => scale.Apply(store.FindFile(path)?.TokenCount ?? 0));
+                .Sum(path => scale.Apply(store.FindFile(path, scope)?.TokenCount ?? 0));
 
         IReadOnlyList<string> suggestions = ordered.Count == 0 && definitions.Count == 0
             ? Suggest(store, trimmed)
@@ -188,6 +179,26 @@ public static class Trace
 
     private static TraceResult Empty(string term) =>
         new(term, [], [], [], 0, 0, 0, []);
+
+    /// <summary>
+    /// Strips the leading <c>./</c>, <c>../</c> and separators of a path written
+    /// relative to somewhere else.
+    /// </summary>
+    /// <remarks>
+    /// Only the prefix is removed; the dot of <c>.gitignore</c> is part of its
+    /// name, and trimming that made every dot-file untraceable.
+    /// </remarks>
+    private static string RelativePath(string term)
+    {
+        string path = term.Replace('\\', '/');
+        while (path.StartsWith("./", StringComparison.Ordinal)
+            || path.StartsWith("../", StringComparison.Ordinal))
+        {
+            path = path[(path.IndexOf('/', StringComparison.Ordinal) + 1)..];
+        }
+
+        return path.TrimStart('/');
+    }
 
     /// <summary>
     /// Keys that share the traced prefix. A mistyped or not-yet-referenced

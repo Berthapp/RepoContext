@@ -203,6 +203,53 @@ public sealed class ArtifactRepositoryTests
         Assert.True(scaledTotal > rawTotal, "the claude profile scales counts up");
     }
 
+    /// <summary>
+    /// A path written relative to somewhere else still names the same file. The
+    /// prefix is stripped; the dot of a dot-file is not.
+    /// </summary>
+    [Fact]
+    public void Trace_OfARelativePath_ResolvesToTheIndexedFile()
+    {
+        using FixtureWorkspace ws = Indexed();
+
+        CliResult result = ws.Run("trace", "../src/billing/refund.ts", "--format", "json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument doc = JsonDocument.Parse(result.StdOut);
+        Assert.Equal(
+            ["src/billing/refund.ts"],
+            doc.RootElement.GetProperty("resolved").EnumerateArray().Select(e => e.GetString()));
+    }
+
+    /// <summary>
+    /// The scope binds the resolved file too. Naming a path exactly used to
+    /// report it as resolved regardless of scope, because the file lookup did
+    /// not take one - so an excluded file reappeared with zero mentions.
+    /// </summary>
+    [Fact]
+    public void Trace_ScopeExcludesEvenAnExactlyNamedFile()
+    {
+        using FixtureWorkspace ws = Indexed();
+
+        // "features" holds neither the file nor anything that mentions it.
+        CliResult result = ws.Run(
+            "trace", "src/billing/refund.ts", "--path", "features", "--format", "json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument doc = JsonDocument.Parse(result.StdOut);
+        Assert.Empty(doc.RootElement.GetProperty("resolved").EnumerateArray());
+        Assert.Empty(doc.RootElement.GetProperty("mentions").EnumerateArray());
+
+        // Within a scope that does hold them, the mentions still arrive.
+        CliResult scoped = ws.Run(
+            "trace", "src/billing/refund.ts", "--path", "exports", "--format", "json");
+        Assert.Equal(0, scoped.ExitCode);
+        using JsonDocument scopedDoc = JsonDocument.Parse(scoped.StdOut);
+        Assert.Equal(
+            ["exports/confluence/refund-policy.md", "exports/jira/PAY-142.json"],
+            Paths(scopedDoc.RootElement, "mentions"));
+    }
+
     [Fact]
     public void Related_ReportsTheDocumentsThatDescribeAFile()
     {

@@ -34,21 +34,28 @@ public class PathScopeTests
         Assert.Equal(["services/api", "services/api/*"], scope.Patterns);
     }
 
+    /// <summary>
+    /// <c>**/</c> means "zero or more directories here" wherever it appears.
+    /// Collapsing it to <c>*/</c> - as the first implementation did - required
+    /// at least one intermediate directory, so <c>artifacts/**/*.json</c>
+    /// silently missed <c>artifacts/ticket.json</c>.
+    /// </summary>
     [Fact]
-    public void GlobPatterns_ArePassedThroughWithDoubleStarCollapsed()
+    public void ADoubleStarSegment_MatchesWithAndWithoutTheDirectory()
     {
         PathScope scope = Assert.IsType<PathScope>(PathScope.From(["artifacts/**/*.json"]));
 
-        // Under GLOB a single '*' already crosses '/', so '**' would only add a
-        // second, redundant wildcard - and every pattern also selects its subtree.
-        Assert.Equal(["artifacts/*/*.json", "artifacts/*/*.json/*"], scope.Patterns);
+        Assert.Equal(
+            [
+                "artifacts/*.json", "artifacts/*.json/*",
+                "artifacts/*/*.json", "artifacts/*/*.json/*",
+            ],
+            scope.Patterns);
     }
 
     /// <summary>
-    /// A leading <c>**/</c> means "at any depth, including here". Collapsing it
-    /// to <c>*/</c> - as the first implementation did - matched nothing at the
-    /// repository root, so <c>--path "**/services"</c> silently returned
-    /// nothing for a top-level <c>services/</c>.
+    /// The same rule at the start of a pattern: <c>--path "**/services"</c> has
+    /// to reach a top-level <c>services/</c>, not only a nested one.
     /// </summary>
     [Fact]
     public void ALeadingDoubleStar_AlsoMatchesAtTheRoot()
@@ -57,6 +64,21 @@ public class PathScopeTests
 
         Assert.Equal(
             ["services", "services/*", "*/services", "*/services/*"],
+            scope.Patterns);
+    }
+
+    [Fact]
+    public void SeveralDoubleStarSegments_AreBoundedAndDeduplicated()
+    {
+        PathScope scope = Assert.IsType<PathScope>(PathScope.From(["**/a/**/b"]));
+
+        Assert.Equal(
+            [
+                "a/b", "a/b/*",
+                "a/*/b", "a/*/b/*",
+                "*/a/b", "*/a/b/*",
+                "*/a/*/b", "*/a/*/b/*",
+            ],
             scope.Patterns);
     }
 

@@ -143,11 +143,20 @@ public sealed class Indexer
                     continue;
                 }
 
-                // Read before touching the index: a file that became unreadable
-                // between hashing and reading must be left out entirely rather
-                // than removed from the index and counted as if it were there.
+                // Read before touching the index. A file that became unreadable
+                // between hashing and reading keeps whatever the index already
+                // holds - deleting a known file because it was locked for a
+                // moment would lose coverage the next run has to rediscover -
+                // and an unknown one is simply left out.
                 if (ReadText(file.AbsolutePath) is not { } content)
                 {
+                    if (known)
+                    {
+                        seen.Add(file.RelativePath);
+                        indexedFiles++;
+                        unchanged++;
+                    }
+
                     continue;
                 }
 

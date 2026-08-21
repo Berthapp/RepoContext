@@ -155,10 +155,18 @@ public sealed record ArtifactOptions
     public bool LinkSymbols { get; init; } = true;
 
     /// <summary>
-    /// Upper bound on stored references per file and reference kind. A bound is
-    /// required: a generated or vendored artifact can otherwise contribute
-    /// unbounded rows to an index whose size is a cost the user pays for.
+    /// Upper bound on stored artifact references per file and reference kind -
+    /// the paths, keys, links and symbols a file names. A bound is required: a
+    /// generated or vendored artifact can otherwise contribute unbounded rows to
+    /// an index whose size is a cost the user pays for.
     /// </summary>
+    /// <remarks>
+    /// The type references of a C# file are deliberately outside this bound.
+    /// They are not an artifact link that trades index size for a marginal
+    /// result: they are the sole input to that file's import edges, so
+    /// truncating them drops real dependencies from the graph. They carry their
+    /// own, far larger internal bound (ADR 0020).
+    /// </remarks>
     public int MaxRefsPerFile { get; init; } = 400;
 }
 
