@@ -11,7 +11,21 @@ It runs entirely offline. **No source code leaves the machine, there is no
 telemetry, and no LLM or embedding calls are ever made.** The same query on the
 same index always produces byte-identical output.
 
-Supported languages: **TypeScript, TSX, JavaScript, C#**.
+**Parsed with a full grammar:** TypeScript, TSX, JavaScript, C#.
+
+**Outlined by line patterns** — declarations, with names, kinds and ranges:
+Python, Go, Java, Kotlin, Scala, Groovy, Rust, Ruby, PHP, Swift, Dart, C, C++,
+shell, PowerShell, Lua, Elixir, Perl, R, Protobuf, GraphQL.
+
+**Structured as artifacts:** Markdown, MDX, AsciiDoc, reStructuredText, HTML,
+XML (including `.csproj`, `.wsdl`, `.xsd`, `.resx`), YAML, JSON/JSONL, Gherkin
+`.feature`, TOML, INI, `.properties`, CSV/TSV, SQL, Makefile, Dockerfile,
+Terraform/HCL.
+
+Everything else that is text is still indexed and searchable, and every file's
+references are extracted, so the whole repository is cross-linked. Binary files
+are the only category that cannot be described — and `index` reports how many
+there were. See [Working with artifacts](#working-with-artifacts-tickets-specs-requirements).
 
 ## Why: tokens are the bill
 
@@ -183,9 +197,11 @@ repoctx index                      # build the index (incremental afterwards)
 
 repoctx search "authentication"                 # BM25 full-text search
 repoctx search "login" --symbols                # search symbols only
-repoctx related src/auth/login.ts               # imports, dependents, tests
+repoctx related src/auth/login.ts               # imports, dependents, tests, documents
+repoctx trace PAY-142                           # everything about one ticket/link/symbol
 repoctx context "change the login logic"        # explained, budgeted bundle
 repoctx context "add logout" --top 4 --response-budget-tokens 2000 --detail slices
+repoctx context "refund window" --path services/api   # scope to one area
 repoctx architecture                            # structure, languages, centrality
 ```
 
@@ -269,9 +285,10 @@ via `repoctx related`).
 | `integrate` | Wire RepoContext into the coding agents this repository uses (instructions, skills, project rules, MCP registration). Never touches `repoctx.config.json`. | `--client`, `--check`, `--remove`, `--inline-playbook`, `--list` |
 | `guide` | Print the full usage protocol for an agent that needs it. Constant output, safe behind a cache breakpoint. | — |
 | `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
-| `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--format` |
-| `related <file>` | Imports, dependents and linked tests of a file. | `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--no-memory`, `--format` |
+| `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--path`, `--format` |
+| `related <file>` | Imports, dependents, linked tests, and the documents that describe a file. | `--format` |
+| `trace <ref>` | Every file that declares or mentions one exact term: a work-item key (`ABC-123`), a link, a symbol name or a path. | `--top`, `--path`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--no-memory`, `--path`, `--format` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
 | `prime` | Cache-stable repository primer for a cacheable prompt prefix (byte-identical for unchanged indexed content and token calibration). | `--files`, `--format` |
@@ -438,6 +455,103 @@ byte-identical output to previous versions. The economics: a re-derived
 "how does X work here" costs an outline (~1,100 tokens on this repo) to
 several file reads — a recalled memory answers it for ~40-80.
 
+## Working with artifacts: tickets, specs, requirements
+
+Most repositories that agents work in are not only code. A team that pulls Jira
+tickets and Confluence pages into the repository — through MCP or an export job
+— and keeps requirements, acceptance criteria and API contracts next to the
+implementation ends up asking questions that span all of it: *what belongs to
+PAY-142*, *does the code still match the specification*, *which test proves this
+requirement*.
+
+RepoContext indexes those files as first-class artifacts.
+
+**They get an outline.** A 900-line YAML requirements file, a Confluence export,
+a `.feature` file, an XML contract, a traceability `.csv` — `repoctx outline`
+returns their structure (headings, keys, scenarios, columns) with line ranges
+and the exact cost of reading the whole thing, so an agent can decide what to
+open instead of reading it to find out. The same holds for code in any language
+listed above, grammar or not.
+
+**They get linked to the code.** Every file's references are extracted at index
+time: repository paths it names, work-item keys (`ABC-123`), absolute links, and
+code symbols it mentions. Paths and unambiguous symbol names become `reference`
+edges, so `related` answers "which specification describes this file" and
+`changed` reports the documents a code change may have invalidated.
+
+**One term resolves exactly.** `repoctx trace` is the lookup that replaces a
+repository-wide grep:
+
+```
+$ repoctx trace PAY-142
+
+Trace "PAY-142": 0 definition(s), 6 file(s) mentioning it
+  mentioned in:
+    - artifacts/confluence/refund-policy.md (doc)  L8  ~118 tokens if read  [key]
+    - artifacts/jira/PAY-142.json (config)  L2  ~135 tokens if read  [key]
+    - artifacts/jira/PAY-155.json (config)  L6  ~47 tokens if read  [key]
+    - requirements/REQ-payments.yaml (config)  L4  ~80 tokens if read  [key]
+    - src/billing/refund.ts (source)  L5  ~117 tokens if read  [key]
+    - tests/billing/refund.test.ts (test)  L3  ~55 tokens if read  [key]
+Reading every file above would cost ~552 tokens.
+```
+
+`trace` also resolves a symbol name (returning its declaration *and* the
+documents naming it), an absolute link (a Confluence page shared by a ticket and
+a spec), and a repository path — including documents that name it only by its
+file name. A key that matches nothing returns the keys sharing its prefix.
+
+It is deliberately **exact**, not ranked: `ABC-123` means that work item, not
+"documents about ABC". `search` and `context` remain the fuzzy surfaces —
+and `context` picks the key up too, so `repoctx context "write tests for
+PAY-142"` returns ticket, specification, requirement, implementation and test
+in one budgeted answer, each carrying `ref:PAY-142` as its reason.
+
+Work-item detection covers the `ABC-123` shape (uppercase, so `UTF-8` and
+`SHA-256` are not mistaken for tickets). Add your own shapes with
+`artifacts.keyPatterns` in `repoctx.config.json`.
+
+### If the artifacts are not committed
+
+Fetched tickets and exported pages often live in a git-ignored directory, and
+RepoContext honours `.gitignore` by default — so they would not be indexed at
+all. Re-include them for RepoContext only, with a `.repoctxignore` next to the
+`.gitignore` that excludes them:
+
+```
+!artifacts/
+```
+
+`.repoctxignore` is evaluated after `.gitignore` at the same level, so this
+brings the directory back into the index without touching what git does. The
+index stays git-ignored either way, and `sensitiveFiles` still cannot be
+re-included.
+
+### Scoping a query to one area
+
+In a large repository each agent usually owns one area. `--path` narrows
+`search`, `context` and `trace` before ranking, so the rest of the repository
+costs neither relevance nor tokens:
+
+```bash
+repoctx context "refund window" --path services/api --path libs/billing
+repoctx trace PAY-142 --path src
+repoctx search "retry" --path "packages/**/src"
+```
+
+Patterns use `GLOB` semantics — `*` matches any characters including `/`, `?`
+matches one — and a plain path selects it and everything below it. The scope is
+enforced in the query itself and in graph expansion, so a neighbouring file
+outside the scope is never returned.
+
+### What this costs
+
+The index gets bigger: references are rows on your disk. Queries do not — the
+reference index is what lets `trace` answer in one indexed lookup, and structure
+symbols are what let an agent skip a document instead of reading it. Turn the
+edge sources off with `artifacts.linkPaths` / `artifacts.linkSymbols` if you
+want the smaller index.
+
 ## Agent integration
 
 RepoContext is agent-agnostic — any agent with shell access can use it. Let
@@ -513,12 +627,13 @@ launches the agent knows how many are running.
 
 Agents that speak the [Model Context Protocol](https://modelcontextprotocol.io)
 can call RepoContext directly instead of shelling out. `repoctx mcp` runs an MCP
-server over stdio and exposes seven non-destructive tools:
+server over stdio and exposes eight non-destructive tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
-| `repoctx.search` | `search` | `query`, `top`, `symbols` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory` |
+| `repoctx.search` | `search` | `query`, `top`, `symbols`, `path` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path` |
+| `repoctx.trace` | `trace` | `reference`, `top`, `path` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |
 | `repoctx.get_changes` | `changed` | `patch` |
@@ -613,6 +728,12 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
   "respectGitignore": true,
   "sensitiveFiles": [".env*", "*.secret.*", "appsettings.Production.json"],
   "indexing": { "maxFileSizeKb": 512, "includeTests": true, "includeDocs": true },
+  "artifacts": {
+    "keyPatterns": [],
+    "linkPaths": true,
+    "linkSymbols": true,
+    "maxRefsPerFile": 400
+  },
   "ranking": {
     "weights": { "fts": 0.4, "symbol": 0.3, "graph": 0.2, "path": 0.1 },
     "synonyms": { "zahlung": ["payment", "billing"] }
@@ -628,6 +749,10 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 | `sensitiveFiles` | Never indexed — neither content nor path. |
 | `indexing.maxFileSizeKb` | Skip files larger than this. |
 | `indexing.includeTests` / `includeDocs` | Include test / documentation files. |
+| `artifacts.keyPatterns` | Extra regular expressions for work-item keys, in addition to the built-in `ABC-123` shape. Invalid patterns are ignored. |
+| `artifacts.linkPaths` | Link a document to the files whose path it names. |
+| `artifacts.linkSymbols` | Link a document to the file that uniquely defines a symbol it names. |
+| `artifacts.maxRefsPerFile` | Upper bound on stored *artifact* references per file and kind — the paths, keys, links and symbols a file names (default 400). The references the dependency graph is resolved from (module imports and C# type uses) are outside it: truncating those would drop real dependencies from the graph. |
 | `ranking.weights` | Signal weights used by `context` (fts, symbol, graph, path). |
 | `ranking.synonyms` | Query-term expansions used by `context`. |
 | `tokens.profile` | Calibrate reported counts/budgets to a tokenizer: `o200k`/`openai` (default) or `claude`. |
@@ -683,9 +808,16 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | Symptom | Fix |
 | --- | --- |
 | `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
+| `index` warns that text files exceed `indexing.maxFileSizeKb` | Those files are not indexed at all. Raise the limit in `repoctx.config.json` (large exported specifications routinely pass 512 KB), or list them in `.repoctxignore` to accept the gap deliberately. |
+| `index` or `changed` lists files as `unreadable` | The process could not open them — a lock, a permission, or a mount that went away. They keep their existing index rows rather than being treated as deleted, so a later run picks them up unchanged. |
+| `changed`/`index` reports far more files than expected, and warns about an ignore file | A `.gitignore` or `.repoctxignore` could not be read, so the directories its rules exclude were walked and indexed. The warning names the file; fix its permissions and re-run `repoctx index`. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
 | `index` reports `files: 0`, or a project below the root is missing | An older config pins `include` to root-level directories. Remove the key (or set it to `[]`) to scan the whole repository and re-run `repoctx index`. |
-| Results look stale | Re-run `repoctx index`; unchanged files are not reparsed, though the local hash/graph pass still reads the indexed corpus. |
+| `outline` is empty for a file | Its format has no structure RepoContext knows (a `.txt`, a log, an unusual config). The file is still indexed and searchable; only the skeleton is missing. Binary files are not indexed at all — `index` reports how many. |
+| Results look stale | Re-run `repoctx index`; unchanged files are neither reparsed nor re-read — only the hash pass touches them. |
+| `trace` finds nothing for a ticket key | Keys are matched uppercase in the `ABC-123` shape. Add your project's shape to `artifacts.keyPatterns` and re-run `repoctx index`. `trace` lists the keys sharing your prefix when it finds none. |
+| Fetched tickets/pages are missing from the index | They are probably git-ignored, and `respectGitignore` is on. Add a `.repoctxignore` with `!<dir>/` to re-include the directory for RepoContext only, then re-run `repoctx index`. |
+| A document is not linked to the code it describes | Linking needs the document to name the repository path or a symbol declared in exactly one file. Check `artifacts.linkPaths` / `artifacts.linkSymbols` and re-index. |
 | Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 
 ## Development

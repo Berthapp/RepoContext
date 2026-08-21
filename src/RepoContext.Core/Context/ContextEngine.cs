@@ -39,6 +39,22 @@ public sealed class ContextEngine
     private const double MemoryTermWeight = 0.7;
     private const double MemoryOverlapWeight = 0.3;
 
+    /// <summary>
+    /// Path-channel weight given to a file that carries a work-item key or link
+    /// named by the task. Equal to an exact file-name match, because it is the
+    /// same class of evidence: the repository itself says this file is about it.
+    /// </summary>
+    private const int ReferenceSeedScore = 2;
+
+    /// <summary>
+    /// Extra decay applied to reference edges. A document that names a file is
+    /// weaker evidence than a module that imports it: the mention says "this is
+    /// discussed here", the import says "this cannot work without it". Ranking
+    /// a specification above the code it describes would be a regression for
+    /// every change task, which is most of them.
+    /// </summary>
+    private const double ReferenceDecay = 0.5;
+
     /// <summary>Per-file, per-channel evidence cap; stops one repetitive file starving the rest.</summary>
     private const int MaxHitsPerFilePerChannel = 8;
 
@@ -74,10 +90,11 @@ public sealed class ContextEngine
 
         AnalyzedQuery analyzed = QueryAnalyzer.Analyze(query, _config);
         var candidates = new Dictionary<string, Candidate>(StringComparer.Ordinal);
-        IReadOnlyList<FileRow> files = _store.GetFiles();
+        IReadOnlyList<FileRow> files = _store.GetFiles(options.Scope);
         var fileByPath = files.ToDictionary(f => f.Path, f => f, StringComparer.Ordinal);
 
-        GenerateCandidates(analyzed, files, candidates);
+        GenerateCandidates(analyzed, files, candidates, options.Scope);
+        GenerateReferenceCandidates(query, candidates, options.Scope);
         ExpandGraph(candidates, fileByPath);
         ScoreCandidates(candidates);
 
@@ -89,12 +106,13 @@ public sealed class ContextEngine
     }
 
     private void GenerateCandidates(
-        AnalyzedQuery analyzed, IReadOnlyList<FileRow> files, Dictionary<string, Candidate> candidates)
+        AnalyzedQuery analyzed, IReadOnlyList<FileRow> files, Dictionary<string, Candidate> candidates,
+        PathScope? scope)
     {
         if (analyzed.FtsMatch is not null)
         {
             foreach (SearchHit hit in _store.SearchEvidence(
-                analyzed.FtsMatch, MaxHitsPerFilePerChannel, MaxEvidenceHits))
+                analyzed.FtsMatch, MaxHitsPerFilePerChannel, MaxEvidenceHits, scope: scope))
             {
                 Candidate c = GetOrAdd(candidates, hit.Path);
                 // Max, never sum: exact duplicate evidence must not double-weight.
@@ -104,7 +122,8 @@ public sealed class ContextEngine
             }
 
             foreach (SearchHit hit in _store.SearchEvidence(
-                analyzed.FtsMatch, MaxHitsPerFilePerChannel, MaxEvidenceHits, symbolsOnly: true))
+                analyzed.FtsMatch, MaxHitsPerFilePerChannel, MaxEvidenceHits, symbolsOnly: true,
+                scope: scope))
             {
                 Candidate c = GetOrAdd(candidates, hit.Path);
                 c.Symbol = Math.Max(
@@ -133,6 +152,71 @@ public sealed class ContextEngine
                 Candidate c = GetOrAdd(candidates, file.Path);
                 c.PathScore = matches + (exactStem ? 2 : 0);
                 c.Reasons.Add(exactStem ? "path-name-match" : "path-match");
+            }
+        }
+    }
+
+    /// <summary>
+    /// Seeds candidates from the reference index when the task names an
+    /// external artifact - a ticket key, a requirement id or a link (ADR 0019).
+    /// </summary>
+    /// <remarks>
+    /// This is the shortest path that exists between "implement ABC-123" and the
+    /// files that belong to it. Full-text search finds the same files only where
+    /// the key happens to be tokenized as one term and ranked highly among
+    /// hundreds of prose matches; the reference index answers it exactly, which
+    /// is both cheaper and correct. The seed is deliberately strong: a file that
+    /// carries the key is about the work item, not incidentally similar to it.
+    /// </remarks>
+    private void GenerateReferenceCandidates(
+        string query, Dictionary<string, Candidate> candidates, PathScope? scope)
+    {
+        foreach (string token in ReferenceTokens(query))
+        {
+            foreach (string kind in new[] { RefKind.Key, RefKind.Link })
+            {
+                foreach (RefMention mention in _store.FindRefs(kind, token, scope))
+                {
+                    Candidate c = GetOrAdd(candidates, mention.Path);
+                    c.PathScore += ReferenceSeedScore;
+                    c.Reasons.Add($"ref:{token}");
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// The tokens of a task that could name an external artifact: work-item keys
+    /// and absolute links, normalised the way the reference index stores them.
+    /// </summary>
+    private static IEnumerable<string> ReferenceTokens(string query)
+    {
+        var seen = new HashSet<string>(StringComparer.Ordinal);
+        foreach (string raw in query.Split(
+            [' ', '\t', '\n', '\r', ',', ';', '(', ')', '[', ']', '"', '\''],
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            string token = raw.Trim('.', ':', '!', '?', '`', '<', '>');
+            if (token.Length < 3)
+            {
+                continue;
+            }
+
+            if (token.StartsWith("http://", StringComparison.OrdinalIgnoreCase)
+                || token.StartsWith("https://", StringComparison.OrdinalIgnoreCase))
+            {
+                if (seen.Add(token))
+                {
+                    yield return token;
+                }
+
+                continue;
+            }
+
+            string upper = token.ToUpperInvariant();
+            if (upper.Contains('-', StringComparison.Ordinal) && seen.Add(upper))
+            {
+                yield return upper;
             }
         }
     }
@@ -195,7 +279,7 @@ public sealed class ContextEngine
                     continue;
                 }
 
-                LinkAll(candidates, row.Id, path, strength, next);
+                LinkAll(candidates, fileByPath, row.Id, path, strength, next);
             }
 
             frontier = next;
@@ -203,22 +287,37 @@ public sealed class ContextEngine
     }
 
     private void LinkAll(
-        Dictionary<string, Candidate> candidates, long fileId, string fromPath,
-        double strength, Dictionary<string, double> next)
+        Dictionary<string, Candidate> candidates, Dictionary<string, FileRow> inScope, long fileId,
+        string fromPath, double strength, Dictionary<string, double> next)
     {
-        Link(candidates, fileId, EdgeKind.Import, outgoing: true, strength, "imported-by:" + fromPath, next);
-        Link(candidates, fileId, EdgeKind.Import, outgoing: false, strength, "imports:" + fromPath, next);
-        Link(candidates, fileId, EdgeKind.Test, outgoing: true, strength, "tested-by:" + fromPath, next);
-        Link(candidates, fileId, EdgeKind.Test, outgoing: false, strength, "test-of:" + fromPath, next);
+        Link(candidates, inScope, fileId, EdgeKind.Import, outgoing: true, strength,
+            "imported-by:" + fromPath, next);
+        Link(candidates, inScope, fileId, EdgeKind.Import, outgoing: false, strength,
+            "imports:" + fromPath, next);
+        Link(candidates, inScope, fileId, EdgeKind.Test, outgoing: true, strength,
+            "tested-by:" + fromPath, next);
+        Link(candidates, inScope, fileId, EdgeKind.Test, outgoing: false, strength,
+            "test-of:" + fromPath, next);
+        Link(candidates, inScope, fileId, EdgeKind.Reference, outgoing: true, strength * ReferenceDecay,
+            "mentioned-by:" + fromPath, next);
+        Link(candidates, inScope, fileId, EdgeKind.Reference, outgoing: false, strength * ReferenceDecay,
+            "mentions:" + fromPath, next);
     }
 
     private void Link(
-        Dictionary<string, Candidate> candidates, long fileId, string kind, bool outgoing,
-        double strength, string reason, Dictionary<string, double> next)
+        Dictionary<string, Candidate> candidates, Dictionary<string, FileRow> inScope, long fileId,
+        string kind, bool outgoing, double strength, string reason, Dictionary<string, double> next)
     {
         double contribution = strength * GraphDecay;
         foreach (string path in _store.GetNeighbors(fileId, kind, outgoing))
         {
+            // Graph expansion may not leave the requested scope: a neighbour the
+            // caller excluded is not a result, however strongly it is linked.
+            if (!inScope.ContainsKey(path))
+            {
+                continue;
+            }
+
             Candidate c = GetOrAdd(candidates, path);
             c.Graph += contribution;
             c.Reasons.Add(reason);

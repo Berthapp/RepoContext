@@ -35,7 +35,7 @@ public class McpServerTests
     }
 
     [Fact]
-    public async Task ListTools_ExposesSevenNonDestructiveInstrumentedTools()
+    public async Task ListTools_ExposesEightNonDestructiveInstrumentedTools()
     {
         using FixtureWorkspace ws = Indexed();
         await using McpClient client = await ConnectAsync(ws);
@@ -43,8 +43,9 @@ public class McpServerTests
         IList<McpClientTool> tools = await client.ListToolsAsync();
         var names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
-        Assert.Equal(7, tools.Count);
+        Assert.Equal(8, tools.Count);
         Assert.Contains("repoctx.search", names);
+        Assert.Contains("repoctx.trace", names);
         Assert.Contains("repoctx.get_context", names);
         Assert.Contains("repoctx.get_related_files", names);
         Assert.Contains("repoctx.get_outline", names);
@@ -85,7 +86,9 @@ public class McpServerTests
 
         CallToolResult result = await client.CallToolAsync(
             "repoctx.get_outline",
-            new Dictionary<string, object?> { ["file"] = "docs/architecture.md" });
+            // A re-export barrel declares nothing, so its outline is empty even
+            // though documents and data files now carry structure symbols (ADR 0019).
+            new Dictionary<string, object?> { ["file"] = "src/lib/index.ts" });
 
         Assert.True(result.IsError is not true);
         using JsonDocument response = JsonDocument.Parse(TextOf(result));
@@ -95,6 +98,24 @@ public class McpServerTests
         using JsonDocument record = JsonDocument.Parse(line);
         Assert.Equal("mcp", record.RootElement.GetProperty("source").GetString());
         Assert.Equal(0, record.RootElement.GetProperty("replaced").GetInt32());
+    }
+
+    [Fact]
+    public async Task Trace_ResolvesASymbolToItsDeclaration()
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+
+        CallToolResult result = await client.CallToolAsync(
+            "repoctx.trace",
+            new Dictionary<string, object?> { ["reference"] = "loginUser" });
+
+        Assert.True(result.IsError is not true);
+        using JsonDocument response = JsonDocument.Parse(TextOf(result));
+        Assert.Equal("trace", response.RootElement.GetProperty("command").GetString());
+        Assert.Contains(
+            response.RootElement.GetProperty("definitions").EnumerateArray(),
+            d => d.GetProperty("path").GetString() == "src/auth/login.ts");
     }
 
     [Fact]

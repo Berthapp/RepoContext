@@ -44,6 +44,21 @@ public sealed record ChangedResult(
     IReadOnlyList<ChangedFile> Changed, IReadOnlyList<ImpactedFile> Impacted,
     string ContentState, string WorktreeState)
 {
+    /// <summary>
+    /// Files that could not be read, so nothing could be said about them. They
+    /// are neither changed nor verified current, and reporting "index is
+    /// current" while silently skipping them would claim a check that did not
+    /// happen.
+    /// </summary>
+    public IReadOnlyList<string> Unreadable { get; init; } = [];
+
+    /// <summary>
+    /// Ignore files whose rules could not be read, so the directories they
+    /// exclude were walked. Without this, the answer "500 files added" is
+    /// bewildering rather than explained.
+    /// </summary>
+    public IReadOnlyList<string> UnreadableIgnoreFiles { get; init; } = [];
+
     /// <summary>Full internal indexed-content fingerprint.</summary>
     public string FullContentState { get; init; } = string.Empty;
 
@@ -60,6 +75,13 @@ public sealed record ChangedResult(
 /// </summary>
 public static class ChangeDetector
 {
+    /// <summary>
+    /// Delta marker for a file nothing could be established about. Distinct from
+    /// every real status, so the fingerprint of "could not check" differs from
+    /// both "unchanged" and any actual change.
+    /// </summary>
+    private const string UnreadableStatus = "unreadable";
+
     public static ChangedResult Run(
         RepoLayout layout, RepoctxConfig config, IndexStore store,
         bool patch = false, TokenScale scale = default)
@@ -72,11 +94,24 @@ public static class ChangeDetector
         // Added files are hashed too: without that, two different files added at
         // the same path would share a fingerprint.
         var delta = new List<(string Status, string Path, string? ContentHash)>();
+        var unreadable = new List<string>();
 
-        foreach (ScannedFile file in new FileScanner(layout.Root, config).Scan())
+        var scanner = new FileScanner(layout.Root, config);
+        foreach (ScannedFile file in scanner.Scan())
         {
+            if (Hash(file.AbsolutePath) is not { } hash)
+            {
+                // Unreadable right now says nothing about the working tree: it
+                // is not a deletion, and reporting one would send an agent to
+                // re-create a file that is merely locked. It is reported as
+                // unreadable instead, so the answer stays honest.
+                seen.Add(file.RelativePath);
+                unreadable.Add(file.RelativePath);
+                continue;
+
+            }
+
             seen.Add(file.RelativePath);
-            string hash = Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(file.AbsolutePath)));
 
             if (!existing.TryGetValue(file.RelativePath, out FileRecord record))
             {
@@ -91,6 +126,27 @@ public static class ChangeDetector
                     ? WithPatch(store, file, scale)
                     : new ChangedFile(file.RelativePath, ChangedFile.Modified));
                 delta.Add((ChangedFile.Modified, file.RelativePath, hash));
+            }
+        }
+
+        // Anything the scan could not look at is in the same position: an
+        // unreadable file, or an indexed file under a directory it could not
+        // enter. Reporting those as deleted would send an agent to re-create
+        // files that are merely inaccessible.
+        foreach (string path in existing.Keys)
+        {
+            if (!seen.Contains(path) && scanner.WasSkipped(path))
+            {
+                seen.Add(path);
+                unreadable.Add(path);
+            }
+        }
+
+        foreach (string path in scanner.UnreadablePaths)
+        {
+            if (seen.Add(path))
+            {
+                unreadable.Add(path);
             }
         }
 
@@ -120,11 +176,28 @@ public static class ChangeDetector
                 store.GetNeighbors(record.Id, EdgeKind.Import, outgoing: false), "imports:" + file.Path);
             Collect(impact, changedPaths,
                 store.GetNeighbors(record.Id, EdgeKind.Test, outgoing: false), "test-of:" + file.Path);
+
+            // Documents that describe the file are impacted too: a specification
+            // or ticket that names the code an agent just changed is the first
+            // thing that may now be out of date (ADR 0019).
+            Collect(impact, changedPaths,
+                store.GetNeighbors(record.Id, EdgeKind.Reference, outgoing: false),
+                "mentions:" + file.Path);
         }
 
         List<ImpactedFile> impacted = impact
             .Select(e => new ImpactedFile(e.Key, ReasonCompression.Compress(e.Value)))
             .ToList();
+
+        // An unreadable file enters the fingerprint too. Without it a modified
+        // but locked file yields a worktree_state byte-identical to a verified
+        // clean tree, and an agent using that as its cheap staleness key would
+        // keep serving pre-edit content.
+        unreadable.Sort(StringComparer.Ordinal);
+        foreach (string path in unreadable)
+        {
+            delta.Add((UnreadableStatus, path, null));
+        }
 
         string contentState = store.GetMeta(MetaKeys.StateHash) ?? string.Empty;
         string worktreeState = Fingerprints.WorktreeState(contentState, delta);
@@ -134,7 +207,46 @@ public static class ChangeDetector
         {
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
+            Unreadable = unreadable,
+            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles],
         };
+    }
+
+    /// <summary>
+    /// The content hash of a file, or null when it cannot be read right now.
+    /// An unreadable file used to abort the whole command.
+    /// </summary>
+    private static string? Hash(string absolutePath)
+    {
+        try
+        {
+            return Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(absolutePath)));
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The text of a file, or null when it cannot be read right now.</summary>
+    private static string? ReadText(string absolutePath)
+    {
+        try
+        {
+            return File.ReadAllText(absolutePath);
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
     }
 
     /// <summary>
@@ -154,7 +266,13 @@ public static class ChangeDetector
             return plain;
         }
 
-        string current = File.ReadAllText(file.AbsolutePath);
+        // Re-read: the file can become unreadable between the hash above and
+        // here, and losing the hunks is a lesser answer than losing the command.
+        if (ReadText(file.AbsolutePath) is not { } current)
+        {
+            return plain;
+        }
+
         IReadOnlyList<PatchHunk> hunks = LineDiff.Hunks(
             indexed.Text.TrimEnd('\n'), current.TrimEnd('\n'));
         return plain with

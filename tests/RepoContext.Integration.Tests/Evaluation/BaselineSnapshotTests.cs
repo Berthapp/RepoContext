@@ -77,7 +77,12 @@ public sealed class BaselineSnapshotTests
     {
         int tokens = Tokens.Count(McpSessionFixture.InstructionsAndToolSchemas);
 
-        Assert.True(tokens <= 1_500, $"MCP instructions and tool schemas cost {tokens} tokens.");
+        // Raised from 1,500 with the M10 artifact layer (ADR 0019): an eighth
+        // tool and the shared path scope cost roughly a hundred schema tokens
+        // once per session, against a trace call that replaces a repository-wide
+        // grep and the reads that follow it. The gate exists so growth is a
+        // decision, not an accident - the exact figure is in docs/eval/baseline.md.
+        Assert.True(tokens <= 1_700, $"MCP instructions and tool schemas cost {tokens} tokens.");
     }
 
     private static string Normalize(string text) => text.Replace("\r\n", "\n", StringComparison.Ordinal);

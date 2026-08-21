@@ -32,6 +32,7 @@ public static class SearchCommand
         {
             Description = "Restrict the search to symbols (classes, functions, ...).",
         };
+        var path = CommandSupport.PathScopeOption();
 
         var command = new Command("search", "Full-text search across the indexed repository.")
         {
@@ -39,6 +40,7 @@ public static class SearchCommand
             top,
             format,
             symbolsOnly,
+            path,
         };
 
         command.SetAction(parseResult =>
@@ -78,7 +80,9 @@ public static class SearchCommand
                 return ExitCode.NoIndex;
             }
 
-            IReadOnlyList<SearchHit> hits = store.Search(match, topN, parseResult.GetValue(symbolsOnly));
+            IReadOnlyList<SearchHit> hits = store.Search(
+                match, topN, parseResult.GetValue(symbolsOnly),
+                PathScope.From(parseResult.GetValue(path)));
             string rendered = SearchOutput.Render(queryText, hits, outputFormat);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(

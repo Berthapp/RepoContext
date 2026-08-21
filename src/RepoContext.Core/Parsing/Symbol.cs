@@ -13,6 +13,18 @@ public enum SymbolKind
     Property,
     TypeAlias,
     Route,
+
+    /// <summary>A document section: a Markdown/AsciiDoc/HTML heading, or a Gherkin feature.</summary>
+    Section,
+
+    /// <summary>A structural key of a data artifact: YAML/JSON path, TOML/INI section.</summary>
+    Key,
+
+    /// <summary>A Gherkin scenario, background or example block.</summary>
+    Scenario,
+
+    /// <summary>A declared database object (table, view, procedure, ...).</summary>
+    Table,
 }
 
 /// <summary>A symbol extracted from a source file (M2).</summary>

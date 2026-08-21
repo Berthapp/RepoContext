@@ -6,13 +6,13 @@ namespace RepoContext.Core.Tests;
 public class RepoContextInfoTests
 {
     [Fact]
-    public void SchemaVersion_IsThree()
+    public void SchemaVersion_IsFour()
     {
-        // v3 = the Release 1 cost-efficiency contract (ADR 0015/0016): per-unit
-        // receipts, multi-span evidence, explicit token accounting and the
-        // content/analysis/evidence/representation identities. Bump this test
-        // deliberately when the JSON contract changes again.
-        Assert.Equal(3, RepoContextInfo.SchemaVersion);
+        // v4 = the M10 artifact layer (ADR 0019): the trace document, the
+        // references/referenced_by relations of related, and the reference
+        // reasons carried by context. Bump this test deliberately when the
+        // JSON contract changes again.
+        Assert.Equal(4, RepoContextInfo.SchemaVersion);
     }
 
     [Fact]

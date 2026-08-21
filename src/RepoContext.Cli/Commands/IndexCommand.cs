@@ -35,13 +35,30 @@ public static class IndexCommand
             IndexStats stats = indexer.Run(parseResult.GetValue(full));
 
             WarnAboutMissingIncludeRoots(layout, config, stats);
+            WarnAboutOversizedFiles(config, stats);
+            WarnAboutUnreadableIgnoreFiles(stats);
 
             string mode = stats.FullRebuild ? "full" : "incremental";
             Console.WriteLine($"Indexed {layout.Root} ({mode})");
             Console.WriteLine(
                 $"  files: {stats.TotalFiles} (+{stats.Added} ~{stats.Changed} -{stats.Deleted} ={stats.Unchanged})");
             Console.WriteLine(
-                $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  edges: {stats.TotalEdges}");
+                $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  "
+                + $"edges: {stats.TotalEdges} ({stats.ReferenceEdges} cross-artifact)  "
+                + $"refs: {stats.TotalRefs}");
+            if (stats.SkippedBinary + stats.SkippedTooLarge + stats.Unreadable > 0)
+            {
+                // Only the exclusions RepoContext chose itself; ignore rules are
+                // the user's own decision and are not second-guessed here.
+                // Unreadable files are named rather than folded into "unchanged",
+                // which means verified: an already-indexed one kept its previous
+                // content, and one that was never indexed is simply absent.
+                Console.WriteLine(
+                    $"  skipped: {stats.SkippedBinary} binary  "
+                    + $"{stats.SkippedTooLarge} over {config.Indexing.MaxFileSizeKb} KB  "
+                    + $"{stats.Unreadable} unreadable");
+            }
+
             Console.WriteLine(
                 $"  work: {stats.BytesRead} bytes read  {stats.FilesParsed} files parsed  "
                 + $"{stats.GraphFilesAnalyzed} graph files analyzed  "
@@ -50,6 +67,62 @@ public static class IndexCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Warns when ignore rules could not be read. This is the one failure in
+    /// this family that adds to the index rather than subtracting from it: the
+    /// directories those rules would have excluded - build output, dependencies
+    /// - were walked and indexed instead, and every later query pays for them.
+    /// </summary>
+    private static void WarnAboutUnreadableIgnoreFiles(IndexStats stats)
+    {
+        if (stats.UnreadableIgnoreFiles.Count == 0)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"Warning: {stats.UnreadableIgnoreFiles.Count} ignore file(s) could not be read, "
+            + "so their exclusions were not applied and the directories they cover are indexed.");
+        foreach (string path in stats.UnreadableIgnoreFiles)
+        {
+            Console.Error.WriteLine($"  {path}");
+        }
+
+        Console.Error.WriteLine("  Fix the file's permissions and re-run 'repoctx index --full'.");
+    }
+
+    /// <summary>
+    /// Warns about text files the size limit excluded. Coverage is subtractive
+    /// (ADR 0017), and a subtractive rule is only safe while it fails visibly:
+    /// a 900 KB exported specification that silently never enters the index is
+    /// indistinguishable, to an agent, from one that does not exist.
+    /// </summary>
+    private static void WarnAboutOversizedFiles(RepoctxConfig config, IndexStats stats)
+    {
+        if (stats.SkippedTooLarge == 0)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"Warning: {stats.SkippedTooLarge} text file(s) exceed "
+            + $"indexing.maxFileSizeKb ({config.Indexing.MaxFileSizeKb} KB) and are not indexed.");
+        foreach (string path in stats.SkippedTooLargeSample)
+        {
+            Console.Error.WriteLine($"  {path}");
+        }
+
+        if (stats.SkippedTooLarge > stats.SkippedTooLargeSample.Count)
+        {
+            Console.Error.WriteLine(
+                $"  ... and {stats.SkippedTooLarge - stats.SkippedTooLargeSample.Count} more");
+        }
+
+        Console.Error.WriteLine(
+            "  Raise indexing.maxFileSizeKb in repoctx.config.json to include them, or add them "
+            + "to .repoctxignore to accept the gap deliberately.");
     }
 
     /// <summary>

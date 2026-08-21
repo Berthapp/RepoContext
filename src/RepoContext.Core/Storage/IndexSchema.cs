@@ -7,8 +7,11 @@ internal static class IndexSchema
     /// Bumped when the on-disk schema changes in a way that requires a rebuild.
     /// Distinct from <see cref="Core.RepoContextInfo.SchemaVersion"/> (the JSON
     /// output contract version). v4: <c>files.token_count</c> (M6, ADR 0010).
+    /// v5: the <c>refs</c> table - stored per-file references that make the
+    /// graph rebuildable without re-reading the repository and let external
+    /// keys (tickets, links) be traced across artifacts (M10, ADR 0019).
     /// </summary>
-    public const int Version = 4;
+    public const int Version = 5;
 
     public const string Ddl = """
         PRAGMA journal_mode = WAL;
@@ -66,6 +69,17 @@ internal static class IndexSchema
         CREATE INDEX IF NOT EXISTS idx_edges_src ON edges(src_file_id);
         CREATE INDEX IF NOT EXISTS idx_edges_dst ON edges(dst_file_id);
 
+        CREATE TABLE IF NOT EXISTS refs (
+            id      INTEGER PRIMARY KEY,
+            file_id INTEGER NOT NULL REFERENCES files(id) ON DELETE CASCADE,
+            kind    TEXT NOT NULL,
+            value   TEXT NOT NULL,
+            line    INTEGER NOT NULL
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_refs_file ON refs(file_id);
+        CREATE INDEX IF NOT EXISTS idx_refs_lookup ON refs(kind, value);
+
         CREATE VIRTUAL TABLE IF NOT EXISTS chunks_fts USING fts5(
             content,
             tokenize = 'unicode61 remove_diacritics 2'
@@ -80,6 +94,7 @@ internal static class IndexSchema
     /// </summary>
     public const string DropDataTables = """
         DROP TABLE IF EXISTS chunks_fts;
+        DROP TABLE IF EXISTS refs;
         DROP TABLE IF EXISTS edges;
         DROP TABLE IF EXISTS symbols;
         DROP TABLE IF EXISTS chunks;

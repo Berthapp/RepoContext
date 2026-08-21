@@ -1,0 +1,13 @@
+{
+  "key": "PAY-142",
+  "summary": "Refund a captured payment within 30 days",
+  "status": "In Progress",
+  "epic": "PAY-100",
+  "confluence": "https://example.atlassian.net/wiki/spaces/PAY/pages/4711/Refund+Policy",
+  "acceptanceCriteria": [
+    "A captured payment can be refunded in full within 30 days of capture.",
+    "A refund older than 30 days is rejected with REFUND_WINDOW_EXPIRED.",
+    "Every refund writes an audit entry."
+  ],
+  "implementation": "src/billing/refund.ts"
+}

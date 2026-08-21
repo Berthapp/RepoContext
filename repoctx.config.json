@@ -36,6 +36,12 @@
     "includeTests": true,
     "includeDocs": true
   },
+  "artifacts": {
+    "keyPatterns": [],
+    "linkPaths": true,
+    "linkSymbols": true,
+    "maxRefsPerFile": 400
+  },
   "ranking": {
     "weights": {
       "fts": 0.4,

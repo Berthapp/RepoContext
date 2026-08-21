@@ -9,6 +9,12 @@ public enum Relation
     ImportedBy,
     Tests,
     TestedBy,
+
+    /// <summary>This file names another file (a spec pointing at an implementation).</summary>
+    References,
+
+    /// <summary>Another file names this one (the spec that describes it).</summary>
+    ReferencedBy,
 }
 
 /// <summary>A related file plus its relation and machine-readable reason.</summary>
@@ -37,6 +43,10 @@ public static class Related
             Relation.Tests, "test-link");
         Add(entries, store.GetNeighbors(file.Id, EdgeKind.Test, outgoing: false),
             Relation.TestedBy, "test-link");
+        Add(entries, store.GetNeighbors(file.Id, EdgeKind.Reference, outgoing: true),
+            Relation.References, "reference-edge");
+        Add(entries, store.GetNeighbors(file.Id, EdgeKind.Reference, outgoing: false),
+            Relation.ReferencedBy, "reverse-reference-edge");
 
         return new RelatedResult(file.Path, file.Kind, entries);
     }

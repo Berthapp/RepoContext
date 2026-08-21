@@ -373,7 +373,9 @@
           <span><i class="dot"></i> No network calls</span>
           <span><i class="dot"></i> No telemetry</span>
           <span><i class="dot"></i> Byte-identical output</span>
-          <span><i class="dot"></i> TypeScript · TSX · JavaScript · C#</span>
+          <span><i class="dot"></i> TypeScript · TSX · JavaScript · C# parsed</span>
+          <span><i class="dot"></i> Python · Go · Java · Rust · 15 more outlined</span>
+          <span><i class="dot"></i> Specs, tickets and contracts too</span>
           <span><i class="dot"></i> npm or NuGet — no runtime needed</span>
         </div>
       </div>
@@ -570,9 +572,10 @@ dotnet build
           <tbody>
             <tr><td><code>init</code></td><td class="desc">Create <code>.repoctx/</code> and config; optionally wire up agent instructions.</td><td><code>--agents</code></td></tr>
             <tr><td><code>index</code></td><td class="desc">Build or incrementally update the index (hash diff).</td><td><code>--full</code></td></tr>
-            <tr><td><code>search</code></td><td class="desc">BM25 full-text search over content and symbols.</td><td><code>--symbols · --top</code></td></tr>
-            <tr><td><code>related</code></td><td class="desc">A file's imports, dependents and linked tests.</td><td><code>--format</code></td></tr>
-            <tr><td><code>context</code></td><td class="desc">Ranked, explained bundle under exact response and read budgets.</td><td><code>--response-budget-tokens · --detail</code></td></tr>
+            <tr><td><code>search</code></td><td class="desc">BM25 full-text search over content and symbols.</td><td><code>--symbols · --top · --path</code></td></tr>
+            <tr><td><code>related</code></td><td class="desc">A file's imports, dependents, linked tests and the documents describing it.</td><td><code>--format</code></td></tr>
+            <tr><td><code>trace</code></td><td class="desc">Every file declaring or mentioning one exact key, link, symbol or path.</td><td><code>--top · --path</code></td></tr>
+            <tr><td><code>context</code></td><td class="desc">Ranked, explained bundle under exact response and read budgets.</td><td><code>--response-budget-tokens · --detail · --path</code></td></tr>
             <tr><td><code>outline</code></td><td class="desc">A compact symbol skeleton before a full-file read.</td><td><code>--format</code></td></tr>
             <tr><td><code>changed</code></td><td class="desc">Working-tree changes, impacted files, and optional delta hunks.</td><td><code>--patch</code></td></tr>
             <tr><td><code>architecture</code></td><td class="desc">LOC tree, language mix, centrality, entrypoints.</td><td><code>--format</code></td></tr>
@@ -595,10 +598,11 @@ dotnet build
       </div>
       <div class="mcp-grid">
         <div>
-          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a local, non-destructive server over stdio and exposes seven compact tools. Query calls may append aggregate counts to the local usage ledger.</p>
+          <p style="color: var(--ink-soft);">GitHub Copilot, Claude Code, Cursor — anything that speaks MCP can call RepoContext directly. <code style="font-family:var(--mono);font-size:14px;">repoctx mcp</code> runs a local, non-destructive server over stdio and exposes eight compact tools. Query calls may append aggregate counts to the local usage ledger.</p>
           <ul>
             <li><b>repoctx.search</b> — full-text and symbol search</li>
             <li><b>repoctx.get_context</b> — the ranked, budgeted bundle</li>
+            <li><b>repoctx.trace</b> — one exact key, link, symbol or path</li>
             <li><b>repoctx.get_related_files</b> — imports, dependents, tests</li>
             <li><b>repoctx.get_outline</b> — compact symbol skeleton</li>
             <li><b>repoctx.get_changes</b> — changes, impact, delta hunks</li>

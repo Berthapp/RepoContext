@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+service Billing {
+  rpc Refund (RefundRequest) returns (RefundReply);
+}
+
+message RefundRequest {
+  string payment_id = 1;
+}

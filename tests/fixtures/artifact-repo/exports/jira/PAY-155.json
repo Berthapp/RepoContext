@@ -1,0 +1,7 @@
+{
+  "key": "PAY-155",
+  "summary": "Partial refunds",
+  "status": "Backlog",
+  "epic": "PAY-100",
+  "dependsOn": "PAY-142"
+}
