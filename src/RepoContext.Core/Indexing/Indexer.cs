@@ -211,13 +211,19 @@ public sealed class Indexer
                 }
             }
 
-            // Files the scan could not open are reported whether or not they
-            // were ever indexed: a new file the tool cannot read is exactly what
-            // the report exists to surface, and on --full there is no index to
-            // recognise it from.
-            foreach (string path in scanner.UnreadablePaths)
+            // Anything the scan could not open is reported whether or not it was
+            // ever indexed: a new file the tool cannot read is exactly what the
+            // report exists to surface, and on a full rebuild there is no index
+            // to recognise it from - without this a lost subtree would vanish
+            // with exit code 0 and no warning. A path that was nevertheless
+            // indexed this run is not counted: the two states are exclusive in
+            // the report, whatever a transient failure did in between.
+            foreach (string path in scanner.UnreadablePaths.Concat(scanner.UnreadableDirectories))
             {
-                unreadable.Add(path);
+                if (!seen.Contains(path))
+                {
+                    unreadable.Add(path);
+                }
             }
 
             foreach ((string path, FileRecord record) in existing)

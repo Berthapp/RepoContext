@@ -28,7 +28,7 @@ public sealed class FileScanner
     private readonly IgnoreScope _exclude;
     private readonly List<string> _oversized = [];
     private readonly HashSet<string> _unreadable = new(StringComparer.Ordinal);
-    private readonly List<string> _unreadableDirectories = [];
+    private readonly HashSet<string> _unreadableDirectories = new(StringComparer.Ordinal);
 
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
@@ -74,6 +74,14 @@ public sealed class FileScanner
     public IReadOnlyCollection<string> UnreadablePaths => _unreadable;
 
     /// <summary>
+    /// The repo-relative directories the last scan could not enter, and the
+    /// entries it could not classify. Callers report these too: on a full
+    /// rebuild there is no index to notice the missing subtree by, so without
+    /// them a whole tree disappears silently with exit code 0.
+    /// </summary>
+    public IReadOnlyCollection<string> UnreadableDirectories => _unreadableDirectories;
+
+    /// <summary>
     /// Whether the last scan failed to look at <paramref name="relativePath"/> -
     /// the file itself was unreadable, or a directory above it could not be
     /// entered. A caller holding an index must retain such a path: the scan
@@ -87,8 +95,9 @@ public sealed class FileScanner
             return true;
         }
 
-        // Directory prefixes are few - one per directory that could not be
-        // entered - so a linear scan over them is the whole cost.
+        // Prefixes are deduplicated and, in any healthy repository, a handful:
+        // one per directory or entry the scan could not classify. The linear
+        // scan over them is the whole cost of the check.
         foreach (string directory in _unreadableDirectories)
         {
             if (IsUnder(relativePath, directory))
@@ -443,18 +452,29 @@ public sealed class FileScanner
     /// </summary>
     private void RecordUnreadableEntry(string relative, List<IgnoreScope> scopes)
     {
-        foreach (bool isDirectory in (bool[])[false, true])
+        // The two readings are decided independently. A pattern like "build/"
+        // excludes the directory but not a file of that name, so folding them
+        // together would drop a real file from the retain set and let a
+        // transient stat failure prune its row.
+        if (!IsExcluded(relative, isDirectory: false, scopes))
         {
-            if (_sensitive.IsIgnored(relative, isDirectory)
-                || IsIgnored(relative, isDirectory, scopes))
-            {
-                return;
-            }
+            _unreadable.Add(relative);
         }
 
-        _unreadable.Add(relative);
-        _unreadableDirectories.Add(relative);
+        if (!IsExcluded(relative, isDirectory: true, scopes))
+        {
+            _unreadableDirectories.Add(relative);
+        }
     }
+
+    /// <summary>
+    /// Whether a path is sensitive or excluded under one reading. Such a path is
+    /// never surfaced - "neither content nor path" is the whole point of the
+    /// sensitive setting, and callers report what they are told here.
+    /// </summary>
+    private bool IsExcluded(string relative, bool isDirectory, List<IgnoreScope> scopes) =>
+        _sensitive.IsIgnored(relative, isDirectory)
+        || IsIgnored(relative, isDirectory, scopes);
 
     /// <summary>
     /// Reads an entry's attributes. Returns false when it is present but

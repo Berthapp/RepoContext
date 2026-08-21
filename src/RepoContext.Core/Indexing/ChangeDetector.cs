@@ -135,7 +135,7 @@ public static class ChangeDetector
             }
         }
 
-        foreach (string path in scanner.UnreadablePaths)
+        foreach (string path in scanner.UnreadablePaths.Concat(scanner.UnreadableDirectories))
         {
             if (seen.Add(path))
             {
