@@ -126,6 +126,23 @@ file, a directory removed mid-walk, an unreadable `.gitignore`, or a file locked
 between hashing and reading each aborted the entire command — the worst possible
 trade in a repository of thousands of files.
 
+Three things are kept apart here, because conflating them is what made this
+area churn through several rounds of review:
+
+- **What the scan could not look at**, which callers use to *retain* index rows
+  rather than prune them. It carries an internal root sentinel and is never
+  published as-is.
+- **What is reported**, which names files and directories but never the
+  sentinel and never a path the configuration removed from view. An entry that
+  cannot even be classified is suppressed when it is sensitive or excluded
+  under *either* reading: a trailing-slash pattern (`secrets/`) only matches the
+  directory reading, so deciding the two independently would publish the name of
+  a path the user hid. The cost is a rare pruned row the next run restores; the
+  cost of the alternative is a leaked path, which nothing restores.
+- **Ignore rules that could not be read**, which is the one failure here that
+  makes the index *bigger*: the directories those rules exclude were walked and
+  indexed instead. It gets its own warning naming the file and the fix.
+
 ## Consequences
 
 - **A full rebuild is required.** The parser producer version moves, and the

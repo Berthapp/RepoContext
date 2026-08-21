@@ -29,6 +29,7 @@ public sealed class FileScanner
     private readonly List<string> _oversized = [];
     private readonly HashSet<string> _unreadable = new(StringComparer.Ordinal);
     private readonly HashSet<string> _unreadableDirectories = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _unreadableIgnoreFiles = new(StringComparer.Ordinal);
 
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
@@ -71,15 +72,28 @@ public sealed class FileScanner
     /// paths, not just the count: a file that is already indexed has to be held
     /// on to, or a moment's lock costs it its index row.
     /// </summary>
-    public IReadOnlyCollection<string> UnreadablePaths => _unreadable;
+    /// <remarks>
+    /// This is the reporting surface: it names files and directories alike -
+    /// on a full rebuild there is no index to notice a missing subtree by, so
+    /// without the directories a whole tree would disappear with exit code 0 -
+    /// and it never contains the internal root sentinel or a path the
+    /// configuration excluded from view.
+    /// </remarks>
+    public IReadOnlyCollection<string> UnreadablePaths =>
+    [
+        .. _unreadable
+            .Concat(_unreadableDirectories.Select(d => d.Length == 0 ? "." : d))
+            .Distinct(StringComparer.Ordinal)
+            .Order(StringComparer.Ordinal)
+    ];
 
     /// <summary>
-    /// The repo-relative directories the last scan could not enter, and the
-    /// entries it could not classify. Callers report these too: on a full
-    /// rebuild there is no index to notice the missing subtree by, so without
-    /// them a whole tree disappears silently with exit code 0.
+    /// Ignore files whose rules could not be read. A different problem from an
+    /// unreadable source file: nothing is missing from the index because of it,
+    /// something is <i>extra</i> - the directories those rules would have
+    /// excluded were walked and indexed. Reported on its own for that reason.
     /// </summary>
-    public IReadOnlyCollection<string> UnreadableDirectories => _unreadableDirectories;
+    public IReadOnlyCollection<string> UnreadableIgnoreFiles => _unreadableIgnoreFiles;
 
     /// <summary>
     /// Whether the last scan failed to look at <paramref name="relativePath"/> -
@@ -143,6 +157,7 @@ public sealed class FileScanner
         _oversized.Clear();
         _unreadable.Clear();
         _unreadableDirectories.Clear();
+        _unreadableIgnoreFiles.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
 
@@ -416,11 +431,11 @@ public sealed class FileScanner
                 // An unreadable ignore file must not abort the scan - but its
                 // rules are then not applied, which changes what gets indexed,
                 // so it is reported rather than silently skipped.
-                _unreadable.Add(ToRelative(path));
+                _unreadableIgnoreFiles.Add(ToRelative(path));
             }
             catch (UnauthorizedAccessException)
             {
-                _unreadable.Add(ToRelative(path));
+                _unreadableIgnoreFiles.Add(ToRelative(path));
             }
         }
     }
@@ -452,19 +467,22 @@ public sealed class FileScanner
     /// </summary>
     private void RecordUnreadableEntry(string relative, List<IgnoreScope> scopes)
     {
-        // The two readings are decided independently. A pattern like "build/"
-        // excludes the directory but not a file of that name, so folding them
-        // together would drop a real file from the retain set and let a
-        // transient stat failure prune its row.
-        if (!IsExcluded(relative, isDirectory: false, scopes))
+        // Excluded under *either* reading means it is never recorded. File or
+        // directory is precisely what could not be established, and a
+        // trailing-slash pattern (`secrets/`, `node_modules/`) only ever
+        // matches the directory reading - so deciding the two independently
+        // would publish the name of a path the configuration removed from view.
+        // The cost of being conservative is a rare pruned row that the next
+        // successful run restores; the cost of the alternative is a leaked
+        // sensitive path, which nothing restores.
+        if (IsExcluded(relative, isDirectory: false, scopes)
+            || IsExcluded(relative, isDirectory: true, scopes))
         {
-            _unreadable.Add(relative);
+            return;
         }
 
-        if (!IsExcluded(relative, isDirectory: true, scopes))
-        {
-            _unreadableDirectories.Add(relative);
-        }
+        _unreadable.Add(relative);
+        _unreadableDirectories.Add(relative);
     }
 
     /// <summary>

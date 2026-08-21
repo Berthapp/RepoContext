@@ -36,6 +36,7 @@ public static class IndexCommand
 
             WarnAboutMissingIncludeRoots(layout, config, stats);
             WarnAboutOversizedFiles(config, stats);
+            WarnAboutUnreadableIgnoreFiles(stats);
 
             string mode = stats.FullRebuild ? "full" : "incremental";
             Console.WriteLine($"Indexed {layout.Root} ({mode})");
@@ -66,6 +67,30 @@ public static class IndexCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Warns when ignore rules could not be read. This is the one failure in
+    /// this family that adds to the index rather than subtracting from it: the
+    /// directories those rules would have excluded - build output, dependencies
+    /// - were walked and indexed instead, and every later query pays for them.
+    /// </summary>
+    private static void WarnAboutUnreadableIgnoreFiles(IndexStats stats)
+    {
+        if (stats.UnreadableIgnoreFiles.Count == 0)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"Warning: {stats.UnreadableIgnoreFiles.Count} ignore file(s) could not be read, "
+            + "so their exclusions were not applied and the directories they cover are indexed.");
+        foreach (string path in stats.UnreadableIgnoreFiles)
+        {
+            Console.Error.WriteLine($"  {path}");
+        }
+
+        Console.Error.WriteLine("  Fix the file's permissions and re-run 'repoctx index --full'.");
     }
 
     /// <summary>

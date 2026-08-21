@@ -56,6 +56,13 @@ public sealed record IndexStats
     public int SkippedBinary { get; init; }
 
     /// <summary>
+    /// Ignore files whose rules could not be read this run, so the directories
+    /// they exclude were indexed instead. Not a gap in coverage but a surplus,
+    /// which is why it is reported apart from <see cref="Unreadable"/>.
+    /// </summary>
+    public IReadOnlyList<string> UnreadableIgnoreFiles { get; init; } = [];
+
+    /// <summary>
     /// Files that could not be opened this run, whether during the scan or
     /// afterwards. An already-indexed one keeps whatever the index holds; a new
     /// one is absent from it. Counted separately from <see cref="Unchanged"/>,
@@ -218,7 +225,7 @@ public sealed class Indexer
             // with exit code 0 and no warning. A path that was nevertheless
             // indexed this run is not counted: the two states are exclusive in
             // the report, whatever a transient failure did in between.
-            foreach (string path in scanner.UnreadablePaths.Concat(scanner.UnreadableDirectories))
+            foreach (string path in scanner.UnreadablePaths)
             {
                 if (!seen.Contains(path))
                 {
@@ -277,6 +284,7 @@ public sealed class Indexer
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
             SkippedBinary = scanner.BinaryCount,
+            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles.Order(StringComparer.Ordinal)],
             Unreadable = unreadable.Count,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
