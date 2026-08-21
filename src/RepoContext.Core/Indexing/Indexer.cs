@@ -55,6 +55,13 @@ public sealed record IndexStats
     /// <summary>Files skipped because they are binary - the one category that cannot be described.</summary>
     public int SkippedBinary { get; init; }
 
+    /// <summary>
+    /// Files that could not be read this run and kept whatever the index already
+    /// held. Counted separately from <see cref="Unchanged"/>, which means
+    /// "verified identical" - here nothing was verified.
+    /// </summary>
+    public int Unreadable { get; init; }
+
     /// <summary>The first few skipped paths, so the report names something actionable.</summary>
     public IReadOnlyList<string> SkippedTooLargeSample { get; init; } = [];
 
@@ -109,7 +116,7 @@ public sealed class Indexer
         var scanner = new FileScanner(_layout.Root, _config);
         IReadOnlyList<ScannedFile> scanned = scanner.Scan();
 
-        int added = 0, changed = 0, unchanged = 0, deleted = 0;
+        int added = 0, changed = 0, unchanged = 0, deleted = 0, unreadable = 0;
         int filesParsed = 0;
         int indexedFiles = 0;
 
@@ -127,14 +134,21 @@ public sealed class Indexer
             for (int i = 0; i < scanned.Count; i++)
             {
                 ScannedFile file = scanned[i];
+                bool known = existing.TryGetValue(file.RelativePath, out FileRecord record);
+
+                // A file that cannot be read this run - locked, or removed
+                // between the scan and now - keeps whatever the index already
+                // holds. Deleting a known file because it was briefly locked
+                // loses coverage the next run has to rediscover, and reporting
+                // it as unchanged would claim a verification that did not
+                // happen; an unknown one is simply left out. This applies to
+                // both passes: hashing and reading can each fail.
                 if (digests[i].Hash is not { } hash)
                 {
-                    // Unreadable (removed or locked between scan and hash): it is
-                    // not part of this index state, so it is treated as absent.
+                    unreadable += Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
 
-                bool known = existing.TryGetValue(file.RelativePath, out FileRecord record);
                 if (known && record.ContentHash == hash)
                 {
                     seen.Add(file.RelativePath);
@@ -143,20 +157,11 @@ public sealed class Indexer
                     continue;
                 }
 
-                // Read before touching the index. A file that became unreadable
-                // between hashing and reading keeps whatever the index already
-                // holds - deleting a known file because it was locked for a
-                // moment would lose coverage the next run has to rediscover -
-                // and an unknown one is simply left out.
+                // Read before touching the index, so a failure here cannot leave
+                // the file half-removed.
                 if (ReadText(file.AbsolutePath) is not { } content)
                 {
-                    if (known)
-                    {
-                        seen.Add(file.RelativePath);
-                        indexedFiles++;
-                        unchanged++;
-                    }
-
+                    unreadable += Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
 
@@ -237,8 +242,26 @@ public sealed class Indexer
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
             SkippedBinary = scanner.BinaryCount,
+            Unreadable = unreadable,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
+    }
+
+    /// <summary>
+    /// Retains an already-indexed file that could not be read, so the prune pass
+    /// leaves its row alone. Returns 1 when a row was kept, 0 when there was
+    /// nothing to keep.
+    /// </summary>
+    private static int Keep(bool known, string relativePath, HashSet<string> seen, ref int indexedFiles)
+    {
+        if (!known)
+        {
+            return 0;
+        }
+
+        seen.Add(relativePath);
+        indexedFiles++;
+        return 1;
     }
 
     /// <summary>One file's content hash and the bytes read to compute it.</summary>

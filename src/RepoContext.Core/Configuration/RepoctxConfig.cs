@@ -165,7 +165,7 @@ public sealed record ArtifactOptions
     /// They are not an artifact link that trades index size for a marginal
     /// result: they are the sole input to that file's import edges, so
     /// truncating them drops real dependencies from the graph. They carry their
-    /// own, far larger internal bound (ADR 0020).
+    /// own, far larger internal bound (ADR 0019 §2).
     /// </remarks>
     public int MaxRefsPerFile { get; init; } = 400;
 }

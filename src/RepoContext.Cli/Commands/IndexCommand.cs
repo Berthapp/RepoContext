@@ -45,13 +45,16 @@ public static class IndexCommand
                 $"  chunks: {stats.TotalChunks}  symbols: {stats.TotalSymbols}  "
                 + $"edges: {stats.TotalEdges} ({stats.ReferenceEdges} cross-artifact)  "
                 + $"refs: {stats.TotalRefs}");
-            if (stats.SkippedBinary + stats.SkippedTooLarge > 0)
+            if (stats.SkippedBinary + stats.SkippedTooLarge + stats.Unreadable > 0)
             {
                 // Only the exclusions RepoContext chose itself; ignore rules are
                 // the user's own decision and are not second-guessed here.
+                // Unreadable files kept their previous content, so they are named
+                // rather than folded into "unchanged", which means verified.
                 Console.WriteLine(
                     $"  skipped: {stats.SkippedBinary} binary  "
-                    + $"{stats.SkippedTooLarge} over {config.Indexing.MaxFileSizeKb} KB");
+                    + $"{stats.SkippedTooLarge} over {config.Indexing.MaxFileSizeKb} KB  "
+                    + $"{stats.Unreadable} unreadable");
             }
 
             Console.WriteLine(

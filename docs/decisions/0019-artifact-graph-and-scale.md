@@ -95,9 +95,18 @@ document mentioning "session" is not linked to every file that declares one.
 Path mentions are matched against a case-sensitive extension list, so
 `System.Text.Json` stays a namespace.
 
-Storage is bounded: `artifacts.maxRefsPerFile` (default 400) caps each kind, and
-the retained subset is chosen by sorted value rather than by first occurrence,
-so the cap cannot reshuffle an index between two runs over the same content.
+Storage is bounded: `artifacts.maxRefsPerFile` (default 400) caps each artifact
+kind, and the retained subset is chosen by sorted value rather than by first
+occurrence, so the cap cannot reshuffle an index between two runs over the same
+content.
+
+`type` is deliberately **outside** that bound (corrected during review; the
+original text below is what shipped first). It is not an artifact link trading
+index size for a marginal result: it is every capitalized token of a C# file and
+the sole input to that file's import edges, so truncating it alphabetically
+drops real dependencies from the graph — and the margin was nil, the largest
+file in this repository carrying 389 distinct such tokens against a default of
+400. It has its own bound of 5,000, sized so no hand-written file reaches it.
 
 ### 3. Keys and links are indexed, not materialized as edges
 

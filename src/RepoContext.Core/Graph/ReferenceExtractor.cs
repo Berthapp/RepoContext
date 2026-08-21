@@ -226,7 +226,7 @@ public sealed partial class ReferenceExtractor
     /// the graph - and the margin was nil, since the largest file in this
     /// repository carries 389 distinct such tokens against a default of 400.
     /// Its own bound exists only to stop a generated monster file, not to trade
-    /// edges for bytes.
+    /// edges for bytes (ADR 0019 §2).
     /// </remarks>
     private int CapFor(string kind) =>
         kind == RefKind.Type ? MaxTypeRefsPerFile : Math.Max(_options.MaxRefsPerFile, 0);

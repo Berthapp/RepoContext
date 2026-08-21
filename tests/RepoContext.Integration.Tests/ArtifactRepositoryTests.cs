@@ -250,6 +250,29 @@ public sealed class ArtifactRepositoryTests
             Paths(scopedDoc.RootElement, "mentions"));
     }
 
+    /// <summary>
+    /// The scope decides what may be returned, not what a path means. Scoping
+    /// the term resolution itself silently downgraded mention lookup to exact
+    /// matching, so an in-scope document naming the file by its bare name
+    /// disappeared.
+    /// </summary>
+    [Fact]
+    public void Trace_ScopedToADocumentArea_StillMatchesABareFileName()
+    {
+        using FixtureWorkspace ws = Indexed();
+        File.WriteAllText(
+            ws.PathOf("exports/confluence/runbook.md"),
+            "# Runbook\n\nOn failure, check `refund.ts` first.\n");
+        Assert.Equal(0, ws.Run("index").ExitCode);
+
+        CliResult result = ws.Run(
+            "trace", "src/billing/refund.ts", "--path", "exports", "--format", "json");
+
+        Assert.Equal(0, result.ExitCode);
+        using JsonDocument doc = JsonDocument.Parse(result.StdOut);
+        Assert.Contains("exports/confluence/runbook.md", Paths(doc.RootElement, "mentions"));
+    }
+
     [Fact]
     public void Related_ReportsTheDocumentsThatDescribeAFile()
     {

@@ -117,19 +117,24 @@ public static class Trace
             Collect(RefKind.Symbol, store.FindRefs(RefKind.Symbol, trimmed, scope), trimmed);
 
             // A term that names an indexed file is traced as that file, so a
-            // document mentioning only its basename is still found.
+            // document mentioning only its basename is still found. What the
+            // term denotes is looked up without the scope - the scope decides
+            // what may be *returned*, not what a path means - while the mentions
+            // it gathers are scoped like every other result.
             string path = RelativePath(trimmed);
-            if (store.FindFile(path, scope) is { } file)
+            if (store.FindFile(path) is { } file)
             {
+                Collect(RefKind.Path, store.FindPathRefs(file.Path, scope), file.Path);
+
                 // Recorded even when nothing mentions it: "this file is indexed,
-                // and nothing points at it" is an answer, and it is a different
-                // answer from "I did not recognise that term".
-                if (!resolved.Contains(file.Path, StringComparer.Ordinal))
+                // and nothing points at it" is an answer, and a different one
+                // from "I did not recognise that term". Only for a file the
+                // caller's scope actually includes.
+                if (store.FindFile(file.Path, scope) is not null
+                    && !resolved.Contains(file.Path, StringComparer.Ordinal))
                 {
                     resolved.Add(file.Path);
                 }
-
-                Collect(RefKind.Path, store.FindPathRefs(file.Path, scope), file.Path);
             }
             else
             {
