@@ -56,9 +56,10 @@ public sealed record IndexStats
     public int SkippedBinary { get; init; }
 
     /// <summary>
-    /// Files that could not be read this run and kept whatever the index already
-    /// held. Counted separately from <see cref="Unchanged"/>, which means
-    /// "verified identical" - here nothing was verified.
+    /// Files that could not be read this run. An already-indexed one keeps
+    /// whatever the index holds; a new one is absent from it. Counted separately
+    /// from <see cref="Unchanged"/>, which means "verified identical" - here
+    /// nothing was verified.
     /// </summary>
     public int Unreadable { get; init; }
 
@@ -145,7 +146,8 @@ public sealed class Indexer
                 // both passes: hashing and reading can each fail.
                 if (digests[i].Hash is not { } hash)
                 {
-                    unreadable += Keep(known, file.RelativePath, seen, ref indexedFiles);
+                    unreadable++;
+                    Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
 
@@ -161,7 +163,8 @@ public sealed class Indexer
                 // the file half-removed.
                 if (ReadText(file.AbsolutePath) is not { } content)
                 {
-                    unreadable += Keep(known, file.RelativePath, seen, ref indexedFiles);
+                    unreadable++;
+                    Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
 
@@ -249,19 +252,19 @@ public sealed class Indexer
 
     /// <summary>
     /// Retains an already-indexed file that could not be read, so the prune pass
-    /// leaves its row alone. Returns 1 when a row was kept, 0 when there was
-    /// nothing to keep.
+    /// leaves its row alone. A file that was never indexed has nothing to
+    /// retain; it is still counted as unreadable by the caller, because a file
+    /// the tool could not open is exactly what the report exists to surface.
     /// </summary>
-    private static int Keep(bool known, string relativePath, HashSet<string> seen, ref int indexedFiles)
+    private static void Keep(bool known, string relativePath, HashSet<string> seen, ref int indexedFiles)
     {
         if (!known)
         {
-            return 0;
+            return;
         }
 
         seen.Add(relativePath);
         indexedFiles++;
-        return 1;
     }
 
     /// <summary>One file's content hash and the bytes read to compute it.</summary>

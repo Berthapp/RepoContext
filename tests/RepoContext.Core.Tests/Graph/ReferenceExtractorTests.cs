@@ -183,22 +183,31 @@ public class ReferenceExtractorTests
     }
 
     /// <summary>
-    /// Type references are the sole input to a C# file's import edges, so the
-    /// artifact bound must not truncate them: doing so drops real dependencies
-    /// from the graph, alphabetically and silently.
+    /// The references the graph is resolved from are the sole input to a file's
+    /// import edges, so the artifact bound must not truncate them: doing so
+    /// drops real dependencies from the graph, alphabetically and silently.
     /// </summary>
     [Fact]
-    public void TypeReferences_AreNotSubjectToTheArtifactBound()
+    public void GraphReferences_AreNotSubjectToTheArtifactBound()
     {
         var options = new ArtifactOptions { MaxRefsPerFile = 2 };
-        string content = string.Join(
-            '\n',
-            Enumerable.Range(0, 50).Select(i => $"var x{i} = new Type{i:D3}();"));
 
-        IReadOnlyList<FileReference> refs = Extract(
-            File("src/A.cs", FileKind.Source, SourceLanguage.CSharp), content, options);
+        IReadOnlyList<FileReference> csharp = Extract(
+            File("src/A.cs", FileKind.Source, SourceLanguage.CSharp),
+            string.Join('\n', Enumerable.Range(0, 50).Select(i => $"var x{i} = new Type{i:D3}();")),
+            options);
+        Assert.Equal(
+            50,
+            Values(csharp, RefKind.Type).Count(v => v.StartsWith("Type", StringComparison.Ordinal)));
 
-        Assert.Equal(50, Values(refs, RefKind.Type).Count(v => v.StartsWith("Type", StringComparison.Ordinal)));
+        IReadOnlyList<FileReference> typescript = Extract(
+            File("src/main.ts", FileKind.Source, SourceLanguage.TypeScript),
+            string.Join('\n', Enumerable.Range(0, 50).Select(i => $"import {{ m{i} }} from \"./mod{i:D3}\";")),
+            options);
+        Assert.Equal(50, Values(typescript, RefKind.Import).Count());
+
+        // The artifact kinds stay bounded, which is what the setting is for.
+        Assert.True(Values(csharp, RefKind.Symbol).Count() <= 2);
     }
 
     [Fact]

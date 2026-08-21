@@ -105,13 +105,15 @@ this way, so only C# declarations belong in the pool.
 `repoctx index` prints the exclusions RepoContext applies itself:
 
 ```
-  skipped: 12 binary  1 over 512 KB
+  skipped: 12 binary  1 over 512 KB  0 unreadable
 ```
 
 Binary files are the one category the tool cannot describe, and the user is
 entitled to know how large it is rather than being told "everything is indexed".
-Ignore rules are the user's own decision and are deliberately not second-guessed
-here. The oversize warning of ADR 0019 still names the paths and the fix.
+Files that could not be opened at all are counted separately from `unchanged`,
+which means *verified* identical. Ignore rules are the user's own decision and
+are deliberately not second-guessed here. The oversize warning of ADR 0019 still
+names the paths and the fix.
 
 ## Consequences
 

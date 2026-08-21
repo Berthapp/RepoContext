@@ -42,11 +42,12 @@ public static class ProducerVersions
 
     /// <summary>
     /// Import/test graph construction (ADR 0006). v2 stores per-file references
-    /// and adds cross-artifact reference edges (ADR 0019). v3 exempts type
-    /// references from the artifact bound, which changes the references a file
+    /// and adds cross-artifact reference edges (ADR 0019). v3/v4 exempt the
+    /// reference kinds the graph is resolved from - type uses, then module
+    /// imports - from the artifact bound, which changes the references a file
     /// stores and therefore the edges resolved from them.
     /// </summary>
-    public const int Graph = 3;
+    public const int Graph = 4;
 
     /// <summary>Canonical indexed content-state fingerprint layout (ADR 0015).</summary>
     public const int StateFingerprint = 2;

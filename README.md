@@ -752,7 +752,7 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 | `artifacts.keyPatterns` | Extra regular expressions for work-item keys, in addition to the built-in `ABC-123` shape. Invalid patterns are ignored. |
 | `artifacts.linkPaths` | Link a document to the files whose path it names. |
 | `artifacts.linkSymbols` | Link a document to the file that uniquely defines a symbol it names. |
-| `artifacts.maxRefsPerFile` | Upper bound on stored *artifact* references per file and kind — paths, keys, links, symbols (default 400). C# type references are outside it: they are the sole input to a file's import edges, so truncating them would drop real dependencies from the graph. |
+| `artifacts.maxRefsPerFile` | Upper bound on stored *artifact* references per file and kind — the paths, keys, links and symbols a file names (default 400). The references the dependency graph is resolved from (module imports and C# type uses) are outside it: truncating those would drop real dependencies from the graph. |
 | `ranking.weights` | Signal weights used by `context` (fts, symbol, graph, path). |
 | `ranking.synonyms` | Query-term expansions used by `context`. |
 | `tokens.profile` | Calibrate reported counts/budgets to a tokenizer: `o200k`/`openai` (default) or `claude`. |

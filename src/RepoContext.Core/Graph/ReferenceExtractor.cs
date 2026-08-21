@@ -94,10 +94,10 @@ public sealed partial class ReferenceExtractor
     };
 
     /// <summary>
-    /// Bound for <see cref="RefKind.Type"/>, independent of the artifact bound.
-    /// Sized so no hand-written file reaches it.
+    /// Bound for the reference kinds the graph is resolved from, independent of
+    /// the artifact bound. Sized so no hand-written file reaches it.
     /// </summary>
-    private const int MaxTypeRefsPerFile = 5_000;
+    private const int MaxGraphRefsPerFile = 5_000;
 
     private readonly ArtifactOptions _options;
     private readonly IReadOnlyList<Regex> _keyPatterns;
@@ -219,17 +219,19 @@ public sealed partial class ReferenceExtractor
     /// The bound for one reference kind.
     /// </summary>
     /// <remarks>
-    /// <c>type</c> is exempt from the configured artifact bound. It is not an
-    /// artifact reference that costs index size for a marginal link: it is every
-    /// capitalized token of a C# file, and it is the sole input to that file's
-    /// import edges. Truncating it alphabetically drops real dependencies from
-    /// the graph - and the margin was nil, since the largest file in this
-    /// repository carries 389 distinct such tokens against a default of 400.
-    /// Its own bound exists only to stop a generated monster file, not to trade
-    /// edges for bytes (ADR 0019 §2).
+    /// The kinds the graph is resolved from - <c>import</c> and <c>type</c> -
+    /// are exempt from the configured artifact bound. They are not artifact
+    /// references costing index size for a marginal link: they are the sole
+    /// input to a file's import edges, so truncating them alphabetically drops
+    /// real dependencies from the graph. The margin was nil for <c>type</c>:
+    /// the largest file in this repository carries 389 distinct capitalized
+    /// tokens against a default of 400. Their own bound exists only to stop a
+    /// generated monster file, not to trade edges for bytes (ADR 0019 §2).
     /// </remarks>
     private int CapFor(string kind) =>
-        kind == RefKind.Type ? MaxTypeRefsPerFile : Math.Max(_options.MaxRefsPerFile, 0);
+        kind is RefKind.Type or RefKind.Import
+            ? MaxGraphRefsPerFile
+            : Math.Max(_options.MaxRefsPerFile, 0);
 
     private IEnumerable<string> Keys(string line)
     {

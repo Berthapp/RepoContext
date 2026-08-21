@@ -100,13 +100,16 @@ kind, and the retained subset is chosen by sorted value rather than by first
 occurrence, so the cap cannot reshuffle an index between two runs over the same
 content.
 
-`type` is deliberately **outside** that bound (corrected during review; the
-original text below is what shipped first). It is not an artifact link trading
-index size for a marginal result: it is every capitalized token of a C# file and
-the sole input to that file's import edges, so truncating it alphabetically
-drops real dependencies from the graph — and the margin was nil, the largest
-file in this repository carrying 389 distinct such tokens against a default of
-400. It has its own bound of 5,000, sized so no hand-written file reaches it.
+The kinds the graph is resolved from — `import` and `type` — are deliberately
+**outside** that bound. They are not artifact links trading index size for a
+marginal result: they are the sole input to a file's import edges, so truncating
+them alphabetically drops real dependencies from the graph. The margin was nil
+for `type`: the largest file in this repository carries 389 distinct capitalized
+tokens against a default of 400. They have their own bound of 5,000, sized so no
+hand-written file reaches it.
+
+(Both exemptions were added during review of this ADR's first implementation,
+which bounded every kind alike and silently lost edges.)
 
 ### 3. Keys and links are indexed, not materialized as edges
 
