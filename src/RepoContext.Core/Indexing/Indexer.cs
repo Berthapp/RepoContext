@@ -284,7 +284,7 @@ public sealed class Indexer
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
             SkippedBinary = scanner.BinaryCount,
-            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles.Order(StringComparer.Ordinal)],
+            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles],
             Unreadable = unreadable.Count,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };

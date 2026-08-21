@@ -208,7 +208,7 @@ public static class ChangeDetector
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
             Unreadable = unreadable,
-            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles.Order(StringComparer.Ordinal)],
+            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles],
         };
     }
 

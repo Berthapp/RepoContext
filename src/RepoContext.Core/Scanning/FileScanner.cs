@@ -61,12 +61,17 @@ public sealed class FileScanner
     public int BinaryCount { get; private set; }
 
     /// <summary>
-    /// How many files the last scan could not open at all - a permission the
+    /// How many paths the last scan could not open at all - a permission the
     /// process lacks, or a lock held elsewhere. Counted rather than mistaken for
     /// binary, and above all not thrown: one unreadable file must not abort an
     /// index run over a repository of thousands.
     /// </summary>
-    public int UnreadableCount => _unreadable.Count;
+    /// <remarks>
+    /// Deliberately the size of <see cref="UnreadablePaths"/> rather than of the
+    /// retention set: a count and a list that disagree are worse than either
+    /// alone, and the retention set holds entries the report must not name.
+    /// </remarks>
+    public int UnreadableCount => _reportable.Count;
 
     /// <summary>
     /// The repo-relative paths the last scan could not open. Callers need the
@@ -91,7 +96,10 @@ public sealed class FileScanner
     /// something is <i>extra</i> - the directories those rules would have
     /// excluded were walked and indexed. Reported on its own for that reason.
     /// </summary>
-    public IReadOnlyCollection<string> UnreadableIgnoreFiles => _unreadableIgnoreFiles;
+    public IReadOnlyCollection<string> UnreadableIgnoreFiles =>
+    [
+        .. _unreadableIgnoreFiles.Order(StringComparer.Ordinal)
+    ];
 
     /// <summary>
     /// Whether the last scan failed to look at <paramref name="relativePath"/> -
