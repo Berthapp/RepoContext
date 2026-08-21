@@ -477,6 +477,55 @@ public sealed class ArtifactRepositoryTests
         Assert.Contains("exports/jira/PAY-900.json", trace.StdOut, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// An ignore file that cannot be read is the one failure here that makes
+    /// the index <em>bigger</em>: the directories its rules exclude are walked
+    /// and indexed instead. Reporting it apart from unreadable content is what
+    /// turns a bewildering "N files added" into an explained one.
+    /// </summary>
+    [Fact]
+    public void Changed_ExplainsFilesThatAppearBecauseAnIgnoreFileCouldNotBeRead()
+    {
+        using var ws = new FixtureWorkspace("artifact-repo");
+        File.WriteAllText(ws.PathOf(".repoctxignore"), "features/\n");
+        Assert.Equal(0, ws.Run("init").ExitCode);
+        Assert.Equal(0, ws.Run("index").ExitCode);
+
+        // The rule held on the way in: the excluded file is not in the index.
+        CliResult baseline = ws.Run("changed", "--format", "json");
+        using (JsonDocument clean = JsonDocument.Parse(baseline.StdOut))
+        {
+            Assert.Equal(0, clean.RootElement.GetProperty("count").GetInt32());
+        }
+
+        using (new FileStream(
+            ws.PathOf(".repoctxignore"), FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            CliResult changed = ws.Run("changed", "--format", "json");
+
+            Assert.Equal(0, changed.ExitCode);
+            using JsonDocument doc = JsonDocument.Parse(changed.StdOut);
+            JsonElement root = doc.RootElement;
+
+            // Both channels, because they have different consequences: the
+            // ignore file's own content is missing, and its rules went unapplied.
+            Assert.Equal(
+                [".repoctxignore"],
+                root.GetProperty("unreadable_ignore_files").EnumerateArray()
+                    .Select(e => e.GetString()));
+            Assert.Contains(
+                ".repoctxignore",
+                root.GetProperty("unreadable").EnumerateArray().Select(e => e.GetString()));
+
+            // And the reason the report is needed: the excluded file now looks
+            // like an ordinary addition.
+            Assert.Contains(
+                "features/refund.feature",
+                root.GetProperty("changed").EnumerateArray()
+                    .Select(e => e.GetProperty("path").GetString()));
+        }
+    }
+
     [Fact]
     public void Index_RebuildsTheGraphWithoutReReadingTheRepository()
     {

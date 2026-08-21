@@ -8,22 +8,73 @@ public class FileScannerTests
 {
     /// <summary>
     /// The reporting surface never names a path the configuration removed from
-    /// view, and never leaks the internal root sentinel. Both were real leaks:
-    /// a trailing-slash pattern only matches the directory reading, so deciding
-    /// the two readings independently published the name of a sensitive entry.
+    /// view. The sensitive prune runs before any read attempt, so holding the
+    /// file open changes nothing here - which is exactly the property being
+    /// pinned: there is no order of failures that puts a sensitive name on the
+    /// report, because the report is only ever reached by paths the scan was
+    /// allowed to look at.
     /// </summary>
     [Fact]
-    public void UnreadablePaths_NeverNameSensitiveOrExcludedEntries()
+    public void UnreadablePaths_NeverNameASensitiveFile()
     {
         using var repo = new FixtureRepo("sample-ts");
-        var scanner = new FileScanner(
-            repo.Root,
-            RepoctxConfig.CreateDefault() with { SensitiveFiles = ["secrets/"] });
+        repo.Write("secrets/token.txt", "s3cret\n");
+        RepoctxConfig config = RepoctxConfig.CreateDefault() with { SensitiveFiles = ["secrets/"] };
+        string secret = System.IO.Path.Combine(repo.Root, "secrets", "token.txt");
 
-        scanner.Scan();
+        using (new FileStream(secret, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var scanner = new FileScanner(repo.Root, config);
 
-        Assert.DoesNotContain(scanner.UnreadablePaths, p => p.Contains("secrets", StringComparison.Ordinal));
-        Assert.DoesNotContain(string.Empty, scanner.UnreadablePaths);
+            IReadOnlyList<ScannedFile> scanned = scanner.Scan();
+
+            Assert.DoesNotContain(scanned, f => f.RelativePath.Contains("secrets", StringComparison.Ordinal));
+            Assert.DoesNotContain(
+                scanner.UnreadablePaths, p => p.Contains("secrets", StringComparison.Ordinal));
+            Assert.DoesNotContain(string.Empty, scanner.UnreadablePaths);
+
+            // Pruned rather than skipped: a sensitive path is not something the
+            // scan failed to look at, so it must not hold an index row open
+            // either.
+            Assert.False(scanner.WasSkipped("secrets/token.txt"));
+        }
+    }
+
+    /// <summary>
+    /// Retention is a separate question from reporting. A file the scan could
+    /// not read keeps its index row - a moment's lock must not be read as a
+    /// deletion - and is named, because nothing excluded it.
+    /// </summary>
+    /// <remarks>
+    /// The third case, an entry that cannot even be classified as file or
+    /// directory, is retained but deliberately unreported when a directory-only
+    /// pattern matches it. It is not covered here: provoking it needs an entry
+    /// whose attributes cannot be read, which a test process running as root
+    /// cannot create.
+    /// </remarks>
+    [Fact]
+    public void AnUnreadableFile_IsRetainedAndNamed()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        repo.Write("vault/token.txt", "s3cret\n");
+        string locked = System.IO.Path.Combine(repo.Root, "vault", "token.txt");
+
+        using (new FileStream(locked, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            var scanner = new FileScanner(repo.Root, RepoctxConfig.CreateDefault());
+
+            scanner.Scan();
+
+            Assert.True(scanner.WasSkipped("vault/token.txt"));
+            Assert.Contains("vault/token.txt", scanner.UnreadablePaths);
+        }
+
+        // Readable again, it is neither retained nor reported: retention lasts
+        // exactly as long as the failure that caused it.
+        var second = new FileScanner(repo.Root, RepoctxConfig.CreateDefault());
+        second.Scan();
+        Assert.False(second.WasSkipped("vault/token.txt"));
+        Assert.Empty(second.UnreadablePaths);
     }
 
     /// <summary>

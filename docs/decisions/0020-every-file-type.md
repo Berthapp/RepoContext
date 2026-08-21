@@ -141,7 +141,9 @@ area churn through several rounds of review:
   cost of the alternative is a leaked path, which nothing restores.
 - **Ignore rules that could not be read**, which is the one failure here that
   makes the index *bigger*: the directories those rules exclude were walked and
-  indexed instead. It gets its own warning naming the file and the fix.
+  indexed instead. It gets its own channel on both surfaces — a warning from
+  `index`, a separate list from `changed` — naming the file, because otherwise
+  "500 files added" is bewildering rather than explained.
 
 ## Consequences
 

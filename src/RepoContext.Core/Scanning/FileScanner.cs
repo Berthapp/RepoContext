@@ -30,6 +30,7 @@ public sealed class FileScanner
     private readonly HashSet<string> _unreadable = new(StringComparer.Ordinal);
     private readonly HashSet<string> _unreadableDirectories = new(StringComparer.Ordinal);
     private readonly HashSet<string> _unreadableIgnoreFiles = new(StringComparer.Ordinal);
+    private readonly HashSet<string> _reportable = new(StringComparer.Ordinal);
 
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
@@ -81,10 +82,7 @@ public sealed class FileScanner
     /// </remarks>
     public IReadOnlyCollection<string> UnreadablePaths =>
     [
-        .. _unreadable
-            .Concat(_unreadableDirectories.Select(d => d.Length == 0 ? "." : d))
-            .Distinct(StringComparer.Ordinal)
-            .Order(StringComparer.Ordinal)
+        .. _reportable.Order(StringComparer.Ordinal)
     ];
 
     /// <summary>
@@ -158,6 +156,7 @@ public sealed class FileScanner
         _unreadable.Clear();
         _unreadableDirectories.Clear();
         _unreadableIgnoreFiles.Clear();
+        _reportable.Clear();
         var results = new List<ScannedFile>();
         IReadOnlyList<string> roots = _config.Include.Count > 0 ? _config.Include : ["."];
 
@@ -316,12 +315,12 @@ public sealed class FileScanner
         }
         catch (IOException)
         {
-            _unreadable.Add(rel);
+            RecordUnreadableFile(rel);
             return;
         }
         catch (UnauthorizedAccessException)
         {
-            _unreadable.Add(rel);
+            RecordUnreadableFile(rel);
             return;
         }
 
@@ -352,7 +351,7 @@ public sealed class FileScanner
                 BinaryCount++;
                 return;
             case Content.Unreadable:
-                _unreadable.Add(rel);
+                RecordUnreadableFile(rel);
                 return;
             default:
                 break;
@@ -455,7 +454,22 @@ public sealed class FileScanner
     private void RecordUnreadableDirectory(string absolutePath)
     {
         string relative = ToRelative(absolutePath);
+
+        // The root relativizes to "." - normalized to the empty prefix meaning
+        // "everything" for IsUnder, and reported under its readable name.
         _unreadableDirectories.Add(relative == "." ? string.Empty : relative);
+        _reportable.Add(relative);
+    }
+
+    /// <summary>
+    /// Records a file the scan reached but could not read. Nothing excluded it -
+    /// the sensitive and ignore checks run before this point - so it is both
+    /// retained and reportable.
+    /// </summary>
+    private void RecordUnreadableFile(string relative)
+    {
+        _unreadable.Add(relative);
+        _reportable.Add(relative);
     }
 
     /// <summary>
@@ -467,22 +481,23 @@ public sealed class FileScanner
     /// </summary>
     private void RecordUnreadableEntry(string relative, List<IgnoreScope> scopes)
     {
-        // Excluded under *either* reading means it is never recorded. File or
-        // directory is precisely what could not be established, and a
-        // trailing-slash pattern (`secrets/`, `node_modules/`) only ever
-        // matches the directory reading - so deciding the two independently
-        // would publish the name of a path the configuration removed from view.
-        // The cost of being conservative is a rare pruned row that the next
-        // successful run restores; the cost of the alternative is a leaked
-        // sensitive path, which nothing restores.
-        if (IsExcluded(relative, isDirectory: false, scopes)
-            || IsExcluded(relative, isDirectory: true, scopes))
-        {
-            return;
-        }
-
+        // Always retained: retention is about not deleting an index row, and a
+        // path the report must not name is still a path the scan did not look
+        // at. Suppressing it here - as this first did - prunes the row of an
+        // indexed file whose name happens to match a directory-only pattern.
         _unreadable.Add(relative);
         _unreadableDirectories.Add(relative);
+
+        // Reportable only when neither reading is excluded. File or directory is
+        // precisely what could not be established, and a trailing-slash pattern
+        // (`secrets/`, `node_modules/`) matches only the directory reading - so
+        // deciding the two independently would publish the name of a path the
+        // configuration removed from view.
+        if (!IsExcluded(relative, isDirectory: false, scopes)
+            && !IsExcluded(relative, isDirectory: true, scopes))
+        {
+            _reportable.Add(relative);
+        }
     }
 
     /// <summary>

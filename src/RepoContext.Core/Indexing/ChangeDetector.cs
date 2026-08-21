@@ -52,6 +52,13 @@ public sealed record ChangedResult(
     /// </summary>
     public IReadOnlyList<string> Unreadable { get; init; } = [];
 
+    /// <summary>
+    /// Ignore files whose rules could not be read, so the directories they
+    /// exclude were walked. Without this, the answer "500 files added" is
+    /// bewildering rather than explained.
+    /// </summary>
+    public IReadOnlyList<string> UnreadableIgnoreFiles { get; init; } = [];
+
     /// <summary>Full internal indexed-content fingerprint.</summary>
     public string FullContentState { get; init; } = string.Empty;
 
@@ -201,6 +208,7 @@ public static class ChangeDetector
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
             Unreadable = unreadable,
+            UnreadableIgnoreFiles = [.. scanner.UnreadableIgnoreFiles.Order(StringComparer.Ordinal)],
         };
     }
 

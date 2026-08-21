@@ -809,6 +809,8 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | --- | --- |
 | `No index found. Run 'repoctx index' first.` (exit code 2) | Run `repoctx init` then `repoctx index` in the repository root. |
 | `index` warns that text files exceed `indexing.maxFileSizeKb` | Those files are not indexed at all. Raise the limit in `repoctx.config.json` (large exported specifications routinely pass 512 KB), or list them in `.repoctxignore` to accept the gap deliberately. |
+| `index` or `changed` lists files as `unreadable` | The process could not open them — a lock, a permission, or a mount that went away. They keep their existing index rows rather than being treated as deleted, so a later run picks them up unchanged. |
+| `changed`/`index` reports far more files than expected, and warns about an ignore file | A `.gitignore` or `.repoctxignore` could not be read, so the directories its rules exclude were walked and indexed. The warning names the file; fix its permissions and re-run `repoctx index`. |
 | `File not found in index: ...` from `related` | The file is not indexed — check `include`/`exclude`, `.repoctxignore`, `sensitiveFiles` and `indexing.maxFileSizeKb`, then re-run `repoctx index`. |
 | `index` reports `files: 0`, or a project below the root is missing | An older config pins `include` to root-level directories. Remove the key (or set it to `[]`) to scan the whole repository and re-run `repoctx index`. |
 | `outline` is empty for a file | Its format has no structure RepoContext knows (a `.txt`, a log, an unusual config). The file is still indexed and searchable; only the skeleton is missing. Binary files are not indexed at all — `index` reports how many. |

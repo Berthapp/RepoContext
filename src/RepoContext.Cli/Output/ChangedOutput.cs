@@ -111,24 +111,44 @@ public static class ChangedOutput
             }
         }
 
+        if (r.UnreadableIgnoreFiles.Count > 0)
+        {
+            sb.Append("\n## Ignore rules not applied\n\n");
+            foreach (string path in r.UnreadableIgnoreFiles)
+            {
+                sb.Append("- `").Append(path).Append("` could not be read, so the paths it "
+                    + "excludes appear above\n");
+            }
+        }
+
         return sb.ToString();
     }
 
     /// <summary>
-    /// Names the files nothing could be said about. Without this, an unreadable
-    /// file is indistinguishable from a verified-current one.
+    /// Names the files nothing could be said about, and separately the ignore
+    /// files whose rules did not apply. Without the first, an unreadable file is
+    /// indistinguishable from a verified-current one; without the second, the
+    /// files those rules would have excluded appear as unexplained additions.
     /// </summary>
     private static void AppendUnreadable(StringBuilder sb, ChangedResult r)
     {
-        if (r.Unreadable.Count == 0)
+        if (r.Unreadable.Count > 0)
         {
-            return;
+            sb.Append("Unreadable (not checked):\n");
+            foreach (string path in r.Unreadable)
+            {
+                sb.Append("  ").Append(path).Append('\n');
+            }
         }
 
-        sb.Append("Unreadable (not checked):\n");
-        foreach (string path in r.Unreadable)
+        if (r.UnreadableIgnoreFiles.Count > 0)
         {
-            sb.Append("  ").Append(path).Append('\n');
+            sb.Append("Ignore rules not applied (unreadable), so the paths they exclude "
+                + "are listed above:\n");
+            foreach (string path in r.UnreadableIgnoreFiles)
+            {
+                sb.Append("  ").Append(path).Append('\n');
+            }
         }
     }
 
@@ -160,6 +180,8 @@ public static class ChangedOutput
             }).ToList(),
             Impacted = r.Impacted.Select(i => new ImpactedFileDto { Path = i.Path, Reasons = i.Reasons }).ToList(),
             Unreadable = r.Unreadable.Count == 0 ? null : r.Unreadable,
+            UnreadableIgnoreFiles =
+                r.UnreadableIgnoreFiles.Count == 0 ? null : r.UnreadableIgnoreFiles,
         };
 
         return JsonSerializer.Serialize(doc, OutputJson.Options);
@@ -191,6 +213,9 @@ public static class ChangedOutput
 
         /// <summary>Files that could not be read, so nothing was checked about them.</summary>
         public IReadOnlyList<string>? Unreadable { get; init; }
+
+        /// <summary>Ignore files whose rules could not be read, so their exclusions did not apply.</summary>
+        public IReadOnlyList<string>? UnreadableIgnoreFiles { get; init; }
     }
 
     private sealed record ChangedFileDto
