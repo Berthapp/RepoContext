@@ -161,6 +161,12 @@ public sealed class FileScanner
         {
             return;
         }
+        catch (IOException)
+        {
+            // Removed mid-walk, or an unreadable mount point. One directory the
+            // scan cannot enumerate is not a reason to abandon the repository.
+            return;
+        }
 
         Array.Sort(entries, StringComparer.Ordinal);
 
@@ -348,6 +354,9 @@ public sealed class FileScanner
             catch (IOException)
             {
                 // An unreadable ignore file must not abort the scan.
+            }
+            catch (UnauthorizedAccessException)
+            {
             }
         }
     }

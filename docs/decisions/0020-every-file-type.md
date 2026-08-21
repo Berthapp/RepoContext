@@ -115,6 +115,17 @@ which means *verified* identical. Ignore rules are the user's own decision and
 are deliberately not second-guessed here. The oversize warning of ADR 0019 still
 names the paths and the fix.
 
+`changed` gained the same honesty: an unreadable file is listed under
+`unreadable` rather than absorbed into "index is current", because "I could not
+check this" is not the same answer as "this is unchanged". An already-indexed
+file that cannot be opened keeps its index row throughout — a moment's lock must
+not cost it coverage, and it must not be reported as deleted.
+
+Every file access on these paths is guarded. Before this, a permission-denied
+file, a directory removed mid-walk, an unreadable `.gitignore`, or a file locked
+between hashing and reading each aborted the entire command — the worst possible
+trade in a repository of thousands of files.
+
 ## Consequences
 
 - **A full rebuild is required.** The parser producer version moves, and the

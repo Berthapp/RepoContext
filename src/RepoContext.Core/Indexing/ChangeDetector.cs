@@ -44,6 +44,14 @@ public sealed record ChangedResult(
     IReadOnlyList<ChangedFile> Changed, IReadOnlyList<ImpactedFile> Impacted,
     string ContentState, string WorktreeState)
 {
+    /// <summary>
+    /// Files that could not be read, so nothing could be said about them. They
+    /// are neither changed nor verified current, and reporting "index is
+    /// current" while silently skipping them would claim a check that did not
+    /// happen.
+    /// </summary>
+    public IReadOnlyList<string> Unreadable { get; init; } = [];
+
     /// <summary>Full internal indexed-content fingerprint.</summary>
     public string FullContentState { get; init; } = string.Empty;
 
@@ -72,6 +80,7 @@ public static class ChangeDetector
         // Added files are hashed too: without that, two different files added at
         // the same path would share a fingerprint.
         var delta = new List<(string Status, string Path, string? ContentHash)>();
+        var unreadable = new List<string>();
 
         var scanner = new FileScanner(layout.Root, config);
         foreach (ScannedFile file in scanner.Scan())
@@ -80,8 +89,10 @@ public static class ChangeDetector
             {
                 // Unreadable right now says nothing about the working tree: it
                 // is not a deletion, and reporting one would send an agent to
-                // re-create a file that is merely locked.
+                // re-create a file that is merely locked. It is reported as
+                // unreadable instead, so the answer stays honest.
                 seen.Add(file.RelativePath);
+                unreadable.Add(file.RelativePath);
                 continue;
             }
 
@@ -107,6 +118,7 @@ public static class ChangeDetector
         foreach (string path in scanner.UnreadablePaths)
         {
             seen.Add(path);
+            unreadable.Add(path);
         }
 
         foreach (string path in existing.Keys)
@@ -156,6 +168,7 @@ public static class ChangeDetector
         {
             FullContentState = contentState,
             FullWorktreeState = worktreeState,
+            Unreadable = [.. unreadable.Order(StringComparer.Ordinal)],
         };
     }
 
@@ -168,6 +181,23 @@ public static class ChangeDetector
         try
         {
             return Convert.ToHexStringLower(SHA256.HashData(File.ReadAllBytes(absolutePath)));
+        }
+        catch (IOException)
+        {
+            return null;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The text of a file, or null when it cannot be read right now.</summary>
+    private static string? ReadText(string absolutePath)
+    {
+        try
+        {
+            return File.ReadAllText(absolutePath);
         }
         catch (IOException)
         {
@@ -196,7 +226,13 @@ public static class ChangeDetector
             return plain;
         }
 
-        string current = File.ReadAllText(file.AbsolutePath);
+        // Re-read: the file can become unreadable between the hash above and
+        // here, and losing the hunks is a lesser answer than losing the command.
+        if (ReadText(file.AbsolutePath) is not { } current)
+        {
+            return plain;
+        }
+
         IReadOnlyList<PatchHunk> hunks = LineDiff.Hunks(
             indexed.Text.TrimEnd('\n'), current.TrimEnd('\n'));
         return plain with

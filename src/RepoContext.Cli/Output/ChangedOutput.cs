@@ -22,6 +22,7 @@ public static class ChangedOutput
         {
             sb.Append(
                 $"Index is current (content {r.ContentState}, worktree {r.WorktreeState}). No changes.\n");
+            AppendUnreadable(sb, r);
             return sb.ToString();
         }
 
@@ -57,6 +58,7 @@ public static class ChangedOutput
             }
         }
 
+        AppendUnreadable(sb, r);
         return sb.ToString();
     }
 
@@ -100,7 +102,34 @@ public static class ChangedOutput
             }
         }
 
+        if (r.Unreadable.Count > 0)
+        {
+            sb.Append("\n## Unreadable (not checked)\n\n");
+            foreach (string path in r.Unreadable)
+            {
+                sb.Append("- `").Append(path).Append("`\n");
+            }
+        }
+
         return sb.ToString();
+    }
+
+    /// <summary>
+    /// Names the files nothing could be said about. Without this, an unreadable
+    /// file is indistinguishable from a verified-current one.
+    /// </summary>
+    private static void AppendUnreadable(StringBuilder sb, ChangedResult r)
+    {
+        if (r.Unreadable.Count == 0)
+        {
+            return;
+        }
+
+        sb.Append("Unreadable (not checked):\n");
+        foreach (string path in r.Unreadable)
+        {
+            sb.Append("  ").Append(path).Append('\n');
+        }
     }
 
     private static string RenderJson(ChangedResult r)
@@ -130,6 +159,7 @@ public static class ChangedOutput
                 }).ToList(),
             }).ToList(),
             Impacted = r.Impacted.Select(i => new ImpactedFileDto { Path = i.Path, Reasons = i.Reasons }).ToList(),
+            Unreadable = r.Unreadable.Count == 0 ? null : r.Unreadable,
         };
 
         return JsonSerializer.Serialize(doc, OutputJson.Options);
@@ -158,6 +188,9 @@ public static class ChangedOutput
         public required IReadOnlyList<ChangedFileDto> Changed { get; init; }
 
         public required IReadOnlyList<ImpactedFileDto> Impacted { get; init; }
+
+        /// <summary>Files that could not be read, so nothing was checked about them.</summary>
+        public IReadOnlyList<string>? Unreadable { get; init; }
     }
 
     private sealed record ChangedFileDto

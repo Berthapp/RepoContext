@@ -436,10 +436,17 @@ public sealed class ArtifactRepositoryTests
             using JsonDocument doc = JsonDocument.Parse(outline.StdOut);
             Assert.NotEmpty(doc.RootElement.GetProperty("symbols").EnumerateArray());
 
-            // ...and not reported as a deletion, which it is not.
+            // ...and reported as unreadable rather than as any kind of change,
+            // which would send an agent to fix something that is merely locked.
             CliResult changed = ws.Run("changed", "--format", "json");
             Assert.Equal(0, changed.ExitCode);
-            Assert.DoesNotContain("deleted", changed.StdOut, StringComparison.Ordinal);
+            using JsonDocument changedDoc = JsonDocument.Parse(changed.StdOut);
+            Assert.False(changedDoc.RootElement.GetProperty("stale").GetBoolean());
+            Assert.Equal(0, changedDoc.RootElement.GetProperty("count").GetInt32());
+            Assert.Equal(
+                ["src/billing/refund.ts"],
+                changedDoc.RootElement.GetProperty("unreadable").EnumerateArray()
+                    .Select(e => e.GetString()));
         }
     }
 
