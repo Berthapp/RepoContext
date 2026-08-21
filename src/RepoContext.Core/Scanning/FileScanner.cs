@@ -27,7 +27,7 @@ public sealed class FileScanner
     private readonly GitignoreMatcher _sensitive;
     private readonly IgnoreScope _exclude;
     private readonly List<string> _oversized = [];
-    private readonly List<string> _unreadable = [];
+    private readonly HashSet<string> _unreadable = new(StringComparer.Ordinal);
     private readonly List<string> _unreadableDirectories = [];
 
     public FileScanner(string repoRoot, RepoctxConfig config)
@@ -71,7 +71,7 @@ public sealed class FileScanner
     /// paths, not just the count: a file that is already indexed has to be held
     /// on to, or a moment's lock costs it its index row.
     /// </summary>
-    public IReadOnlyList<string> UnreadablePaths => _unreadable;
+    public IReadOnlyCollection<string> UnreadablePaths => _unreadable;
 
     /// <summary>
     /// Whether the last scan failed to look at <paramref name="relativePath"/> -
@@ -82,17 +82,16 @@ public sealed class FileScanner
     /// </summary>
     public bool WasSkipped(string relativePath)
     {
-        if (_unreadable.Contains(relativePath, StringComparer.Ordinal))
+        if (_unreadable.Contains(relativePath))
         {
             return true;
         }
 
+        // Directory prefixes are few - one per directory that could not be
+        // entered - so a linear scan over them is the whole cost.
         foreach (string directory in _unreadableDirectories)
         {
-            if (directory.Length == 0
-                || (relativePath.Length > directory.Length
-                    && relativePath.StartsWith(directory, StringComparison.Ordinal)
-                    && relativePath[directory.Length] == '/'))
+            if (IsUnder(relativePath, directory))
             {
                 return true;
             }
@@ -100,6 +99,13 @@ public sealed class FileScanner
 
         return false;
     }
+
+    /// <summary>Whether a path lies inside a directory, where an empty directory is the root.</summary>
+    private static bool IsUnder(string relativePath, string directory) =>
+        directory.Length == 0
+        || (relativePath.Length > directory.Length
+            && relativePath.StartsWith(directory, StringComparison.Ordinal)
+            && relativePath[directory.Length] == '/');
 
     /// <summary>Returns whether a repo-relative path is treated as sensitive.</summary>
     public bool IsSensitive(string relativePath) => _sensitive.IsIgnored(relativePath, isDirectory: false);
@@ -189,7 +195,7 @@ public sealed class FileScanner
         }
         catch (UnauthorizedAccessException)
         {
-            _unreadableDirectories.Add(ToRelative(directory));
+            RecordUnreadableDirectory(directory);
             return;
         }
         catch (IOException)
@@ -198,7 +204,7 @@ public sealed class FileScanner
             // scan cannot enumerate is not a reason to abandon the repository -
             // but it is a reason to remember it, because everything already
             // indexed below it would otherwise look deleted.
-            _unreadableDirectories.Add(ToRelative(directory));
+            RecordUnreadableDirectory(directory);
             return;
         }
 
@@ -209,8 +215,11 @@ public sealed class FileScanner
             if (!TryGetAttributes(entry, out FileAttributes attributes))
             {
                 // Present but inaccessible: it cannot even be classified, so it
-                // is recorded and skipped rather than crashing the scan.
-                _unreadable.Add(ToRelative(entry));
+                // is recorded and skipped rather than crashing the scan. Whether
+                // it is a file or a directory is exactly what could not be
+                // established, so it is recorded as both - anything already
+                // indexed beneath it must be retained too.
+                RecordUnreadableEntry(ToRelative(entry), scopes);
                 continue;
             }
 
@@ -413,6 +422,39 @@ public sealed class FileScanner
 
     private string ToRelative(string absolutePath) =>
         Path.GetRelativePath(_repoRoot, absolutePath).Replace('\\', '/');
+
+    /// <summary>
+    /// Records a directory the scan could not enter, so callers retain what they
+    /// already hold beneath it. The repository root relativizes to <c>.</c>,
+    /// which is normalized to the empty prefix meaning "everything".
+    /// </summary>
+    private void RecordUnreadableDirectory(string absolutePath)
+    {
+        string relative = ToRelative(absolutePath);
+        _unreadableDirectories.Add(relative == "." ? string.Empty : relative);
+    }
+
+    /// <summary>
+    /// Records an entry that could not be classified at all, unless it is
+    /// sensitive or excluded - those must never surface as a path, which is the
+    /// whole point of the setting, and a caller reports what it is told here.
+    /// Since file or directory is precisely what is unknown, both readings are
+    /// tested and both are recorded.
+    /// </summary>
+    private void RecordUnreadableEntry(string relative, List<IgnoreScope> scopes)
+    {
+        foreach (bool isDirectory in (bool[])[false, true])
+        {
+            if (_sensitive.IsIgnored(relative, isDirectory)
+                || IsIgnored(relative, isDirectory, scopes))
+            {
+                return;
+            }
+        }
+
+        _unreadable.Add(relative);
+        _unreadableDirectories.Add(relative);
+    }
 
     /// <summary>
     /// Reads an entry's attributes. Returns false when it is present but

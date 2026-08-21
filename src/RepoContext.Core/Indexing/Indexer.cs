@@ -117,7 +117,11 @@ public sealed class Indexer
         var scanner = new FileScanner(_layout.Root, _config);
         IReadOnlyList<ScannedFile> scanned = scanner.Scan();
 
-        int added = 0, changed = 0, unchanged = 0, deleted = 0, unreadable = 0;
+        int added = 0, changed = 0, unchanged = 0, deleted = 0;
+
+        // Deduplicated on purpose: a file can fail the scan and the index pass
+        // alike, and a report that counts it twice is a report nobody trusts.
+        var unreadable = new HashSet<string>(StringComparer.Ordinal);
         int filesParsed = 0;
         int indexedFiles = 0;
 
@@ -146,7 +150,7 @@ public sealed class Indexer
                 // both passes: hashing and reading can each fail.
                 if (digests[i].Hash is not { } hash)
                 {
-                    unreadable++;
+                    unreadable.Add(file.RelativePath);
                     Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
@@ -163,7 +167,7 @@ public sealed class Indexer
                 // the file half-removed.
                 if (ReadText(file.AbsolutePath) is not { } content)
                 {
-                    unreadable++;
+                    unreadable.Add(file.RelativePath);
                     Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
@@ -203,8 +207,17 @@ public sealed class Indexer
                 if (!seen.Contains(path) && scanner.WasSkipped(path))
                 {
                     Keep(known: true, path, seen, ref indexedFiles);
-                    unreadable++;
+                    unreadable.Add(path);
                 }
+            }
+
+            // Files the scan could not open are reported whether or not they
+            // were ever indexed: a new file the tool cannot read is exactly what
+            // the report exists to surface, and on --full there is no index to
+            // recognise it from.
+            foreach (string path in scanner.UnreadablePaths)
+            {
+                unreadable.Add(path);
             }
 
             foreach ((string path, FileRecord record) in existing)
@@ -258,7 +271,7 @@ public sealed class Indexer
             SkippedTooLarge = scanner.OversizedCount,
             SkippedTooLargeSample = scanner.OversizedSample,
             SkippedBinary = scanner.BinaryCount,
-            Unreadable = unreadable,
+            Unreadable = unreadable.Count,
             ElapsedMilliseconds = stopwatch.ElapsedMilliseconds,
         };
     }

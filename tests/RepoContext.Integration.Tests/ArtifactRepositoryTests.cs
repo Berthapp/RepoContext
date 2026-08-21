@@ -450,6 +450,33 @@ public sealed class ArtifactRepositoryTests
         }
     }
 
+    /// <summary>
+    /// A file that was never indexed and cannot be opened is reported too. It
+    /// has no row to keep, but "I could not read this" is exactly what the
+    /// report exists to surface - counting only retained rows made it invisible.
+    /// </summary>
+    [Fact]
+    public void Index_ReportsAnUnreadableFileItHasNeverSeen()
+    {
+        using FixtureWorkspace ws = Indexed();
+        string fresh = ws.PathOf("exports/jira/PAY-900.json");
+        File.WriteAllText(fresh, "{\"key\": \"PAY-900\"}\n");
+
+        using (new FileStream(fresh, FileMode.Open, FileAccess.Read, FileShare.None))
+        {
+            CliResult result = ws.Run("index");
+
+            Assert.Equal(0, result.ExitCode);
+            Assert.Contains("1 unreadable", result.StdOut, StringComparison.Ordinal);
+            Assert.Contains("+0 ", result.StdOut, StringComparison.Ordinal);
+        }
+
+        // Released, it is indexed on the next run like any other file.
+        Assert.Equal(0, ws.Run("index").ExitCode);
+        CliResult trace = ws.Run("trace", "PAY-900", "--format", "json");
+        Assert.Contains("exports/jira/PAY-900.json", trace.StdOut, StringComparison.Ordinal);
+    }
+
     [Fact]
     public void Index_RebuildsTheGraphWithoutReReadingTheRepository()
     {
