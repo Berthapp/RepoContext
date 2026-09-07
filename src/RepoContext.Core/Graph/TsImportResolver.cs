@@ -9,11 +9,16 @@ internal sealed class TsImportResolver(IndexStore store, HashSet<string> paths)
     private readonly Dictionary<string, Config?> _configs = new(StringComparer.Ordinal);
     private static readonly string[] Extensions = [".ts", ".tsx", ".d.ts", ".js", ".jsx"];
 
-    public string? Resolve(string from, string specifier)
+    public ImportResolution Resolve(string from, string specifier)
     {
-        if (specifier.StartsWith('.')) return ResolveFile(Combine(Directory(from), specifier));
+        if (specifier.StartsWith("./", StringComparison.Ordinal)
+            || specifier.StartsWith("../", StringComparison.Ordinal) || specifier is "." or "..")
+            return Result(ResolveFile(Combine(Directory(from), specifier)), "local-module-not-found");
+        if (specifier.StartsWith('/') || specifier.Contains(':', StringComparison.Ordinal))
+            return new(null, "unsupported-module-specifier");
         Config? config = NearestConfig(from);
-        if (config is null) return null;
+        if (config is null) return new(null, "unsupported-package-import");
+        if (config.Problem is { } problem) return new(null, problem);
         foreach ((string pattern, string[] targets) in config.Paths
             .OrderBy(p => p.Key.Contains('*') ? 1 : 0)
             .ThenByDescending(p => p.Key.Split('*')[0].Length)
@@ -36,12 +41,15 @@ internal sealed class TsImportResolver(IndexStore store, HashSet<string> paths)
             foreach (string target in targets)
             {
                 string candidate = Combine(config.BaseUrl ?? config.PathsBase, target.Replace("*", capture, StringComparison.Ordinal));
-                if (ResolveFile(candidate) is { } resolved) return resolved;
+                if (ResolveFile(candidate) is { } resolved) return new(resolved);
             }
-            return null; // A matched but missing alias never falls through to another mapping.
+            return new(null, "alias-target-not-found"); // A matched alias never falls through to another mapping.
         }
-        return config.BaseUrl is { } baseUrl ? ResolveFile(Combine(baseUrl, specifier)) : null;
+        return Result(config.BaseUrl is { } baseUrl ? ResolveFile(Combine(baseUrl, specifier)) : null,
+            "unsupported-package-import");
     }
+
+    private static ImportResolution Result(string? path, string reason) => new(path, path is null ? reason : null);
 
     private string? ResolveFile(string path)
     {
@@ -83,16 +91,16 @@ internal sealed class TsImportResolver(IndexStore store, HashSet<string> paths)
     private Config? Load(string path, HashSet<string> visiting)
     {
         if (_configs.TryGetValue(path, out Config? cached)) return cached;
-        if (!visiting.Add(path) || visiting.Count > 32) return null;
+        if (!visiting.Add(path) || visiting.Count > 32) return Invalid("cyclic-or-deep-config-extends");
         try
         {
-            if (store.GetSourceSlice(path, 1, int.MaxValue)?.Text is not { } content) return null;
+            if (store.GetSourceSlice(path, 1, int.MaxValue)?.Text is not { } content) return Invalid("config-extends-not-found");
             using JsonDocument document = JsonDocument.Parse(content, new JsonDocumentOptions
             {
                 CommentHandling = JsonCommentHandling.Skip, AllowTrailingCommas = true,
             });
             JsonElement root = document.RootElement;
-            if (root.ValueKind != JsonValueKind.Object) return null;
+            if (root.ValueKind != JsonValueKind.Object) return Invalid("invalid-module-configuration");
             Config config = new(null, Directory(path), new(StringComparer.Ordinal));
             if (root.TryGetProperty("extends", out JsonElement extends))
             {
@@ -100,34 +108,55 @@ internal sealed class TsImportResolver(IndexStore store, HashSet<string> paths)
                 foreach (JsonElement item in bases)
                 {
                     // Only indexed local config files; never open excluded packages or leave the repo.
-                    if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } value || !value.StartsWith('.')) continue;
+                    if (item.ValueKind != JsonValueKind.String || item.GetString() is not { } value)
+                    {
+                        config = config with { Problem = "invalid-module-configuration" };
+                        continue;
+                    }
+                    if (!value.StartsWith('.'))
+                    {
+                        config = config with { Problem = "unsupported-package-extends" };
+                        continue;
+                    }
                     string parent = Combine(Directory(path), value);
                     if (!paths.Contains(parent)) parent += ".json";
                     if (Load(parent, visiting) is { } inherited)
                         config = new(inherited.BaseUrl ?? config.BaseUrl,
                             inherited.HasPaths ? inherited.PathsBase : config.PathsBase,
-                            inherited.HasPaths ? inherited.Paths : config.Paths, inherited.HasPaths || config.HasPaths);
+                            inherited.HasPaths ? inherited.Paths : config.Paths, inherited.HasPaths || config.HasPaths,
+                            config.Problem ?? inherited.Problem);
                 }
             }
-            if (root.TryGetProperty("compilerOptions", out JsonElement options) && options.ValueKind == JsonValueKind.Object)
+            if (root.TryGetProperty("compilerOptions", out JsonElement options))
             {
-                if (options.TryGetProperty("baseUrl", out JsonElement baseUrl) && baseUrl.ValueKind == JsonValueKind.String)
-                    config = config with { BaseUrl = Combine(Directory(path), baseUrl.GetString()!) };
-                if (options.TryGetProperty("paths", out JsonElement aliases) && aliases.ValueKind == JsonValueKind.Object)
+                if (options.ValueKind != JsonValueKind.Object) return Invalid("invalid-module-configuration");
+                if (options.TryGetProperty("baseUrl", out JsonElement baseUrl))
                 {
+                    if (baseUrl.ValueKind != JsonValueKind.String) return Invalid("invalid-module-configuration");
+                    config = config with { BaseUrl = Combine(Directory(path), baseUrl.GetString()!) };
+                }
+                if (options.TryGetProperty("paths", out JsonElement aliases))
+                {
+                    if (aliases.ValueKind != JsonValueKind.Object) return Invalid("invalid-module-configuration");
                     var mappings = new Dictionary<string, string[]>(StringComparer.Ordinal);
                     foreach (JsonProperty alias in aliases.EnumerateObject())
-                        if (alias.Value.ValueKind == JsonValueKind.Array && alias.Name.Count(c => c == '*') <= 1)
-                            mappings[alias.Name] = alias.Value.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
-                                .Select(x => x.GetString()!).ToArray();
+                    {
+                        if (alias.Value.ValueKind != JsonValueKind.Array || alias.Name.Count(c => c == '*') > 1)
+                            return Invalid("invalid-module-configuration");
+                        if (alias.Value.EnumerateArray().Any(x => x.ValueKind != JsonValueKind.String
+                            || x.GetString()!.Count(c => c == '*') > 1)) return Invalid("invalid-module-configuration");
+                        mappings[alias.Name] = alias.Value.EnumerateArray().Select(x => x.GetString()!).ToArray();
+                    }
                     config = config with { PathsBase = Directory(path), Paths = mappings, HasPaths = true };
                 }
             }
             _configs[path] = config;
             return config;
         }
-        catch (JsonException) { _configs[path] = null; return null; }
+        catch (JsonException) { return Invalid("invalid-module-configuration"); }
         finally { visiting.Remove(path); }
+
+        Config Invalid(string reason) => _configs[path] = new(null, Directory(path), new(StringComparer.Ordinal), Problem: reason);
     }
 
     private static string Directory(string path) => path.LastIndexOf('/') is var slash && slash >= 0 ? path[..slash] : "";
@@ -146,5 +175,6 @@ internal sealed class TsImportResolver(IndexStore store, HashSet<string> paths)
         }
         return string.Join('/', segments);
     }
-    private sealed record Config(string? BaseUrl, string PathsBase, Dictionary<string, string[]> Paths, bool HasPaths = false);
+    private sealed record Config(string? BaseUrl, string PathsBase, Dictionary<string, string[]> Paths,
+        bool HasPaths = false, string? Problem = null);
 }

@@ -52,8 +52,11 @@ public static class ProducerVersions
     /// reference kinds the graph is resolved from - type uses, then module
     /// imports - from the artifact bound, which changes the references a file
     /// stores and therefore the edges resolved from them.
+    /// v6 narrows C# syntax edges by indexed project references and rejects
+    /// unsupported or malformed TS module configuration during resolution.
+    /// v7 preserves unique C# syntax links when build imports leave project scope unknown.
     /// </summary>
-    public const int Graph = 5;
+    public const int Graph = 7;
 
     /// <summary>Canonical indexed content-state fingerprint layout (ADR 0015).</summary>
     public const int StateFingerprint = 2;

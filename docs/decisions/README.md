@@ -48,3 +48,5 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   (XML, reStructuredText, properties, delimited tables, Makefile, Dockerfile,
   HCL), named languages in the reported mix, C#-only type resolution, and a
   reported count of what the tool itself excluded.
+- `0021-compact-context-json.md` — opt-in context JSON v5 without deprecated
+  compatibility copies; shared exact budgets and reuse receipts across formats.

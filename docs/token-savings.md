@@ -7,10 +7,10 @@ workflows, not character counts or isolated snippets.
 
 The current reviewable results are:
 
-- `docs/eval/baseline.md` — aggregate relevance and cost metrics;
-- `docs/eval/raw/` — exact core, CLI and MCP-content bodies plus deterministic
+- [evaluation baseline](eval/baseline.md) — aggregate relevance and cost metrics;
+- [raw artifacts](eval/raw/) — exact core, CLI and MCP-content bodies plus deterministic
   canonical MCP envelope/session models used by those token totals; and
-- `docs/eval/manifest.md` — corpus, policy, formulas, environment and exact
+- [evaluation manifest](eval/manifest.md) — corpus, policy, formulas, environment and exact
   reproduction commands.
 
 All token figures use the local `o200k_base` tokenizer. RepoContext never calls
@@ -33,8 +33,9 @@ The harness keeps each layer separate:
 | call arguments | actual serialized MCP argument objects |
 | full-file reads | exact indexed token counts for reads required by the frozen workflow |
 
-The default eight-tool MCP declaration, including production instructions, is
-1,641 tokens in the current golden. Tool descriptions deliberately keep the
+The MCP declaration cost, including production instructions, is recorded in the
+current [workflow accounting table](eval/baseline.md#simulated-workflow-accounting).
+Tool descriptions deliberately keep the
 receipt/full-file distinction, exact-budget guidance, lossy-strip warning, and
 stale/re-index workflow while avoiding repeated prose. A 1,700-token test
 ceiling prevents later schema growth from being accepted by merely refreshing
@@ -63,7 +64,14 @@ returns an actionable `retry_budget_tokens`. That value is guaranteed to fit a
 deterministically chosen compact useful payload; it may exceed the mathematical
 minimum so the error path remains bounded on large repositories.
 
-Active limits are echoed in the schema-v3 `budgets` object with explicit bases.
+Active limits are echoed in the `budgets` object with explicit bases. The default
+profile uses raw `o200k_base` counts; another token profile or an explicit factor
+calibrates those counts and is not that model family's native tokenizer.
+
+For JSON, CLI `--compact` or MCP `compact: true` selects
+[the versioned compact representation](decisions/0021-compact-context-json.md),
+which omits legacy duplicate source fields. Its exact response budget still
+includes all emitted evidence and metadata.
 
 ## Index freshness
 
@@ -139,3 +147,27 @@ repoctx context "improve token budget packing" `
 
 Tokenize the exact stdout with the same local tokenizer. Do not use `wc -c`,
 bytes/4, or a characters-per-token approximation.
+
+For repeated CLI latency and budget measurements on generated 300-, 3,000- and
+30,000-file repositories, run the [scaling probe](reviews/scaling_probe.py)
+after building, with other builds and tests stopped:
+
+```powershell
+python docs/reviews/scaling_probe.py `
+  --cli src/RepoContext.Cli/bin/Release/net10.0/repoctx.dll `
+  --output ../repoctx-scaling-results.json --repetitions 5 --compact `
+  --skip-candidate-control
+```
+
+`--scales 300` permits a smaller smoke run; `--repo <clean-checkout>` adds the
+six fixed original audit tasks. The harness records every raw stdout response,
+recounts it with the local BPE tokenizer, and reports median and nearest-rank
+p95 latency. Calls run sequentially in new CLI processes against a warmed
+index/filesystem, so these timings include process startup. At five repetitions
+the reported p95 is the sample maximum; it is not a stable production tail
+estimate. The unbudgeted paths and top-eight controls separate missing eligible
+candidates from ranking and budget-output losses. `--skip-candidate-control`
+omits the potentially expensive exhaustive paths control on synthetic scales;
+then candidate recall is known only when top eight contains every label.
+Synthetic scaling and static
+file labels do not establish real agent task completion or total session cost.

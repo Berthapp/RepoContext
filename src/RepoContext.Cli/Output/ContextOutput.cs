@@ -18,9 +18,10 @@ namespace RepoContext.Cli.Output;
 public static class ContextOutput
 {
     public static string Render(
-        ContextResult result, OutputFormat format, string surface = Surfaces.Core) => format switch
+        ContextResult result, OutputFormat format, string surface = Surfaces.Core,
+        bool compact = false) => format switch
         {
-            OutputFormat.Json => RenderJson(result, surface),
+            OutputFormat.Json => RenderJson(result, surface, compact),
             OutputFormat.Md => RenderMarkdown(result, surface),
             _ => RenderText(result, surface),
         };
@@ -410,40 +411,42 @@ public static class ContextOutput
     }
 
     /// <summary>
-    /// Serializes the v3 context document. <c>representation_id</c> is computed
+    /// Serializes the default or opt-in compact context document. <c>representation_id</c> is computed
     /// over the canonical body with its own field omitted, so the identity never
     /// self-references (Q4).
     /// </summary>
-    private static string RenderJson(ContextResult result, string surface)
+    private static string RenderJson(ContextResult result, string surface, bool compact)
     {
-        ContextDocument body = BuildDocument(result, representationId: null);
+        ContextDocument body = BuildDocument(result, representationId: null, compact);
         string withoutIdentity = JsonSerializer.Serialize(body, OutputJson.Options);
         string representationId =
-            RepresentationDisplayId(result, "json", surface, withoutIdentity);
+            RepresentationDisplayId(result, "json", surface, withoutIdentity, body.SchemaVersion);
 
         return JsonSerializer.Serialize(
-            BuildDocument(result, representationId), OutputJson.Options);
+            body with { RepresentationId = representationId }, OutputJson.Options);
     }
 
     private static string RepresentationDisplayId(
-        ContextResult result, string format, string surface, string body) =>
+        ContextResult result, string format, string surface, string body,
+        int schemaVersion = RepoContextInfo.SchemaVersion) =>
         Hashes.Short(Fingerprints.RepresentationId(
             string.IsNullOrEmpty(result.FullEvidenceId) ? result.EvidenceId : result.FullEvidenceId,
-            RepoContextInfo.SchemaVersion,
+            schemaVersion,
             format,
             profile: result.TokenProfile ?? "o200k",
             encoding: "utf-8",
             surface,
             canonicalBody: body));
 
-    private static ContextDocument BuildDocument(ContextResult result, string? representationId) =>
+    private static ContextDocument BuildDocument(
+        ContextResult result, string? representationId, bool compact) =>
         new()
         {
-            SchemaVersion = RepoContextInfo.SchemaVersion,
+            SchemaVersion = compact ? RepoContextInfo.CompactContextSchemaVersion : RepoContextInfo.SchemaVersion,
             Command = "context",
             Query = result.Query,
             Terms = result.Terms,
-            State = result.State,
+            State = compact ? null : result.State,
             ContentState = result.ContentState,
             AnalysisState = result.AnalysisState,
             EvidenceId = result.EvidenceId,
@@ -459,8 +462,8 @@ public static class ContextOutput
             OmittedBy = BuildOmissions(result.Omissions),
             ContentTokens = result.ContentTokens,
             ProjectedReadTokens = result.ProjectedReadTokens,
-            EstimatedTokens = result.EstimatedTokens,
-            Results = result.Items.Select(BuildItem).ToList(),
+            EstimatedTokens = compact ? null : result.EstimatedTokens,
+            Results = result.Items.Select(item => BuildItem(item, compact)).ToList(),
             Reused = result.Reused.Select(r => new ReusedUnitDto
             {
                 Path = r.Path,
@@ -502,7 +505,7 @@ public static class ContextOutput
 
     private static int? Positive(int value) => value > 0 ? value : null;
 
-    private static ContextItemDto BuildItem(ContextItem item)
+    private static ContextItemDto BuildItem(ContextItem item, bool compact)
     {
         bool multiSpan = item.Spans is { Count: > 1 };
         return new ContextItemDto
@@ -512,12 +515,12 @@ public static class ContextOutput
             Score = item.Score,
             // Deprecated single-span fields: never mapped onto a synthetic
             // enclosing range when several spans were delivered.
-            StartLine = multiSpan ? null : item.StartLine,
-            EndLine = multiSpan ? null : item.EndLine,
+            StartLine = compact || multiSpan ? null : item.StartLine,
+            EndLine = compact || multiSpan ? null : item.EndLine,
             ContentTokens = item.ContentTokens,
             ProjectedReadTokens = item.ProjectedReadTokens,
-            EstimatedTokens = item.EstimatedTokens,
-            FileTokens = item.FileTokens,
+            EstimatedTokens = compact ? null : item.EstimatedTokens,
+            FileTokens = compact ? null : item.FileTokens,
             Hash = item.Hash,
             Receipt = item.Receipt,
             DuplicateOf = item.DuplicateOf,
@@ -544,7 +547,7 @@ public static class ContextOutput
                 Receipt = s.Receipt,
             }).ToList(),
             SpansOmitted = item.SpansOmitted,
-            Snippet = multiSpan ? null : item.Snippet,
+            Snippet = compact || multiSpan ? null : item.Snippet,
         };
     }
 
@@ -559,7 +562,7 @@ public static class ContextOutput
         public required IReadOnlyList<string> Terms { get; init; }
 
         /// <summary>Deprecated (v2): short content state. Use <c>content_state</c>.</summary>
-        public required string State { get; init; }
+        public string? State { get; init; }
 
         public required string ContentState { get; init; }
 
@@ -596,7 +599,7 @@ public static class ContextOutput
         public int ProjectedReadTokens { get; init; }
 
         /// <summary>Deprecated (v2): the blended legacy cost basis.</summary>
-        public int EstimatedTokens { get; init; }
+        public int? EstimatedTokens { get; init; }
 
         public required IReadOnlyList<ContextItemDto> Results { get; init; }
 
@@ -663,7 +666,7 @@ public static class ContextOutput
         public int ProjectedReadTokens { get; init; }
 
         /// <summary>Deprecated (v2): the blended legacy cost basis.</summary>
-        public int EstimatedTokens { get; init; }
+        public int? EstimatedTokens { get; init; }
 
         /// <summary>Deprecated (v2): full-file read cost when the item carries content.</summary>
         public int? FileTokens { get; init; }

@@ -29,14 +29,13 @@ there were. See [Working with artifacts](#working-with-artifacts-tickets-specs-r
 
 ## Why: tokens are the bill
 
-Every token figure repoctx reports is a real BPE count, and
+The default token profile uses real BPE counts, and
 `--response-budget-tokens 2000` is a hard ceiling measured against the exact
-bytes emitted — not an estimate. In the current deterministic candidate
-evaluation, repeating a slices request with its receipts cuts the core response
-from 1,916 to 616 tokens (68%) while retaining every labelled must-find file,
-symbol and span. See the [methodology, limitations and raw
-artifacts](docs/token-savings.md); the candidate is a baseline for future
-changes, not a retroactive pre/post quality comparison.
+text emitted. The [current evaluation](docs/eval/baseline.md#reuse-economics)
+records how receipts reduce repeated source delivery. Its frozen workflows
+measure evidence retrieval and response costs; they do not measure a coding
+agent's task success or total session savings. See the [methodology,
+limitations and raw artifacts](docs/token-savings.md).
 
 The loop an agent runs, on this repository:
 
@@ -288,7 +287,7 @@ via `repoctx related`).
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--path`, `--format` |
 | `related <file>` | Imports, dependents, linked tests, and the documents that describe a file. | `--format` |
 | `trace <ref>` | Every file that declares or mentions one exact term: a work-item key (`ABC-123`), a link, a symbol name or a path. | `--top`, `--path`, `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--ensure-fresh`, `--strip-comments`, `--no-memory`, `--path`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--ensure-fresh`, `--strip-comments`, `--no-memory`, `--path`, `--format`, `--compact` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
 | `prime` | Cache-stable repository primer for a cacheable prompt prefix (byte-identical for unchanged indexed content and token calibration). | `--files`, `--format` |
@@ -355,6 +354,13 @@ exits `3` with a deterministic `retry_budget_tokens=<n>` that is guaranteed to
 fit, and emits no partial result. The retry value is intentionally conservative
 rather than an exhaustively searched mathematical minimum, keeping malformed
 tiny-budget requests cheap. See ADR 0016.
+
+JSON callers can opt into [compact context JSON](docs/decisions/0021-compact-context-json.md)
+to remove legacy duplicate fields within the same response budget:
+
+```bash
+repoctx context "add logout" --detail slices --response-budget-tokens 2000 --format json --compact
+```
 
 #### Reuse: receipts vs. full-file possession
 
@@ -825,8 +831,8 @@ files in `sensitiveFiles` / `.repoctxignore`.
 See `CLAUDE.md` for build/test commands, repository structure and conventions,
 `docs/build-prompt.md` for the milestone plan, and `docs/decisions/` for the
 architecture decision records. `docs/benchmark.md` holds the performance
-benchmark protocol; `docs/token-savings.md` documents the measured end-to-end
-token savings of the M6 context protocol.
+benchmark protocol; [token accounting](docs/token-savings.md) documents the
+measured response costs and simulated evidence-gathering workflows.
 
 ### Releasing
 

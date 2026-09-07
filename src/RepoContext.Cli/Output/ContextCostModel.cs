@@ -19,11 +19,13 @@ public sealed class ContextCostModel : IResponseCostModel
 {
     private readonly OutputFormat _format;
     private readonly TokenScale _scale;
+    private readonly bool _compact;
 
-    private ContextCostModel(OutputFormat format, string surface, TokenScale scale)
+    private ContextCostModel(OutputFormat format, string surface, TokenScale scale, bool compact)
     {
         _format = format;
         _scale = scale;
+        _compact = compact;
         Surface = surface;
     }
 
@@ -35,8 +37,8 @@ public sealed class ContextCostModel : IResponseCostModel
     /// configured token profile.
     /// </summary>
     public static ContextCostModel ForCli(
-        OutputFormat format, TokenScale scale = default) =>
-        new(format, Surfaces.Cli, scale);
+        OutputFormat format, TokenScale scale = default, bool compact = false) =>
+        new(format, Surfaces.Cli, scale, compact);
 
     /// <summary>
     /// Measures the model-visible MCP text content block in the configured token
@@ -44,8 +46,8 @@ public sealed class ContextCostModel : IResponseCostModel
     /// separately by the evaluation harness and is deliberately not part of the
     /// per-call response budget.
     /// </summary>
-    public static ContextCostModel ForMcpText(TokenScale scale = default) =>
-        new(OutputFormat.Json, Surfaces.McpText, scale);
+    public static ContextCostModel ForMcpText(TokenScale scale = default, bool compact = false) =>
+        new(OutputFormat.Json, Surfaces.McpText, scale, compact);
 
     /// <inheritdoc />
     public int Measure(ContextResult result) => _scale.Apply(Tokens.Count(SurfaceText(result)));
@@ -53,7 +55,7 @@ public sealed class ContextCostModel : IResponseCostModel
     /// <summary>The exact text emitted at this surface, for measuring or asserting.</summary>
     public string SurfaceText(ContextResult result)
     {
-        string rendered = ContextOutput.Render(result, _format, Surface);
+        string rendered = ContextOutput.Render(result, _format, Surface, _compact);
 
         // Mirrors CommandSupport.WriteRendered: stdout carries exactly one
         // trailing newline, and the budget must account for it.

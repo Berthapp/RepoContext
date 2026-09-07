@@ -1,0 +1,3012 @@
+{
+  "schema_version": 1,
+  "id": "retrieval-holdout-2026-09-07",
+  "frozen_at": "2026-09-07",
+  "label_method": "Source-inspected retrieval questions authored before running this corpus. These are evidence-discovery tasks, not verified bug reports or completed coding tasks. The first six RepoContext queries are historical audit diagnostics, not unseen holdout tasks.",
+  "settings": {
+    "top": 8,
+    "response_budget_tokens": 2000,
+    "detail": "slices",
+    "candidate_pool": "All positive-scoring eligible paths from unbudgeted top=file_count; pre-score candidates are not observable."
+  },
+  "repositories": [
+    {
+      "id": "repocontext",
+      "upstream": "https://github.com/Berthapp/RepoContext",
+      "commit": "806ba51e24aed14904b799dd01430c9f78672b47",
+      "reference": "v0.10.0 audit source",
+      "archive": "sources/repocontext.zip",
+      "archive_sha256": "7fd0267d96ea2fc60c4dba60f231cd31d28ae075f254ceb33b295d43c1b70e54",
+      "scope": "Complete git source snapshot; dependencies are not installed or executed.",
+      "license": "MIT",
+      "license_path": "LICENSE",
+      "files": [
+        {
+          "path": ".editorconfig",
+          "role": "configuration_or_other",
+          "sha256": "fb2fa5620fb8a89d443c2015f40d631f2d623fcffe814051d0d7d967b5d2c90d"
+        },
+        {
+          "path": ".gitattributes",
+          "role": "configuration_or_other",
+          "sha256": "a4eb39ddd0ee968ab3103129793df34666272c084859490834f605dc7f599669"
+        },
+        {
+          "path": ".github/FUNDING.yml",
+          "role": "configuration_or_other",
+          "sha256": "4926fd1a0fbe4318ce3db89b8aa732e158cb37cc69c18e2c8aefba867611d129"
+        },
+        {
+          "path": ".github/workflows/ci.yml",
+          "role": "configuration_or_other",
+          "sha256": "072f0b8b9efeed736ecd3ae1bfd4273c9bb9c6b608f7d18ad37030d1ab077890"
+        },
+        {
+          "path": ".github/workflows/pages.yml",
+          "role": "configuration_or_other",
+          "sha256": "6a9a0dbbc6d9894efb18cb7896a267bb0bbaa2449c8deee3376ef5ef11ac7b23"
+        },
+        {
+          "path": ".github/workflows/release.yml",
+          "role": "configuration_or_other",
+          "sha256": "536f8ecc81730c9a3f175acbafcbc6e5de40ba2c16c57881246c403aa35443ab"
+        },
+        {
+          "path": ".github/workflows/tag-on-version-change.yml",
+          "role": "configuration_or_other",
+          "sha256": "67c51aac048bf83d1a6dec4571819878038ac4a6227884302146d8bcedc60261"
+        },
+        {
+          "path": ".gitignore",
+          "role": "configuration_or_other",
+          "sha256": "ccc92a80f53d17627048bf181588c711e7a8420437cb38d58aa045f02b23d9a8"
+        },
+        {
+          "path": "BannedSymbols.txt",
+          "role": "configuration_or_other",
+          "sha256": "ff6e8977314f1b58dc400aa51e2efe8df6ee755076e3ff5c53b174778ac8b38e"
+        },
+        {
+          "path": "Directory.Build.props",
+          "role": "configuration_or_other",
+          "sha256": "8eea9abfe9f1a983ac4fd14626005b6dde93c2b09161f5a76bc1da75d3e943f0"
+        },
+        {
+          "path": "LICENSE",
+          "role": "configuration_or_other",
+          "sha256": "cfc7749b96f63bd31c3c42b5c471bf756814053e847c10f3eb003417bc523d30"
+        },
+        {
+          "path": "NOTICE",
+          "role": "configuration_or_other",
+          "sha256": "e4047038ffbac184ca081eb89ba7f88996ac23e26613e6718f311109b458e1bd"
+        },
+        {
+          "path": "README.md",
+          "role": "documentation",
+          "sha256": "0266c5eef77d57fdd0c140765ae7788700bd58405f8a07334f515eb9584b59fe"
+        },
+        {
+          "path": "RepoContext.slnx",
+          "role": "configuration_or_other",
+          "sha256": "c178e556ad05afab086ac43c291b1f4d68514a3c82395f3ffe5881f4b80d9f95"
+        },
+        {
+          "path": "docs/assets/demo.svg",
+          "role": "documentation",
+          "sha256": "b093b91464edf042cf2f421676b1a04993e804303e9ca1da71e7fcc5fff997f8"
+        },
+        {
+          "path": "docs/assets/generate.mjs",
+          "role": "documentation",
+          "sha256": "cb1f85eb6e8c74613e1d337c2b1ac9ea11fa627e2e58c689901ad2febaca11a3"
+        },
+        {
+          "path": "docs/assets/token-savings-dark.svg",
+          "role": "documentation",
+          "sha256": "0d3773ff556fa48f18162fdb27541e0e5edd28d7b88fd52be734a0e153bd151b"
+        },
+        {
+          "path": "docs/assets/token-savings.svg",
+          "role": "documentation",
+          "sha256": "497edce6b6637476da068f5e440a22e478055cc66ab2f66d213b3e0ba9fb7f27"
+        },
+        {
+          "path": "docs/benchmark.md",
+          "role": "documentation",
+          "sha256": "a37a8caa8445639f896de6d994f6f9ebf5468b1f118e79f71ab23368c88cf8dc"
+        },
+        {
+          "path": "docs/build-prompt.md",
+          "role": "documentation",
+          "sha256": "f9afbaa13ee09c15b62ca8b3e14eaa3e439a8d3f85dd971558b4de4844f5e4e4"
+        },
+        {
+          "path": "docs/cost-efficiency-implementation-plan.md",
+          "role": "documentation",
+          "sha256": "39061f391c1218a72c73ae8bcd8af42755d52129d2a5f6e9d98637a1532f8636"
+        },
+        {
+          "path": "docs/decisions/0001-parser.md",
+          "role": "documentation",
+          "sha256": "3f57e2b09a76c9aaf995ba37b351db3b5f39c50ec2a148616211fde0c30ba4e7"
+        },
+        {
+          "path": "docs/decisions/0002-sqlite-native-bundle.md",
+          "role": "documentation",
+          "sha256": "5833db375bd9e9a5648bf25cb434d15f75cb90388c1a9055c54b11c3f3cc47aa"
+        },
+        {
+          "path": "docs/decisions/0003-source-of-truth.md",
+          "role": "documentation",
+          "sha256": "a6e59296a1c9160c6d89350b7a585ac67f418165008e28e4beebf61bc099b972"
+        },
+        {
+          "path": "docs/decisions/0004-data-model-and-contracts.md",
+          "role": "documentation",
+          "sha256": "bec0040858dcdd337a264868b438b7d2b3f1a156d7650d2066364ed0e6e08e10"
+        },
+        {
+          "path": "docs/decisions/0005-symbols.md",
+          "role": "documentation",
+          "sha256": "52afeb9e46c7e93b2879e1953653578ecaa5802e0aac3f303db14c7609111046"
+        },
+        {
+          "path": "docs/decisions/0006-graph-and-context.md",
+          "role": "documentation",
+          "sha256": "b366f47b168c49d5cc0fbb0c31ccb5cbc233cf43be6fbdd85fae1fc44f2b9fc7"
+        },
+        {
+          "path": "docs/decisions/0007-architecture-formats-release.md",
+          "role": "documentation",
+          "sha256": "de4d9583f024604a9dde8d79154cd0c251fc35598bf44594fa72b0c0d368e27e"
+        },
+        {
+          "path": "docs/decisions/0008-mcp-server.md",
+          "role": "documentation",
+          "sha256": "28b536b15804aeda199195790c8eb1a18787091b696417900a50ee2c6b565f2e"
+        },
+        {
+          "path": "docs/decisions/0009-token-lean-output.md",
+          "role": "documentation",
+          "sha256": "3452e46d96fb11bf38afe625d5c038fa57c203ffbf84154036360c0bb9b0f2e3"
+        },
+        {
+          "path": "docs/decisions/0010-token-frugal-context-protocol.md",
+          "role": "documentation",
+          "sha256": "d802045ad0b095babbbecd15bbb18bba0433c72e94e30979e8d8fe170ed41742"
+        },
+        {
+          "path": "docs/decisions/0011-token-savings-stats.md",
+          "role": "documentation",
+          "sha256": "4b1f95ebbf0e81a925153a11e56d767f8e4d18682e200362ae27254ee0d86cf0"
+        },
+        {
+          "path": "docs/decisions/0012-token-optimization-levers.md",
+          "role": "documentation",
+          "sha256": "bbe94d4628dfd3cc9a627812cad3cf9352fe9622d5358a04c349515b89b0aac7"
+        },
+        {
+          "path": "docs/decisions/0013-agent-memory.md",
+          "role": "documentation",
+          "sha256": "7084270489b7480c9a25f8fdaa4fd4e691195a4383f50941e2e5659bece5cfc8"
+        },
+        {
+          "path": "docs/decisions/0014-packagereference-distribution.md",
+          "role": "documentation",
+          "sha256": "3ecbe72eea779fac8a20f6bbabfd143ee7193cb79ca7d14ac53bacf0c269bd62"
+        },
+        {
+          "path": "docs/decisions/0015-state-identity-and-receipts.md",
+          "role": "documentation",
+          "sha256": "ce2f57709ab8c2152bd7913be5715bb60e45e2dbeb62a27c1be6904e4ed0b5b6"
+        },
+        {
+          "path": "docs/decisions/0016-exact-budgets-and-cost-semantics.md",
+          "role": "documentation",
+          "sha256": "b793c97cb71908417a529cc1baf1cf4dea226cd0c16640fb91a90c2d7fca899b"
+        },
+        {
+          "path": "docs/decisions/0017-whole-repository-coverage.md",
+          "role": "documentation",
+          "sha256": "c6b82a145db5b44bb3a9e1eea8aaa9d9777e0ca422127a066c5bfcfaf562a4ee"
+        },
+        {
+          "path": "docs/decisions/0018-npm-distribution-and-environment-integrations.md",
+          "role": "documentation",
+          "sha256": "088e9394048cbafefc64715ab5981fd2fed0771e5ce957cbf8c22451e3af5a12"
+        },
+        {
+          "path": "docs/decisions/0019-artifact-graph-and-scale.md",
+          "role": "documentation",
+          "sha256": "cc75c8e8d73ac594d087d610b11a701a06c1e4095aaf7ac3c8e60c8fd26c6d2e"
+        },
+        {
+          "path": "docs/decisions/0020-every-file-type.md",
+          "role": "documentation",
+          "sha256": "8de8fcd02668e40baeb68f49d390dc9d4fe933ecb6e7d3787dc72c08a9cdfc73"
+        },
+        {
+          "path": "docs/decisions/README.md",
+          "role": "documentation",
+          "sha256": "6ff393044d014ef9e187a396aeae31a880ffff2f8eb573f8209ca50e72e87591"
+        },
+        {
+          "path": "docs/eval/baseline.md",
+          "role": "documentation",
+          "sha256": "cc2b2969926f72fd66e556513cbc0d42e1ce9fd15fe6c849e794b2f5eaa8afd5"
+        },
+        {
+          "path": "docs/eval/manifest.md",
+          "role": "documentation",
+          "sha256": "323903286bd5c012fdb875b294a30cf82ff15524bc988187b0682cb1d2dc7f18"
+        },
+        {
+          "path": "docs/eval/raw/explain-cs-envelope.cli.txt",
+          "role": "documentation",
+          "sha256": "d850028ecc43ed3db7ffa2d2dca8911473eeb0818c2ab76445b32d1b9ab408c4"
+        },
+        {
+          "path": "docs/eval/raw/explain-cs-envelope.core.json",
+          "role": "documentation",
+          "sha256": "6925e38b29c125f61218ccdc99982164b443af616acb25245e76efed8fa53bba"
+        },
+        {
+          "path": "docs/eval/raw/explain-cs-envelope.mcp-content.json",
+          "role": "documentation",
+          "sha256": "12dccbf0c08f95e892fe2066935721a7aa2dafbd39ed3021e888fb1f97f45cfe"
+        },
+        {
+          "path": "docs/eval/raw/explain-cs-envelope.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "ac87b9c42d78959a5b2632d8fd8bd2f2825285d2d130d1fbebbfdf3547ba17a2"
+        },
+        {
+          "path": "docs/eval/raw/explain-cs-envelope.workflow.json",
+          "role": "documentation",
+          "sha256": "c97acf4f5b0b242ec3cc0e2893572c257eae88ff6166e5e9d21cb3747105fd6e"
+        },
+        {
+          "path": "docs/eval/raw/explain-ts-session.cli.txt",
+          "role": "documentation",
+          "sha256": "75010c7186becd52be25437cce647ab1e9ea60d80ee6ebbef77bf256227bb87b"
+        },
+        {
+          "path": "docs/eval/raw/explain-ts-session.core.json",
+          "role": "documentation",
+          "sha256": "8234eea59e0aee5edc94a172f65b0897b930466bc0e5fa7b3b55331867e5e7ef"
+        },
+        {
+          "path": "docs/eval/raw/explain-ts-session.mcp-content.json",
+          "role": "documentation",
+          "sha256": "1c433ca81920bdc415a13613d655220e9cf8460f87b27224088007ec099dc03a"
+        },
+        {
+          "path": "docs/eval/raw/explain-ts-session.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "b13b268656ce96182194874efee6aa6d5da538e18cb2ebc980aa0e0d6d65aff2"
+        },
+        {
+          "path": "docs/eval/raw/explain-ts-session.workflow.json",
+          "role": "documentation",
+          "sha256": "ed8d81467cec88552aee8826acf9e8f4a99b3dd317a9713b7aaa717fd55d92f9"
+        },
+        {
+          "path": "docs/eval/raw/fix-cs-budget.cli.txt",
+          "role": "documentation",
+          "sha256": "de1800b806e2da3f8bb7336dbdba565480afcbac7ec3a11436cbbbadc9297b33"
+        },
+        {
+          "path": "docs/eval/raw/fix-cs-budget.core.json",
+          "role": "documentation",
+          "sha256": "f46d18071ea052e524afcf5d96dcfb076cccc5bd73f61d87af840f0b03342e25"
+        },
+        {
+          "path": "docs/eval/raw/fix-cs-budget.mcp-content.json",
+          "role": "documentation",
+          "sha256": "359111379f271711a5e60ba0288e9386058d251ea655e976b582a4a48d0485b9"
+        },
+        {
+          "path": "docs/eval/raw/fix-cs-budget.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "218d5cdf3e9b5abdd4dfa39883016d5bf85ae13aef6d21f3dd480cb796005efe"
+        },
+        {
+          "path": "docs/eval/raw/fix-cs-budget.workflow.json",
+          "role": "documentation",
+          "sha256": "9fb95ff19fe258a40d49cd783c98ecf489db763ad99a61fb38307a8da93331f2"
+        },
+        {
+          "path": "docs/eval/raw/fix-ts-session-validity.cli.txt",
+          "role": "documentation",
+          "sha256": "fe46ce9f76e2739521337a69f979f059a1e753b1bb427f5e219694e96e472c3c"
+        },
+        {
+          "path": "docs/eval/raw/fix-ts-session-validity.core.json",
+          "role": "documentation",
+          "sha256": "e1b698410d66af8ae85b9261922d3cf0095db0f169e33ad53270431ab1597a30"
+        },
+        {
+          "path": "docs/eval/raw/fix-ts-session-validity.mcp-content.json",
+          "role": "documentation",
+          "sha256": "3baf84a20c41f41824f5914addfaf790d3e6d01e3f9291b50faa3552a80be517"
+        },
+        {
+          "path": "docs/eval/raw/fix-ts-session-validity.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "37893639f7a70cf6d0d668d39899cba7b1ba27f8ee0630076cbe63fe531e26d1"
+        },
+        {
+          "path": "docs/eval/raw/fix-ts-session-validity.workflow.json",
+          "role": "documentation",
+          "sha256": "4601b7ea6f944be7303ea82005a08af9de255f50f4caa3cf55083c850edb919e"
+        },
+        {
+          "path": "docs/eval/raw/impact-ts-session.cli.txt",
+          "role": "documentation",
+          "sha256": "46f32bd13a932cfb4bea67502f812097d689e1d07b979819c87181d2f02afec7"
+        },
+        {
+          "path": "docs/eval/raw/impact-ts-session.core.json",
+          "role": "documentation",
+          "sha256": "3622600a431993fced6479defd04cd94e552e2d0bed035c0d33cde982b012295"
+        },
+        {
+          "path": "docs/eval/raw/impact-ts-session.mcp-content.json",
+          "role": "documentation",
+          "sha256": "96b3144763a34bce7158bf741a9213f8f6b312dcae4269b4d6e8b4b028854033"
+        },
+        {
+          "path": "docs/eval/raw/impact-ts-session.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "7971e069f97a5cca7978046bcfd47e6737d4d3f636ec9c1160f68ad36fa1c868"
+        },
+        {
+          "path": "docs/eval/raw/impact-ts-session.workflow.json",
+          "role": "documentation",
+          "sha256": "09c35792cc0b1ad3ddd327a91de46121a6af2505d9712ebb1ad9298d6eecd63a"
+        },
+        {
+          "path": "docs/eval/raw/index-stats.json",
+          "role": "documentation",
+          "sha256": "adb1fe514abb10bab741cb29b5ff5322cb9b1b873a4bad3d7df2bd6b01839e1a"
+        },
+        {
+          "path": "docs/eval/raw/locate-cs-packer.cli.txt",
+          "role": "documentation",
+          "sha256": "528b20b4ea1fbd3d1e9c1d5cb61762371ff60703eab86ba9f29047b370757bc9"
+        },
+        {
+          "path": "docs/eval/raw/locate-cs-packer.core.json",
+          "role": "documentation",
+          "sha256": "f78f3d156ccbfa5d9493f192305edb0930ec7f3e27fbd899f85254ce49a890c3"
+        },
+        {
+          "path": "docs/eval/raw/locate-cs-packer.mcp-content.json",
+          "role": "documentation",
+          "sha256": "6cae98301baf7e90f3686114fb38a0c5f1d67f1672a31f927a6b8043b925cc85"
+        },
+        {
+          "path": "docs/eval/raw/locate-cs-packer.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "5fd21d167e68fd60ec3fffdfa343b66f0b5f98db68761c45cd680dcef7e6ce93"
+        },
+        {
+          "path": "docs/eval/raw/locate-cs-packer.workflow.json",
+          "role": "documentation",
+          "sha256": "9542190678e5fd3bac811c848c74562b11ef29894d75d5891dcf912192776912"
+        },
+        {
+          "path": "docs/eval/raw/locate-ts-login.cli.txt",
+          "role": "documentation",
+          "sha256": "8f96e54b20a579ed66cad3577c071d1067e7420274016d1f1a96ef1a3bfedf60"
+        },
+        {
+          "path": "docs/eval/raw/locate-ts-login.core.json",
+          "role": "documentation",
+          "sha256": "e2223b960f05cdf6076658b824a788843dc38cd3a43a47db02b8ec6e0db282a3"
+        },
+        {
+          "path": "docs/eval/raw/locate-ts-login.mcp-content.json",
+          "role": "documentation",
+          "sha256": "3002283643f5e3736d61c8f5a0801f8e02a992f3ba51e28271a8a3df7c3efd9f"
+        },
+        {
+          "path": "docs/eval/raw/locate-ts-login.mcp-envelope-model.json",
+          "role": "documentation",
+          "sha256": "381b5cfc064bf1df7f40b2b140ff84d309786433ac30175f57b0c524f391d4b7"
+        },
+        {
+          "path": "docs/eval/raw/locate-ts-login.workflow.json",
+          "role": "documentation",
+          "sha256": "c2102dd83b0d32b71c9d56e827c944551369b8d25077b89708cf417b5a6e85ac"
+        },
+        {
+          "path": "docs/eval/raw/mcp-session-model.json",
+          "role": "documentation",
+          "sha256": "096265b18618ab052a2eb515721397290539b14264a187de6d7552c9d275ff92"
+        },
+        {
+          "path": "docs/eval/raw/reuse-first.core.json",
+          "role": "documentation",
+          "sha256": "82561f5469e9e4316f22570549bad779422e8ac821917739d830249442cff603"
+        },
+        {
+          "path": "docs/eval/raw/reuse-repeat.core.json",
+          "role": "documentation",
+          "sha256": "5b9bbf8da8ddcac02f0f2dbd1bc9c33e1cdc10cf99c7b36b9ad0533a74222a0f"
+        },
+        {
+          "path": "docs/token-savings.md",
+          "role": "documentation",
+          "sha256": "2af5a68ed12467180e2b87bcb49091f09b1a292fed0928ccb59dfa65f6008b37"
+        },
+        {
+          "path": "global.json",
+          "role": "configuration_or_other",
+          "sha256": "b48d6da8fa62c0da7cc8a2da4ea036ac55836660a448ba533135abb5b8451b73"
+        },
+        {
+          "path": "npm/build-packages.mjs",
+          "role": "production",
+          "sha256": "9cf15e786bc004b41afc88fc0f4fd3f0a7d24532067a3c871d8b3c3ac729442e"
+        },
+        {
+          "path": "npm/repocontext/README.md",
+          "role": "documentation",
+          "sha256": "dd6a63ce22b5dd334fabfc9745c2cc06f91db2ce638786f7940fd884a2a4b31e"
+        },
+        {
+          "path": "npm/repocontext/bin/repoctx.js",
+          "role": "production",
+          "sha256": "35517990fd9495f707582de5ffcffd4a738b6223d567918dc866a5f125b3d0e1"
+        },
+        {
+          "path": "npm/repocontext/lib/platform.js",
+          "role": "production",
+          "sha256": "9f72740aa31793e27211250f3eaab72343ce3004555f16ddf434785fc7b83228"
+        },
+        {
+          "path": "npm/repocontext/package.json",
+          "role": "configuration_or_other",
+          "sha256": "168004f8147dad373a1dff7c431c06731ab70ea8a5a2f921318b8bbeb577652e"
+        },
+        {
+          "path": "npm/repocontext/test/platform.test.mjs",
+          "role": "production",
+          "sha256": "16c3b8381a098d308afc8fbf5b363b593e94f04f74adf772eb1735d14bac792f"
+        },
+        {
+          "path": "repocontext-produktdoku.md",
+          "role": "documentation",
+          "sha256": "ca92b73b65ed49f11d5773f00c1af4ccf3bfc34d1dc735bb41dc64ca1638e41f"
+        },
+        {
+          "path": "repoctx.config.json",
+          "role": "configuration_or_other",
+          "sha256": "a3cdc3bb51d7779a526464cea10664f7fd904a0f7a4d9b7115517d1d8776b8a8"
+        },
+        {
+          "path": "site/index.html",
+          "role": "configuration_or_other",
+          "sha256": "6b9891e03fcd107a47b2a507dd525b30272bdc935b8828a8ab9f0fb9990dfe9c"
+        },
+        {
+          "path": "spikes/README.md",
+          "role": "documentation",
+          "sha256": "50c3d9f020c48168cd640c451ce9f732d2b0742827c56c88493927cb14288ee1"
+        },
+        {
+          "path": "spikes/parser/Program.cs",
+          "role": "production",
+          "sha256": "04c8d8522bbafeee6292faa27ff891bb0d60fa2d58c6c254118def86b58e9b62"
+        },
+        {
+          "path": "spikes/parser/Spike.csproj",
+          "role": "configuration_or_other",
+          "sha256": "b9d0707fd0af082fddd27dc01e2480a0501e0d66f304b96dc35406c7f6597d34"
+        },
+        {
+          "path": "src/Directory.Build.props",
+          "role": "configuration_or_other",
+          "sha256": "a218d0fcfd83f2a9a049cbff7ca00a195c58a28262b98258d219d798efae7111"
+        },
+        {
+          "path": "src/RepoContext.Cli/CliApplication.cs",
+          "role": "production",
+          "sha256": "9b0e66b08b9e63c64404a5e7518850b632d72154d5a589e7ad3484980df7114d"
+        },
+        {
+          "path": "src/RepoContext.Cli/CliInfo.cs",
+          "role": "production",
+          "sha256": "97208bab2dce581eaf74e78d9c8d8997c78f25be48e3830cae033a402a8be1ff"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/ArchitectureCommand.cs",
+          "role": "production",
+          "sha256": "5eef961d30c417d4cb5af87eb2bce3a3e9540c34d89e065c298d5cdd471ffd21"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/ChangedCommand.cs",
+          "role": "production",
+          "sha256": "60409eed0c4e110ffbdb9280f2dcf34a51665ed7358cd218ca229a32fe0f9a7a"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/CommandSupport.cs",
+          "role": "production",
+          "sha256": "0e2693716da95f4bf58424e19e18531b9e1f43556a69cabf2f46654747469294"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/ContextCommand.cs",
+          "role": "production",
+          "sha256": "dbf1de852f75536de1081f1ef6b6fbec8972e63b4e93403ee537f9496c7900ea"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/GuideCommand.cs",
+          "role": "production",
+          "sha256": "9ff547f67fad793dbb0ba337d13185147a576044576fd6be805042dd737358a7"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/IndexCommand.cs",
+          "role": "production",
+          "sha256": "db42076f4e82afc8e3b8b0d9ed8905cd367eeccfadce0fe83e634aee725ece09"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/InitCommand.cs",
+          "role": "production",
+          "sha256": "90d97a1653edc5ff5bb644978475ab3af058077205060738212761002568ec5d"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/IntegrateCommand.cs",
+          "role": "production",
+          "sha256": "fa7720e6df58fa8a35bd4e9b1adee810a4d7eb1ce383d5ed7c9e154ceb0f4087"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/McpCommand.cs",
+          "role": "production",
+          "sha256": "fb28c6d101d216c9e417bd174801b551705cddf8e2f8fdd23085ae2174772c2d"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/MemoryCommand.cs",
+          "role": "production",
+          "sha256": "bbcf11013163cdb7b52982152ddc7f796d3d59e2f0e74f2dfd522a5d98d6435c"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/OutlineCommand.cs",
+          "role": "production",
+          "sha256": "2da43721ad0e8bf7238edba761d61cd67f84eada7a8cf6a44ea11749649920f6"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/PrimeCommand.cs",
+          "role": "production",
+          "sha256": "be8b9181e957ce545960f036e570e8d58e1ce2b5674ccd38e68de37796f73c1f"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/RelatedCommand.cs",
+          "role": "production",
+          "sha256": "828563b5b4d3dc8919dcdb933f8a508db585eff35be535807cdc730d9985b86c"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/SearchCommand.cs",
+          "role": "production",
+          "sha256": "9d50f1c9d1995548f3555232015ff93bcf5e0dcdb6904b12fc161716826da1f5"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/StatsCommand.cs",
+          "role": "production",
+          "sha256": "000cd16d6e999c55be4859eb1f47f6a0f7ef8d2d02d17b4c67cfc09ddef1fb84"
+        },
+        {
+          "path": "src/RepoContext.Cli/Commands/TraceCommand.cs",
+          "role": "production",
+          "sha256": "d16560e03efabdc4a5b825a3e768cb740f072be17806f9627b7b5d98fc005242"
+        },
+        {
+          "path": "src/RepoContext.Cli/ExitCode.cs",
+          "role": "production",
+          "sha256": "d2b09a2c16bc55e586c3b8e84bc0f04b9f4f3cca3eee1240e9b5ca97bfc7b5ef"
+        },
+        {
+          "path": "src/RepoContext.Cli/Mcp/McpServerRunner.cs",
+          "role": "production",
+          "sha256": "5140b376c7eae76aad86f919e1e23ef93eb1b7354dd1fd876409a8034cbc9ff1"
+        },
+        {
+          "path": "src/RepoContext.Cli/Mcp/McpTools.cs",
+          "role": "production",
+          "sha256": "9b42e82c34f8181436aab0c6ebe34cf5f1d360172477ece57d52b458381ba7f6"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/ArchitectureOutput.cs",
+          "role": "production",
+          "sha256": "37d536dc2864cbed9b8756bd9236808f8b877d4a82974427d869c0611a47541a"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/ChangedOutput.cs",
+          "role": "production",
+          "sha256": "cc7a448abc3931397444f380b2b4b0206e7badc50aecc90a52e06f0fabe2d7bb"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/ContextCostModel.cs",
+          "role": "production",
+          "sha256": "75706f9f3eda522a25f0b1aaaafbac45b64c8ec7aeb7d89dab12eb91bb837f25"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/ContextOutput.cs",
+          "role": "production",
+          "sha256": "58863e0b53355ef9782afdcb170980c88e1a98a1213c3fdb15e01a779846cc67"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/MemoryOutput.cs",
+          "role": "production",
+          "sha256": "9ebe297b0d217fa40a844bf50d79ec0eda64a0c0f6c2bc9e15d3afd9bfecc0ec"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/OutlineOutput.cs",
+          "role": "production",
+          "sha256": "559238bd8e1c1297ecab159ae14ebb2c311d490e679f55b1f458bae45a587a4f"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/OutputFormat.cs",
+          "role": "production",
+          "sha256": "794d5a4f7fa541a962ac72697be63f5cabdfac164a71e28536504800b9c68022"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/OutputJson.cs",
+          "role": "production",
+          "sha256": "81dce5028602587b6d1658990ff39ac6cf68b549fb16a4c7638f74bd457fe636"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/PrimeOutput.cs",
+          "role": "production",
+          "sha256": "ed2830eb0a36c54a1e59e611329d47ce8b2e07b27470d3b923e3f1cb06947d64"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/RelatedOutput.cs",
+          "role": "production",
+          "sha256": "442dc72e9393c00df62b7ca5c442911e7a5accf2c382a3bb2ce103d3b046aaf0"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/SearchOutput.cs",
+          "role": "production",
+          "sha256": "904ddd156072311a8413e9010a7341bcb32ffa96d5fd5b9d14d0d8c6853c5d70"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/StatsHtmlOutput.cs",
+          "role": "production",
+          "sha256": "13de3bfa4e4736e4303d1fe0323db88fdfb4bc9cdc7010b17de2014d2a4af936"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/StatsOutput.cs",
+          "role": "production",
+          "sha256": "7d6d5592f11e2dda93e7ac2d7b411077b5eb94c518727ef89e268dbdbb4f156f"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/TraceOutput.cs",
+          "role": "production",
+          "sha256": "0e6cc835b27bbbb6b461b7c89cd562423c4051b07cf8465845c7bcb062e76de2"
+        },
+        {
+          "path": "src/RepoContext.Cli/Program.cs",
+          "role": "production",
+          "sha256": "3ad2f015dfda5ed137cfa8a00bec7bbc58362e1d6a647c6a431e43de7683831a"
+        },
+        {
+          "path": "src/RepoContext.Cli/RepoContext.Cli.csproj",
+          "role": "configuration_or_other",
+          "sha256": "fbe0492f36d6b531dfa0c5de48918bdba6705b9492e0404c850beaff37381408"
+        },
+        {
+          "path": "src/RepoContext.Core/Architecture/ArchitectureEngine.cs",
+          "role": "production",
+          "sha256": "f20b2ad793348832ebbc5d4d9c7eba01424ef43954fff896728ee662594e6c7e"
+        },
+        {
+          "path": "src/RepoContext.Core/Architecture/ArchitectureResult.cs",
+          "role": "production",
+          "sha256": "389807d3820007660f7e0ffe9b08fd4b08b1b1fcb7262f3a3ee8a560d8fcc174"
+        },
+        {
+          "path": "src/RepoContext.Core/Architecture/PrimeEngine.cs",
+          "role": "production",
+          "sha256": "dd9abc65df9065b27ecd361b281bfecca9fa21b45b9339673e43332e74d8ce0d"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/AgentInstructions.cs",
+          "role": "production",
+          "sha256": "c331e9b1ee8220bc7a4c92ca9b4b749a4537639dbd3fc88b24515b94bef968b3"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/AgentIntegrations.cs",
+          "role": "production",
+          "sha256": "2c7f2efae0d74af7424b5dacdd32feebd28ebcaf65a503ee5d19e0a0c2f6ecdd"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/ConfigStore.cs",
+          "role": "production",
+          "sha256": "1eec3c28d9716010f7b644984c29bf03d0d4625ea462240e620ff11649165a7f"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/Initializer.cs",
+          "role": "production",
+          "sha256": "92f20034e61a9f150cc3e021088e453af3e5c1d00b108e6b165ba8a585e53dcb"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/RepoctxConfig.cs",
+          "role": "production",
+          "sha256": "5f66fff20218134407450b12136bd4d4e05d88d9d882eabff871122a75fd6f3b"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/AmbientSession.cs",
+          "role": "production",
+          "sha256": "3893f3adfd88a09cf5cb277f47ba8d2af4d66b4c40bce4b62db34517aff016b0"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/CommentStripper.cs",
+          "role": "production",
+          "sha256": "8a0b0b4281aec03fdeb87e99d9c0c16ea115575c06370b0fc4048ab2d9a046ce"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/ContextEngine.cs",
+          "role": "production",
+          "sha256": "a88548bd852108e143f1248888b9a73c65c0600cd5cbfed4be940afa9347b452"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/ContextResult.cs",
+          "role": "production",
+          "sha256": "5e3c1228f36ec67fa0b31ee07944d62883ae51566871efe90092251206c469c7"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/DetailPolicy.cs",
+          "role": "production",
+          "sha256": "27bc83d63c516bfbadee8c79413e8178e24ef4b8b53a94b94a410f0d46ce7d06"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/QueryAnalyzer.cs",
+          "role": "production",
+          "sha256": "4cc0f12caa38b9eda3cf9aedce23d8fd6320076009b71e165ee6d055deef29d6"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/ReasonCompression.cs",
+          "role": "production",
+          "sha256": "519a5dc5a333424589649af0a186ea927b2a904403ba687807531d41a2ac676c"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/ResponseCost.cs",
+          "role": "production",
+          "sha256": "a51b20a4a87ce4b7e5ac6c34014fcee2cdc47368fee3064e8e9e1b963acbeda7"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/SessionStore.cs",
+          "role": "production",
+          "sha256": "8076d9a74719121719ab5049bfb60a6541218e8322c79f5631c978854e649479"
+        },
+        {
+          "path": "src/RepoContext.Core/Graph/GraphBuilder.cs",
+          "role": "production",
+          "sha256": "29f5bc8334d139f6fb89beed2f22c544a33e40df2f755b39b726c7467c9a0711"
+        },
+        {
+          "path": "src/RepoContext.Core/Graph/ReferenceExtractor.cs",
+          "role": "production",
+          "sha256": "e7613b4a49a3e67c7e2824f8b1c8c22c2c8605866d7cf54b98e2306e5ec324be"
+        },
+        {
+          "path": "src/RepoContext.Core/Graph/Related.cs",
+          "role": "production",
+          "sha256": "3c241a34e0147e7b80467237e8fe5225c21a28eb66d69b59b7b20e49ad9b5799"
+        },
+        {
+          "path": "src/RepoContext.Core/Graph/Trace.cs",
+          "role": "production",
+          "sha256": "49441abe3b92bde6a5e176565020517bdeaa12a168302d9a2e36e00fd3d9379d"
+        },
+        {
+          "path": "src/RepoContext.Core/Identity/Canonical.cs",
+          "role": "production",
+          "sha256": "701fe02d1aa95eb103cb9c1cf64aaec7f1423bda1d108085c570b91ec55354dd"
+        },
+        {
+          "path": "src/RepoContext.Core/Identity/Fingerprints.cs",
+          "role": "production",
+          "sha256": "9193cd8224979be2aafbe9c83305da9a676ebffba6ad49971e939f967696d25d"
+        },
+        {
+          "path": "src/RepoContext.Core/Identity/ProducerVersions.cs",
+          "role": "production",
+          "sha256": "b6a5ef519102ece56a66337e210c0edd0ce5b2397b5eaaf4da4915986adf577c"
+        },
+        {
+          "path": "src/RepoContext.Core/Identity/Receipt.cs",
+          "role": "production",
+          "sha256": "08bd5dba517c9be5c218a064d914c15ac86b1d46a4a3eea251e10bfe9fc3129f"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/ChangeDetector.cs",
+          "role": "production",
+          "sha256": "d2aabddd2eddcb2ae7623b8b6cb3c59d2aba5ff93f5c585e06996fa561c066a9"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/Chunk.cs",
+          "role": "production",
+          "sha256": "a40fd042d0be11a78b398e7bafdf743382476d3c08a41372210aa79fbc857e25"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/Chunker.cs",
+          "role": "production",
+          "sha256": "e3775ab928631b379329bdc4f257b8a1c58190990b392e31840859312accbfcc"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/Indexer.cs",
+          "role": "production",
+          "sha256": "a034c0f508bc7b7f22e6fa5de03384658db011ce8a4076ed3b90bd5c1b6e279c"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/LineDiff.cs",
+          "role": "production",
+          "sha256": "325aee6adb2d27e54a888007aa11df5c7748d03e6039065f7fdce3e5e411b4c6"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/TokenScale.cs",
+          "role": "production",
+          "sha256": "7328c761c731fe67366393261003d39d0cfc8570f21835ddda50827f76e5c652"
+        },
+        {
+          "path": "src/RepoContext.Core/Indexing/Tokens.cs",
+          "role": "production",
+          "sha256": "53e5766b4282d36f8783f6f01896ca3eed875fe61f5f78c47b48aec98e271d49"
+        },
+        {
+          "path": "src/RepoContext.Core/Memory/MemoryEngine.cs",
+          "role": "production",
+          "sha256": "3dc481616b13c42aebde6c1a80dce675b94ea9e12474b8079592d61e31de7b28"
+        },
+        {
+          "path": "src/RepoContext.Core/Memory/MemoryEntry.cs",
+          "role": "production",
+          "sha256": "05bd7b04f657cbfc1e5edb27710888ad10d586e7339fbb4a380fbce7ede4ddde"
+        },
+        {
+          "path": "src/RepoContext.Core/Memory/MemoryStore.cs",
+          "role": "production",
+          "sha256": "24e20ad6c7778b19d721e0cf61d99ed8744ecca235709a55b547c07d1e7e76b1"
+        },
+        {
+          "path": "src/RepoContext.Core/Outline/Outline.cs",
+          "role": "production",
+          "sha256": "ed35ac1550216becbd8c1e46fbb71519079103f17f9c0843ca3a4b3d31606b1c"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/DeclarationExtractor.cs",
+          "role": "production",
+          "sha256": "80ba6f0edd03253a47e5ab58a639c59bf9a36bc8eb241a217d8fb35d1a2dec93"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/DocExtractor.cs",
+          "role": "production",
+          "sha256": "a5f7a9ad5e8fde2b8fe3d8a28e1f65574f297d5bcf63aaaa3378f942004050b9"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/ILanguageParser.cs",
+          "role": "production",
+          "sha256": "787b184ed8bc28c1e0a7a4034dfbedbb0b6bc7c91fbf162da47bfa9078622c16"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/Identifiers.cs",
+          "role": "production",
+          "sha256": "54d6a8fb0355ab2b126cb12a1966df358e68a94b63b9865f26391457990e59c9"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/StructureAnchor.cs",
+          "role": "production",
+          "sha256": "fdfd3e072d75e89c849c794fa72c867d2a8452fb6213279525fad5a0c0ea25d3"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/StructureExtractor.cs",
+          "role": "production",
+          "sha256": "a04fa27758c169b262e428458f1746d262e07d0e7bc6371cf1d569cc147b8da2"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/Symbol.cs",
+          "role": "production",
+          "sha256": "225ba995c3cf7c14d98cf662ce16013b082dc80cebb9159d050f7da56eb4b7f0"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/SymbolExtraction.cs",
+          "role": "production",
+          "sha256": "2eb05ee681096ca41165cecd3d1dcda1c01b82193b7a3c94d6a5e1d160e82edb"
+        },
+        {
+          "path": "src/RepoContext.Core/Parsing/TreeSitterParser.cs",
+          "role": "production",
+          "sha256": "5cc8b9fdf4c5f74588769c538495b665b4a7bd0320e7eea0ab0e72da8de206bc"
+        },
+        {
+          "path": "src/RepoContext.Core/PathScopedMutex.cs",
+          "role": "production",
+          "sha256": "9356be9457ead6eb008f4c2b1b568bfabd4e3342c45414a32105b7873c3abf62"
+        },
+        {
+          "path": "src/RepoContext.Core/Query/FtsQuery.cs",
+          "role": "production",
+          "sha256": "3d724152a9c58237dea829e13b58be3920c112bb037c10b5c936e318c29de599"
+        },
+        {
+          "path": "src/RepoContext.Core/Query/PathScope.cs",
+          "role": "production",
+          "sha256": "3740550678a189cd088bd00f442370a4031e6c0056b602e2613d5edf182478b6"
+        },
+        {
+          "path": "src/RepoContext.Core/RepoContext.Core.csproj",
+          "role": "configuration_or_other",
+          "sha256": "78ebc97e7f8c4c180d4b49c839c83285b6046aefcd4754ec0dd1647815551532"
+        },
+        {
+          "path": "src/RepoContext.Core/RepoContextInfo.cs",
+          "role": "production",
+          "sha256": "c6ebe7adef1411264e628f8fea4c03cc4847a1dde05cb1d5e19cf5764bf2ebcc"
+        },
+        {
+          "path": "src/RepoContext.Core/RepoLayout.cs",
+          "role": "production",
+          "sha256": "c589eee0ff5f0517695b281dafc8d134f8da3ea926cb25ab672ed2d8e9177588"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/FileClassifier.cs",
+          "role": "production",
+          "sha256": "3f9cecde910c677bb41c2b3ab37afa4a3cd0f1945b9abeff3f3af69144672080"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "role": "production",
+          "sha256": "b56d27f97bff234adb8a464554bc53e068798e3d5be06d9a7ff8a37424f24013"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/GitignoreMatcher.cs",
+          "role": "production",
+          "sha256": "63e76444ba20d9d7c5e7c82d5d1d16add0d60df24e7c9d431ec09503dc80a96f"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/GlobPattern.cs",
+          "role": "production",
+          "sha256": "1c53a6b0cea40502f23eb0539c6d215440b6cdb7803bf947a266885ee41a9ce0"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/ProjectDetector.cs",
+          "role": "production",
+          "sha256": "5414ffce166d8250f61c7ec3fbad3de02ab562a1ccf3e72f5a2c591e4c7ffe79"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/ScannedFile.cs",
+          "role": "production",
+          "sha256": "2c4db49ba517eef1c2c0481da24925b129b55302ed87ac599cef36c1bb15b2c0"
+        },
+        {
+          "path": "src/RepoContext.Core/Stats/TokenPricing.cs",
+          "role": "production",
+          "sha256": "da7c058a846c47654f1628d7d6c42fd89f8fdc1d3593da7d545880e0051a9324"
+        },
+        {
+          "path": "src/RepoContext.Core/Stats/UsageLog.cs",
+          "role": "production",
+          "sha256": "45f4e434b93e687e5dbe24ff119fbfc6b680410211fa4b1437cda56b1a28b31b"
+        },
+        {
+          "path": "src/RepoContext.Core/Stats/UsageMeter.cs",
+          "role": "production",
+          "sha256": "55af6d3ab0f370a9dd72f0be1a0aff744db531089a80d73e484b1b102e3eff08"
+        },
+        {
+          "path": "src/RepoContext.Core/Stats/UsageRecord.cs",
+          "role": "production",
+          "sha256": "751d75052f2da93e7ae5296870d87b178b73d475835af3f222234578dd787ac1"
+        },
+        {
+          "path": "src/RepoContext.Core/Stats/UsageRecorder.cs",
+          "role": "production",
+          "sha256": "28658d1c94b3f26672f36e3b5f8983b348ed45a98317496e2ec527ec3666d97a"
+        },
+        {
+          "path": "src/RepoContext.Core/Stats/UsageReport.cs",
+          "role": "production",
+          "sha256": "01b8439776746ba9310f44c020273b792dcf15c7ec41bb012e1459a2060c110d"
+        },
+        {
+          "path": "src/RepoContext.Core/Storage/Hashes.cs",
+          "role": "production",
+          "sha256": "dc35ec7ae93e28008deb4374791b3e8700d6c6393e7c5a998f30495f0f6e209c"
+        },
+        {
+          "path": "src/RepoContext.Core/Storage/IndexSchema.cs",
+          "role": "production",
+          "sha256": "735b716b20b9af471138c2379a805c3a11ced197a939e993177fb41f62250065"
+        },
+        {
+          "path": "src/RepoContext.Core/Storage/IndexStore.cs",
+          "role": "production",
+          "sha256": "15db85a80c9a717c367f48df5f8311c0db303a091d68185db9c55c0898e7b0cf"
+        },
+        {
+          "path": "src/RepoContext.Core/Storage/PathScopeSql.cs",
+          "role": "production",
+          "sha256": "3cb3d65608413b21c23944e28fe55c3b02f84e1f58ca230e3c37c3072c9bae6e"
+        },
+        {
+          "path": "src/RepoContext.Core/Storage/SearchHit.cs",
+          "role": "production",
+          "sha256": "f490b714c7fb3f848b3125813ed05070fab8060ce52a5b93deece4003900e14a"
+        },
+        {
+          "path": "src/RepoContext.Core/Storage/SymbolChunk.cs",
+          "role": "production",
+          "sha256": "658b224c5f6bdcec16d89c12e8a2b3dee8925e003374023ee0b02e439b55e5f3"
+        },
+        {
+          "path": "src/RepoContext.MSBuild/RepoContext.MSBuild.csproj",
+          "role": "configuration_or_other",
+          "sha256": "717c862680326dc3ceee6266b5b647fa92692a30ac9043e88138703097b48280"
+        },
+        {
+          "path": "src/RepoContext.MSBuild/build/RepoContext.MSBuild.props",
+          "role": "configuration_or_other",
+          "sha256": "753f3154018902c1f668fba9ba35a13e24613191919925ad7decfd3768c5f557"
+        },
+        {
+          "path": "src/RepoContext.MSBuild/build/RepoContext.MSBuild.targets",
+          "role": "configuration_or_other",
+          "sha256": "40c4aa60d13c0229a9dfe94996fb5d943ee44f23c40c2da46f892b9cc6157fd8"
+        },
+        {
+          "path": "src/RepoContext.MSBuild/buildMultiTargeting/RepoContext.MSBuild.props",
+          "role": "configuration_or_other",
+          "sha256": "e609d57ed6a92e5ce5d6317c216b73a66aa7cf99acc369ff241873c6fe3680b4"
+        },
+        {
+          "path": "src/RepoContext.MSBuild/buildMultiTargeting/RepoContext.MSBuild.targets",
+          "role": "configuration_or_other",
+          "sha256": "b3c9a781a6a17244530a2bc8cc149d5c3dfe2f7ffee99e38eb215d5fe1bf7e9f"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Architecture/ArchitectureEngineTests.cs",
+          "role": "test",
+          "sha256": "4b1a0337d9bd5cb406df9216fd551f638a648db84cbac5bf58a378b1fbabc462"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Architecture/PrimeEngineTests.cs",
+          "role": "test",
+          "sha256": "21a8958516f47ee19bc8c45483bcbba4637199c41ab19556bf436a31a1b2e28a"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Configuration/AgentInstructionsTests.cs",
+          "role": "test",
+          "sha256": "2094f832a439cf42f3f92f756402a0c950f2053856fd8f6b985185ce55f0e51e"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Configuration/AgentIntegrationsTests.cs",
+          "role": "test",
+          "sha256": "619ef788a4034b759fe438bf1614b85d97ab019a85fbfb6ddb4b27ff6e3ee2a1"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Configuration/ConfigTests.cs",
+          "role": "test",
+          "sha256": "cb4369e2966f99bc25809c2114d54860b395b64ee901c352aebe83c2294396c8"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/CommentStripperTests.cs",
+          "role": "test",
+          "sha256": "cea3248978151759603f7fb16bd09bb179b3ccd2c666dc2e2270ce8ac2a3fdcd"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/ContextEngineTests.cs",
+          "role": "test",
+          "sha256": "d4d466064ea33bc78fb01d3c35972b0ee0f3e70730972eb1e9db744744319bf1"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/ContextMemoryTests.cs",
+          "role": "test",
+          "sha256": "0d5d72566c3778ce7a9dde63bc6824720da864c38f6b9b134050c7aa83b50cbb"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/DetailPolicyTests.cs",
+          "role": "test",
+          "sha256": "dabfe75cb30cbf0a8006f01d0f3c354b195557ab35dee2511f01eb4cca728989"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/QueryAnalyzerTests.cs",
+          "role": "test",
+          "sha256": "96f25276a321b0d9144caf7708e976ba3b080e53649cee507b726a9725523d3a"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/SessionStoreTests.cs",
+          "role": "test",
+          "sha256": "92f7d7a59ab9648c6b5ab0b7a81aedb889fc3a98d7cdeccaf8efe73c9d32d5de"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Context/TokenFrugalContextTests.cs",
+          "role": "test",
+          "sha256": "936269114431ebcd97158cd1609ff491bac63c4edb83cb1327e7284abd0a54e0"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Graph/GraphTests.cs",
+          "role": "test",
+          "sha256": "0d17f73a0a23588b72f94a7de3a17744ab64f11a0e0f6de35e93b5ba963d419d"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Graph/ReferenceExtractorTests.cs",
+          "role": "test",
+          "sha256": "07e713cbd8f8c4bcfbbafa0b5836fad4cdc6022da977d4364c7e4067e6a5a6c0"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Identity/FingerprintTests.cs",
+          "role": "test",
+          "sha256": "f135da27357526ea689e7b42c71e97cf629ed11ffe89857f4f12907930711293"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Identity/ReceiptTests.cs",
+          "role": "test",
+          "sha256": "a59e57cc0edde2602726db95b2b33e3278226252a8f57425576a5b72fdf12dc8"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Indexing/ChangeDetectorTests.cs",
+          "role": "test",
+          "sha256": "2a11d4cff8459861143755ba534ce870d31c824858d2dffe83b27b9c0bb663d4"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Indexing/ChunkerTests.cs",
+          "role": "test",
+          "sha256": "7e899a106bd9e7cfcd17df885ac4e065afb72b6103188410b6eaf94cac806787"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Indexing/IndexerTests.cs",
+          "role": "test",
+          "sha256": "bfdf31cc7afb1e5c7ada61c2d5c027f5547c51ca6c6d5f823ec877dfae99c8e1"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Indexing/LineDiffTests.cs",
+          "role": "test",
+          "sha256": "5ff939cfe5570cb57804967c483c4e9240c4df8b6a340ed7cda19f46c85a1aaf"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Indexing/TokenScaleTests.cs",
+          "role": "test",
+          "sha256": "80ea84198856e20cc41ea95dda5e8d1408d92aa87f04c652af21eb0127cb621e"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Indexing/TokensTests.cs",
+          "role": "test",
+          "sha256": "ada1b0164a45c0d1e162d331da232d27617a1bec868b200e7eadde1f1719d302"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Memory/MemoryEngineTests.cs",
+          "role": "test",
+          "sha256": "aae9f6d6578ef9e8da05132e3a2f7c817fb38b3e067e722626a25fecf5fd33f8"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Memory/MemoryStoreTests.cs",
+          "role": "test",
+          "sha256": "0cb132db6a1a1d8419b13d35915c6638843a135d4ad150610eb09753938ea304"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Outline/OutlineTests.cs",
+          "role": "test",
+          "sha256": "e5d212c458827d0089f09de75fe7d1e98d221a7f9541b0723be1a713600ec8cc"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Parsing/DeclarationExtractorTests.cs",
+          "role": "test",
+          "sha256": "90a3c362a8db277f3f6b3e38e79177e9043d3b09cee88018f85327ca64c0404a"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Parsing/IdentifiersTests.cs",
+          "role": "test",
+          "sha256": "d4d8dcb972c1f7d1f8a343fc06868248029b96f7dfe02a491b491393eb6b4fdf"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Parsing/StructureExtractorTests.cs",
+          "role": "test",
+          "sha256": "e4413c2f9fc173415cb13cf69dd82b578784f1547f9fa975551ae744dc903454"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Parsing/TreeSitterParserTests.cs",
+          "role": "test",
+          "sha256": "6e7894e999dc2b63a48425ca2e5342da2261fed2abc57d103b94e90be932b236"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Performance/IndexPerfTests.cs",
+          "role": "test",
+          "sha256": "cd5dcbd93f80256e48c1f6745928166875e30af44b60ccf082d1ae51e9e6192a"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Query/PathScopeTests.cs",
+          "role": "test",
+          "sha256": "91c074453649f3e61855d6b7022479d3091c4e868affffb103ded2aae19f206e"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/RepoContext.Core.Tests.csproj",
+          "role": "test",
+          "sha256": "f07942c15ab6b0b6cdeedcdfd888c55bab8a2a03571576bb84a9dbd05a0379b1"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/RepoContextInfoTests.cs",
+          "role": "test",
+          "sha256": "417bb58294c54a2dc31144ce660cb24bb1d3508eec7ef2f9f8a5ca9b61aadf3a"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Scanning/FileClassifierTests.cs",
+          "role": "test",
+          "sha256": "61d7a488c7b6a9b1fbc5f981612fb235a96113e8acda25693b0cb0876a04ae7f"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Scanning/FileScannerTests.cs",
+          "role": "test",
+          "sha256": "4d1bdefba2fb03830640f4a45ab09f549aae38f0bc16fca6cea34f9712e80ba3"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Scanning/GitignoreMatcherTests.cs",
+          "role": "test",
+          "sha256": "99685ae3b29123a624da988dc36e03f4cb1cebb79581add1cc39aecf97ab2e33"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Scanning/MultiProjectScanTests.cs",
+          "role": "test",
+          "sha256": "c065f5b43fe208e12660fce84923dab480acb50ca49499936bc60e4af35a11b1"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Stats/TokenPricingTests.cs",
+          "role": "test",
+          "sha256": "905133781a3286b49ae5b2c5d47b78e04d913693d735cb9879c1bd386945a989"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Stats/UsageLogTests.cs",
+          "role": "test",
+          "sha256": "5a11b97921aafa72dd1587dc7b24e69606f46647494ba4c546aefb08299892b7"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Stats/UsageMeterTests.cs",
+          "role": "test",
+          "sha256": "05032f9874c751fa1f9d1c92d574773483a16ddad7daa01ae5e0f167a130d365"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Stats/UsageRecorderTests.cs",
+          "role": "test",
+          "sha256": "7d8fb1255054bd9597c5d4b98a9f8c7f6d7af33c1baae74f007b5c9d6f3afd07"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/Stats/UsageReportTests.cs",
+          "role": "test",
+          "sha256": "d12b31f01274e96f6afea668d9e6d9eb1841e5cbff8b99901fc79a61240c067c"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/TestSupport/FixtureRepo.cs",
+          "role": "test",
+          "sha256": "79a87c65fb00570bccee3e82edc07dee792aa7ce6c0b1ac900415ee0d9f3c759"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/TestSupport/Fixtures.cs",
+          "role": "test",
+          "sha256": "455d0d52ce2cac9e64386f6e6bf8882e51b82079e26456aeed1ff7cee743bbf1"
+        },
+        {
+          "path": "tests/RepoContext.Core.Tests/TestSupport/IndexHelper.cs",
+          "role": "test",
+          "sha256": "a90bedc5ad1082b657351bafd9346490e28e89f0e7c42f075b9f7ac8eb8d00a0"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/ArchitectureFormatTests.cs",
+          "role": "test",
+          "sha256": "613eff6e6b4125b7403f40e0b59f3b00f82c29698a4b20e4e931ddb8458ee29c"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/ArtifactRepositoryTests.cs",
+          "role": "test",
+          "sha256": "3c1cb2781629e76501a9f0c1733b45fcb8370f67623b4d911d88ecbfc03630a5"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/ChangedPatchTests.cs",
+          "role": "test",
+          "sha256": "fa0065749445736c5a817106a142b560eb98ebac27e8970ffaabc1ed518fc12e"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/CliContractTests.cs",
+          "role": "test",
+          "sha256": "859727bb398c129d2cba7a23e229a10cc765267939b1231783d2fbbdb52dee6e"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/CliHarness.cs",
+          "role": "test",
+          "sha256": "eb7f9f8ccf7a8d4908ec2d529898c8309b5467e93c5ca574cab967209e3fdd9b"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/AuditRegressionTests.cs",
+          "role": "test",
+          "sha256": "f15a110c635028366f3d34d41e97defd0d653519ab45397294e74ab36db3ae20"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/BaselineSnapshotTests.cs",
+          "role": "test",
+          "sha256": "0b103e7d15de2b867f50360cd9d529a456ce69dc70994dc9d3841c3d4011c5c5"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvalArtifacts.cs",
+          "role": "test",
+          "sha256": "2ccc1732641dd3f637c1667efe7718a6063635e7f1fe38cbdb4a4c3a1e51f718"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvalCorpus.cs",
+          "role": "test",
+          "sha256": "f3d107b5cfab5354b9b549278c8d765843929db548747860cdbe712d22045e92"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvalMetrics.cs",
+          "role": "test",
+          "sha256": "5d434992ebe6c6db035f0f380605e6b55a4d7bbe87cee275728c81ba14606cf9"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvalRepo.cs",
+          "role": "test",
+          "sha256": "5dddadda3af23b598cc7fdbc2a66620d5fd256cefd8824d8dcc7d88be0fd14c2"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvalReport.cs",
+          "role": "test",
+          "sha256": "8526c35c7b5c5a6315b0e10cb2f1e62ce3e1dcb41b3a84de1bfd37d42693607c"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvalTask.cs",
+          "role": "test",
+          "sha256": "2824ff4d129c9fc61a1f5e53e4c2f841c77a92ce18890515eacd4ce7ef651afa"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/EvaluationTests.cs",
+          "role": "test",
+          "sha256": "e452161a83a22408c5a12b3857cee8f549196a63b1aa53913ad1dd71ffe462db"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/IdentityMatrixTests.cs",
+          "role": "test",
+          "sha256": "9408022a771cdb5e1d43dc54a76d6641c4ab18e70f30b5824e1d7bd88761b259"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/Evaluation/WorkflowSimulator.cs",
+          "role": "test",
+          "sha256": "6e9f38a2688b5303ec2c08adeafe69a6b18a18ebb9327f4571f82bd806ba8247"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/FixtureWorkspace.cs",
+          "role": "test",
+          "sha256": "3556867e578dc6c88695cf35af51127253df26c5ee9dca8ebcaab2b888171445"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/IndexSearchTests.cs",
+          "role": "test",
+          "sha256": "f1526d8817a0c9eca16e100df3ca5b5d567f0810e3f32aa93f0630756b34c3ac"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/InitAgentsTests.cs",
+          "role": "test",
+          "sha256": "5761b2557ed3c55c91735b0d3cc459a1339e880404cf8a17d066fad840fc0af0"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/IntegrateCommandTests.cs",
+          "role": "test",
+          "sha256": "56fbad9d5aa7768d3bdf939bfdf44b6858a17b8184a58f6226e5cac9b1aa9135"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/MSBuildPackageTests.cs",
+          "role": "test",
+          "sha256": "46ec3ffc64e29e9f737a71313921b22d65b13f94ed2642f5d0a6049a8c2e67a5"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/McpServerTests.cs",
+          "role": "test",
+          "sha256": "d243e7d2ea976cf966e6fff0598006468d122ce7befa2d41dc402b284386d4c8"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/MemoryTests.cs",
+          "role": "test",
+          "sha256": "8a84a43e361acfe91f072c86015bce9bd2c7e7b99a1455d5a2dc8a62161f82f7"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/MultiProjectTests.cs",
+          "role": "test",
+          "sha256": "931d98d5514bd1bc35c695bad8c1f2ddbabf9053ba59d34a7c6845e6a710851a"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/OutputLeanTests.cs",
+          "role": "test",
+          "sha256": "87380ce83433413734b8c54a82bc1ad9dae6a149b0d7568a7b29185fb277f844"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/PolyglotCoverageTests.cs",
+          "role": "test",
+          "sha256": "7e2bedb999dcfeb670aa6c7b8c5e55af50ef5d83715b4dd32a538394f4696aba"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/PrimeTests.cs",
+          "role": "test",
+          "sha256": "b502568062d492d27ad138ef127c09a44a7fcb3e32c253d39e974fab59af128c"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/RelatedContextTests.cs",
+          "role": "test",
+          "sha256": "ad0b82dc7b6baee9701f796e50646005fa774885ab463884263a964ae841856e"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/RepoContext.Integration.Tests.csproj",
+          "role": "test",
+          "sha256": "b4c8ab7e02d6451b3e066007d7bddf52c4f1b51e1d00c38070feed75d7c4f0e6"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/SessionTests.cs",
+          "role": "test",
+          "sha256": "abe1bf9dee4c1fb958e797adf8e5882e15e085b0e98bc0a6c71126c4d0f69822"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/StatsDashboardTests.cs",
+          "role": "test",
+          "sha256": "72e87de80566d5acf1b1caaf6ba93acd30da2dbb3ad1ba674fb1650e0b9cdf2a"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/StatsPricingTests.cs",
+          "role": "test",
+          "sha256": "2ff8b050f506774a8f9f6593eda8842a507798a76d8d13356906b1e97e8d839e"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/SymbolSearchTests.cs",
+          "role": "test",
+          "sha256": "43866da3f3e5d8178a371b4b3cb45979db3dad79f70d22e0de0e10b0e2fbdc51"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/TokenCalibrationTests.cs",
+          "role": "test",
+          "sha256": "47cbaf8cccfaa3845bbcc07f29c6f16a3930a695fda3476e490a6fcd222a45bc"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/TokenFrugalProtocolTests.cs",
+          "role": "test",
+          "sha256": "9d1d6e87e5aa5b0bd022fdbb9296c2754d969ff7eea6f2b22afda184cb03d7fb"
+        },
+        {
+          "path": "tests/RepoContext.Integration.Tests/TokenLeanOutputTests.cs",
+          "role": "test",
+          "sha256": "4e8e773938a73b91402aabd8abbcf29efac57a0d7a87d501cb92ed9ace7b4a59"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/exports/confluence/refund-policy.md",
+          "role": "fixture",
+          "sha256": "24b1f5b295462f4400063c3d0da22d5cb2bf4bf1807dc954c6678feb1488154d"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/exports/jira/PAY-142.json",
+          "role": "fixture",
+          "sha256": "740325ce8085e85efad9bfc2f2ca55cbf09eafa7fd791b804d05be5a861411a0"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/exports/jira/PAY-155.json",
+          "role": "fixture",
+          "sha256": "f688abedca986e4090371ba3a934b80bbfaa1b05c201d767e1f6cfa0c0afddb6"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/features/refund.feature",
+          "role": "fixture",
+          "sha256": "f4ec94e5cee0132d5d82c6e864d80c96639945b782f55d208dcdea4ecc4857e1"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/requirements/REQ-payments.yaml",
+          "role": "fixture",
+          "sha256": "c4fdba27755bd89abe3a97cdf003f5d50b3b35f499641157ab0e9f110ff5a975"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/src/billing/audit.ts",
+          "role": "fixture",
+          "sha256": "82578dc6cad15a0ad840a972122188340ded8baaa965e9613194fb9e5a281af7"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/src/billing/refund.ts",
+          "role": "fixture",
+          "sha256": "6a0281907d59b4508b31857116dce8743f2209d477c81d46c8f3699157b4e168"
+        },
+        {
+          "path": "tests/fixtures/artifact-repo/tests/billing/refund.test.ts",
+          "role": "fixture",
+          "sha256": "db74d0a18bb38c09651e60518ab918032ae6a37ee7e640ed2f8ce5e341a1ce81"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/.env",
+          "role": "fixture",
+          "sha256": "b5d736a28ecd0d0856fced0d09acdea573bcd20c824e9bc6e3532ae870d50b44"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/src/Packing/Packer.cs",
+          "role": "fixture",
+          "sha256": "54604a8f3ef4aa78d95aff5632ea7fd1eaae5deeefa989566171c657debec439"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/src/Packing/TokenCounter.cs",
+          "role": "fixture",
+          "sha256": "34ba9dc0b912c47860bab9916143c3a6112f1ba4245683c2f54bd78316201e57"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/src/auth/login.ts",
+          "role": "fixture",
+          "sha256": "4cc4440f076b0550de341a7c9831513a1b332b61787381d40de7b954961a91ef"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/src/auth/session.ts",
+          "role": "fixture",
+          "sha256": "073c7177b93912ba82b2ca2c374e453342621f0037b9a761c23659667a3ba303"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/tests/PackerTests.cs",
+          "role": "fixture",
+          "sha256": "dd65f113e74b2cc2b93ce9dd5562264f8e2baccee5ba6e2796cb55495cb2ec3f"
+        },
+        {
+          "path": "tests/fixtures/eval-repo/vendor/bundle.min.js",
+          "role": "fixture",
+          "sha256": "c5abe3371131ceecdcac198b6b29da95d4bf20173d25450aeb7c8af2c8a3d2d6"
+        },
+        {
+          "path": "tests/fixtures/multi-project/README.md",
+          "role": "fixture",
+          "sha256": "47c9aa9bfc865b88401d289aae4a90fbf835acfe941ebab461e9f6d551596cbd"
+        },
+        {
+          "path": "tests/fixtures/multi-project/apps/web/.repoctxignore",
+          "role": "fixture",
+          "sha256": "6869891a15d2aa4b415dc614d32da0df98cabfababaf6672fb50dcf7f09ec078"
+        },
+        {
+          "path": "tests/fixtures/multi-project/apps/web/dist/bundle.js",
+          "role": "fixture",
+          "sha256": "485fd888f8643585c33910c1aa7ef82676d38eeb982c0bbddabc0628686ee137"
+        },
+        {
+          "path": "tests/fixtures/multi-project/apps/web/generated/schema.ts",
+          "role": "fixture",
+          "sha256": "c550367503aeeaf80bfd834616a8b627022dd3e3ed330e4725c575a8c239b284"
+        },
+        {
+          "path": "tests/fixtures/multi-project/apps/web/package.json",
+          "role": "fixture",
+          "sha256": "e3f438b966f5bc0d60b28834be5955361e1e29d399a45fe29d5c4914dbdfba3b"
+        },
+        {
+          "path": "tests/fixtures/multi-project/apps/web/src/auth/login.ts",
+          "role": "fixture",
+          "sha256": "c6fe08693a307dc08a87ea85212c8d8629abc26d855fe3cbdfaab41e2f6c18b3"
+        },
+        {
+          "path": "tests/fixtures/multi-project/apps/web/src/lib/session.ts",
+          "role": "fixture",
+          "sha256": "4eb1d0466a8ad15f7f9209e25d42587a018fdd80744b0f23bd69ee311d00d9ba"
+        },
+        {
+          "path": "tests/fixtures/multi-project/services/api/Controllers/HealthController.cs",
+          "role": "fixture",
+          "sha256": "7881fe82fbe0107b345c1b73c0cd1e49b061384cb1bcad82d860f4a33af23978"
+        },
+        {
+          "path": "tests/fixtures/multi-project/services/api/SampleApi.csproj",
+          "role": "fixture",
+          "sha256": "879bde898c2d7b14cfc4626bbbd9854da9709c91f17d2ab86e98935b8608597f"
+        },
+        {
+          "path": "tests/fixtures/multi-project/services/api/Services/TokenService.cs",
+          "role": "fixture",
+          "sha256": "70ce019ee960bbfb37e1ca7ccdce4d3807ff650063b3881eb68ce1b42f48c047"
+        },
+        {
+          "path": "tests/fixtures/multi-project/tools/scripts/deploy.js",
+          "role": "fixture",
+          "sha256": "fd2c3993cc93b0589e3d75f1d97c9988ed53117dfb1f9f1d6be05cbd74949afd"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/docs/design.rst",
+          "role": "fixture",
+          "sha256": "0322d882c30da3496e8336a9fd1340bac1d1771039d8f1a4764cfe0489b30ecd"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/docs/traceability.csv",
+          "role": "fixture",
+          "sha256": "11a0c2360668a9cf1854def46c43bdb8c1f05d999b1e4c7ec43155d1cdd0bdb8"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/infra/Dockerfile",
+          "role": "fixture",
+          "sha256": "84c7b6dab7a000fd63389fc2ff362497a2f3c0e5de39a1e78288a77824783377"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/infra/main.tf",
+          "role": "fixture",
+          "sha256": "85c92f20fa1856b73fb9b2937e697a44a84e5fc539335beb683e47d4787d3508"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/schema/billing.proto",
+          "role": "fixture",
+          "sha256": "e28779ce032eeee657a149dc02854beb2b002bb935252b380f02326154a463eb"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/schema/billing.sql",
+          "role": "fixture",
+          "sha256": "939fbd304650973f71508669ab5a5492df73fcdd254682c272944c9aa1dd96eb"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/services/gateway/Handler.java",
+          "role": "fixture",
+          "sha256": "1acbc99c8c0f6cd62bcd4bdbe19a606e66547afd4371055e3e28fa745082b419"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/services/gateway/gateway.go",
+          "role": "fixture",
+          "sha256": "e1e27fe0e43594087633845ccf01658502767e0b4c2c5a9418f495515b0d8e57"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/services/pricing/app.properties",
+          "role": "fixture",
+          "sha256": "a7eb92fff91c7662eb228b583eca52ad9d0a040f8c2ae0403a0e14b7a19fbf39"
+        },
+        {
+          "path": "tests/fixtures/polyglot-repo/services/pricing/pricing.py",
+          "role": "fixture",
+          "sha256": "96918b1bee3d81d79259982ed432d5260fbc0ac54139995d7877e58e33928b89"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Auth/AuthService.cs",
+          "role": "fixture",
+          "sha256": "2177a7de6f2d79debecb8d1bd14fa07d215b32ed088f4fb7fe02322e5f6da975"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Auth/PasswordHasher.cs",
+          "role": "fixture",
+          "sha256": "afa796b44abd5a09ff066d17602b797a54699698204276c098a7f32f90bdfbda"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Controllers/AuthController.cs",
+          "role": "fixture",
+          "sha256": "74d3a2906a0344b2fdc443e57cdc09fefcd79a3c71d778161b9b1c9a96bd1fc6"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Controllers/UsersController.cs",
+          "role": "fixture",
+          "sha256": "aa793b736a15edc654d59356279ce5194dbe9988a9e13c8ebf91ad8d7099caf8"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Interfaces/IAuthService.cs",
+          "role": "fixture",
+          "sha256": "a4469c95a1888347ab4ed9afbe54cfc27a187102b4efd47d6737afdef05de783"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Interfaces/IUserRepository.cs",
+          "role": "fixture",
+          "sha256": "bb1dc8cb8a027eeaf3c4d2aee0e4713ad18680c3921dedb60734944f0ecf25fb"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Interfaces/IUserService.cs",
+          "role": "fixture",
+          "sha256": "d4b3f1cd243153c9c77ed4a70dc6230940b07ff8adf2c7cbb35377e6d22b037b"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Models/User.cs",
+          "role": "fixture",
+          "sha256": "394988e3a66344411520b1463710a5e9ac6059521dbec69c661095f94e723b64"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Models/UserRole.cs",
+          "role": "fixture",
+          "sha256": "10face5533365aa148183db4313d09d50f35fc8b009537841f7c867c83e175f3"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Program.cs",
+          "role": "fixture",
+          "sha256": "45fe827a909e77d942bfa9c2f8a471770c3c7e93a2824e70e2e6588038751526"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/README.md",
+          "role": "fixture",
+          "sha256": "40278f11678e08eac8dd470e6e9e575515eb13f30b4b2c2a63f6619195de1292"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/SampleApp.csproj",
+          "role": "fixture",
+          "sha256": "7c8dbff9196245188b63132959ebb1348c904f95d6b8e627e08ef2314bf6bcec"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Services/UserRepository.cs",
+          "role": "fixture",
+          "sha256": "cfaff4830d995495ae2a7dc1dae6fb84f6682e859eead42d2a4c0fc65b94cf20"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Services/UserService.cs",
+          "role": "fixture",
+          "sha256": "5f5f86cf7604823828ce8fd492e8a3b9b6e3bc62edf48e9b3dab236a1b77aafe"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Tests/AuthServiceTests.cs",
+          "role": "fixture",
+          "sha256": "7a8f84d92bfa112e6cbedcc9387051e06652a26cb1ec582ff769c5a413784f12"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/Tests/UserServiceTests.cs",
+          "role": "fixture",
+          "sha256": "e8e2743f588f6391a6f0ee5efc370617831c001f3901cbeede8250230749e860"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/appsettings.Production.json",
+          "role": "fixture",
+          "sha256": "a70a0a837ee869cc3efe0ca7f8bd8d3b7a3ede990e307b71c3b8b38e4fbdf90d"
+        },
+        {
+          "path": "tests/fixtures/sample-cs/appsettings.json",
+          "role": "fixture",
+          "sha256": "55b5d93f167625a9f0ba9f75e0f1222d52958048331497e21a4b783e12d88207"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/.env",
+          "role": "fixture",
+          "sha256": "6ff3e5a02fda007d9206e977953e00e236a18fc9447e1b0572d292a565796921"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/README.md",
+          "role": "fixture",
+          "sha256": "0fc67cb7107f66d0440ce374348441c42161980559d3c6e07816924dc0350c1f"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/app/api/health/route.ts",
+          "role": "fixture",
+          "sha256": "a7d85d339bf6cd550c2f4e571a892da1bf12bfe8ccee9af948a28ba1d6060861"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/app/api/users/[id]/route.ts",
+          "role": "fixture",
+          "sha256": "a8d0aa01480afd66543fa928e97e6bde8a6a5cb7e463ffb9c76952a22bb036cb"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/app/api/users/route.ts",
+          "role": "fixture",
+          "sha256": "d1c6d3303ec8251e4a67768efe438c45b333887649cd44909727050fc29a3c2e"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/app/layout.tsx",
+          "role": "fixture",
+          "sha256": "cf45a36cd232e468af4a0525c2509b8c0632573a26b182fedde1ffe2d2d1849d"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/app/page.tsx",
+          "role": "fixture",
+          "sha256": "337865b7bbbeb35f9304a113e81d82140b81da63ab3662e126c4d22c3e335670"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/big.generated.ts",
+          "role": "fixture",
+          "sha256": "bfd3d4881164f59eff394f219b64ef94cc5e42f39a013452f78cef77e7d457d3"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/docs/architecture.md",
+          "role": "fixture",
+          "sha256": "8f08bc912111262f28c3bbc843cefbcccb1da3ae193298870387d476267f1429"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/logo.png",
+          "role": "fixture",
+          "sha256": "43be52f97ed308911037af5b5cc41f02117f6e22cc86f42c9fcb3387af06de49"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/next.config.js",
+          "role": "fixture",
+          "sha256": "782c49f870653b4ca4a7813e1ddab54762ce9249ec55bca62a72fcc12c55a56a"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/node_modules/left-pad/index.js",
+          "role": "fixture",
+          "sha256": "caaa98babaae9c76c21b8aa9d9a61d5f6c64f8bc1ea9dca3c87843592e31268d"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/node_modules/left-pad/package.json",
+          "role": "fixture",
+          "sha256": "3d60f52930db699b44f9491833e4409bff30128a21d12b16ed98659b4dd95894"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/package.json",
+          "role": "fixture",
+          "sha256": "92f8de74d06fcdc92db7f20ef22565fc2dcd602d91be4e99135dbc36fdb68f0f"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/auth/__tests__/login.test.ts",
+          "role": "fixture",
+          "sha256": "168b8a726b10b8351f64bdf128954b9c1a348bc54df3b6e09d239c47a982eb4c"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/auth/login.ts",
+          "role": "fixture",
+          "sha256": "6d2926d3939b4482a98ae2e52b159186f96a19c7b8eca7a655737fa5676ffab4"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/auth/permissions.ts",
+          "role": "fixture",
+          "sha256": "b84d8f72bc6792252ee8489ed1e851dbc0c68d32d4ce937441a937446eaa272d"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/auth/session.ts",
+          "role": "fixture",
+          "sha256": "e14b153ed608ac930bef85783e723c5082914e2f56b33d2a0f5a23c84331d2e8"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/components/LoginForm.tsx",
+          "role": "fixture",
+          "sha256": "2edb365db8da81d0e4b83e896ef6eb160a3e566d9422d0f5e94a1eeef026bac2"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/components/UserCard.tsx",
+          "role": "fixture",
+          "sha256": "b519fa21e80388b12a757361ad60cee0a73bb3309f3e74fe3fe55fa307414a1e"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/lib/crypto.ts",
+          "role": "fixture",
+          "sha256": "63988772252244ac8b00242a2e646ca17277dd03d0e64adacda9849369446c80"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/lib/index.ts",
+          "role": "fixture",
+          "sha256": "35a85e392931e94ad8c457739c0970485575f47697c0e1150f88350c14e4df02"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/lib/logger.ts",
+          "role": "fixture",
+          "sha256": "c9e280da65abfc8ca90ebcf3f4639dd1133a3d092b08d3f0439d9d331e437a42"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/middleware.ts",
+          "role": "fixture",
+          "sha256": "23c615be847a94d561635693e4b91c581e2285e38b18790b621fbe25a7139943"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/src/types.ts",
+          "role": "fixture",
+          "sha256": "cf87f3467a486c02628d08899ad2721f5e483415dd23b23b3f24a7ae1258ac7d"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/tsconfig.json",
+          "role": "fixture",
+          "sha256": "30e04fc873feb06ebf67dfd53faacfe1b6dcc25d5fe4fbe703499ffa81f9f911"
+        },
+        {
+          "path": "tests/fixtures/sample-ts/vendor.min.js",
+          "role": "fixture",
+          "sha256": "cb814b05dac46e9f78bfcd26ba334702854124f6496728075ce6a96a9da8d38c"
+        }
+      ]
+    },
+    {
+      "id": "p-limit",
+      "upstream": "https://github.com/sindresorhus/p-limit",
+      "commit": "923811344705a6604967540e19f7653752021438",
+      "reference": "v6.2.0",
+      "archive": "sources/p-limit.zip",
+      "archive_sha256": "31881edb434ff48c77c45a16a257d5356b8d06f873fd7895ffe23927e1d0d994",
+      "scope": "Complete git source snapshot; dependencies are not installed or executed.",
+      "license": "MIT",
+      "license_path": "license",
+      "files": [
+        {
+          "path": ".editorconfig",
+          "role": "configuration_or_other",
+          "sha256": "a6c981d9e5f90048850a8a59e79372701b58489ba29cccb5c5d273db3b77c4a3"
+        },
+        {
+          "path": ".gitattributes",
+          "role": "configuration_or_other",
+          "sha256": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
+        },
+        {
+          "path": ".github/security.md",
+          "role": "documentation",
+          "sha256": "cf00ea7fd49f2efefb2ac6db9da3850915d1b2c8c9cc54d74eace54e9fede183"
+        },
+        {
+          "path": ".github/workflows/main.yml",
+          "role": "configuration_or_other",
+          "sha256": "031b54ee811aa1b0c37d55033238c65c5f8748723533fde6451bca8c63fc52f4"
+        },
+        {
+          "path": ".gitignore",
+          "role": "configuration_or_other",
+          "sha256": "7699b345e5aeb2ad3c28f77e093c934d4a4243d73b8eebd2a3c54edbc1e96bdc"
+        },
+        {
+          "path": ".npmrc",
+          "role": "configuration_or_other",
+          "sha256": "f3fc23758ab91be5f94a8c5eaff433d1ccd6a206cf1d381d332eb63716009337"
+        },
+        {
+          "path": "index.d.ts",
+          "role": "production",
+          "sha256": "98af2800b73d30adba3f338506b87e1329bcab2eb61b6cc19587bab8e2c3d9ae"
+        },
+        {
+          "path": "index.js",
+          "role": "production",
+          "sha256": "4c87c6def171663d055c973f0afad6b85012483d5d3ddd8c17d3763c77e90279"
+        },
+        {
+          "path": "index.test-d.ts",
+          "role": "test",
+          "sha256": "6b85debd5253f8d0f64cfb655b57870db37f4d96e411b03d71c99747a2d571d1"
+        },
+        {
+          "path": "license",
+          "role": "configuration_or_other",
+          "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        },
+        {
+          "path": "package.json",
+          "role": "configuration_or_other",
+          "sha256": "88ccdc4ca196ffb634f9e4b2e7bcf5d20c3211dcfdca96584ccc316b80312f6c"
+        },
+        {
+          "path": "readme.md",
+          "role": "documentation",
+          "sha256": "7b7ee5894f0b6acaef95c8f306c1bb4d902b0139c437ee3b2e59769f772e445c"
+        },
+        {
+          "path": "test.js",
+          "role": "test",
+          "sha256": "03e5227407e4b8f4b56a7136df2f8b52be4ed14f58d59fcb904d9742d2eea690"
+        }
+      ]
+    },
+    {
+      "id": "p-retry",
+      "upstream": "https://github.com/sindresorhus/p-retry",
+      "commit": "d067fea3c806351e4b1c3be90439bb0da638322c",
+      "reference": "v6.2.1",
+      "archive": "sources/p-retry.zip",
+      "archive_sha256": "113839de26e7524eb293aea9e304cddbbc0a83a7d61b65547d7c6d88e78ec881",
+      "scope": "Complete git source snapshot; dependencies are not installed or executed.",
+      "license": "MIT",
+      "license_path": "license",
+      "files": [
+        {
+          "path": ".editorconfig",
+          "role": "configuration_or_other",
+          "sha256": "a6c981d9e5f90048850a8a59e79372701b58489ba29cccb5c5d273db3b77c4a3"
+        },
+        {
+          "path": ".gitattributes",
+          "role": "configuration_or_other",
+          "sha256": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
+        },
+        {
+          "path": ".github/security.md",
+          "role": "documentation",
+          "sha256": "cf00ea7fd49f2efefb2ac6db9da3850915d1b2c8c9cc54d74eace54e9fede183"
+        },
+        {
+          "path": ".github/workflows/main.yml",
+          "role": "configuration_or_other",
+          "sha256": "c0adefe1ec42158c92ab0e0fd78057c704ea58a82242528c0618b9584d0ea44b"
+        },
+        {
+          "path": ".gitignore",
+          "role": "configuration_or_other",
+          "sha256": "7699b345e5aeb2ad3c28f77e093c934d4a4243d73b8eebd2a3c54edbc1e96bdc"
+        },
+        {
+          "path": ".npmrc",
+          "role": "configuration_or_other",
+          "sha256": "f3fc23758ab91be5f94a8c5eaff433d1ccd6a206cf1d381d332eb63716009337"
+        },
+        {
+          "path": "index.d.ts",
+          "role": "production",
+          "sha256": "3725da27619321470183eb7dd61190b139e5bcc4cf9366d6d828906a76e31742"
+        },
+        {
+          "path": "index.js",
+          "role": "production",
+          "sha256": "609140b8fe66ff1f378a34c696f91ad653556b3b7593e02894761c2b56412e89"
+        },
+        {
+          "path": "index.test-d.ts",
+          "role": "test",
+          "sha256": "94fd05b5c4a7e9598af71351876e2f03455c182ea7bcb5cbb7c2f4f1e8023cb5"
+        },
+        {
+          "path": "license",
+          "role": "configuration_or_other",
+          "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        },
+        {
+          "path": "package.json",
+          "role": "configuration_or_other",
+          "sha256": "9b7252b1eb9bc8468e52b56173f4f425e6811fff04da8cc7e2e6aa197f9f7315"
+        },
+        {
+          "path": "readme.md",
+          "role": "documentation",
+          "sha256": "187915911405d633924c08704c93f810c6d664a8400857f7b6edad4bac436f48"
+        },
+        {
+          "path": "test.js",
+          "role": "test",
+          "sha256": "0421f8d6daac0da6167622c1233d4a5fa18f1e51b65825a329cd17686f3705c5"
+        }
+      ]
+    },
+    {
+      "id": "p-queue",
+      "upstream": "https://github.com/sindresorhus/p-queue",
+      "commit": "6b84d8a4079fdc3f77a6eb8f2a985629990c731e",
+      "reference": "v8.1.0",
+      "archive": "sources/p-queue.zip",
+      "archive_sha256": "65d5cfd0ba561c902bed94c6911cdd8bffdbf81af4f41c8d2dd165d2d38ca7e4",
+      "scope": "Complete git source snapshot; dependencies are not installed or executed.",
+      "license": "MIT",
+      "license_path": "license",
+      "files": [
+        {
+          "path": ".editorconfig",
+          "role": "configuration_or_other",
+          "sha256": "a6c981d9e5f90048850a8a59e79372701b58489ba29cccb5c5d273db3b77c4a3"
+        },
+        {
+          "path": ".gitattributes",
+          "role": "configuration_or_other",
+          "sha256": "d60f352d0db1404c70afb4bb8b2ca3fd1c610572aa40720e8a0b7baa7885418c"
+        },
+        {
+          "path": ".github/security.md",
+          "role": "documentation",
+          "sha256": "cf00ea7fd49f2efefb2ac6db9da3850915d1b2c8c9cc54d74eace54e9fede183"
+        },
+        {
+          "path": ".github/workflows/main.yml",
+          "role": "configuration_or_other",
+          "sha256": "031b54ee811aa1b0c37d55033238c65c5f8748723533fde6451bca8c63fc52f4"
+        },
+        {
+          "path": ".gitignore",
+          "role": "configuration_or_other",
+          "sha256": "2084c86bb16b752b5b2faa25665c61c06926e70ded5c10732a9262ae596cd5b0"
+        },
+        {
+          "path": ".npmrc",
+          "role": "configuration_or_other",
+          "sha256": "f3fc23758ab91be5f94a8c5eaff433d1ccd6a206cf1d381d332eb63716009337"
+        },
+        {
+          "path": "bench.ts",
+          "role": "production",
+          "sha256": "3f840b44a137267999db43dc1cd82a8ade92ab696c67b355bd0c1289958d2624"
+        },
+        {
+          "path": "license",
+          "role": "configuration_or_other",
+          "sha256": "5c932d88256b4ab958f64a856fa48e8bd1f55bc1d96b8149c65689e0c61789d3"
+        },
+        {
+          "path": "package.json",
+          "role": "configuration_or_other",
+          "sha256": "776a943c1014b65abe293f19c4f7118f1edd8324aca3ccde23d633fb89c8ded8"
+        },
+        {
+          "path": "readme.md",
+          "role": "documentation",
+          "sha256": "128c67b28379ccdb9457c37d30bd41ae8e68f4ce92de7da73f1a7f9d800d7b70"
+        },
+        {
+          "path": "source/index.ts",
+          "role": "production",
+          "sha256": "c7e5edff6c174375a438c4817b15df668314c53b42029f617148000e7d7e86df"
+        },
+        {
+          "path": "source/lower-bound.ts",
+          "role": "production",
+          "sha256": "f5da31a5384648467beab7deba908b0c729c875823f7e6e578543837306a1f0b"
+        },
+        {
+          "path": "source/options.ts",
+          "role": "production",
+          "sha256": "79b2a0bd51190a0d5f38bb10d63525f1772213aacf126e17726e3a3f5dad40c1"
+        },
+        {
+          "path": "source/priority-queue.ts",
+          "role": "production",
+          "sha256": "b9f49f9854c6a7356f8b24e4409bd9969ebd761bb8bf0391907ba93899b84228"
+        },
+        {
+          "path": "source/queue.ts",
+          "role": "production",
+          "sha256": "eb1b7a853b05393edeb5e2ffd6be0610590677d3dc6f0c7edabc782d3bd61964"
+        },
+        {
+          "path": "test-d/index.test-d.ts",
+          "role": "test",
+          "sha256": "f1aed98f0064c0166be058b37580df06d4d976757169b6b1b456b281d6379dd7"
+        },
+        {
+          "path": "test/test.ts",
+          "role": "test",
+          "sha256": "ced9aad976a96c16d75a2e6ea7264052aae8b4ca28391353705552400fae3dc3"
+        },
+        {
+          "path": "tsconfig.json",
+          "role": "configuration_or_other",
+          "sha256": "4915654479be2c4167fab9c589a877731b7b26e2d31d2db3ed0abf34bd00a115"
+        }
+      ]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "repocontext-ignore-en",
+      "repository": "repocontext",
+      "query": "exclude generated files and respect gitignore",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": true,
+      "rationale": "Scanner loads scoped ignore files; matcher parses their rules.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "start_line": 417,
+          "end_line": 434,
+          "sha256": "9f2f882383fd067d2b4b0318f237b878533575758d43a438c0743e21cc2ae7ab"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/GitignoreMatcher.cs",
+          "start_line": 23,
+          "end_line": 25,
+          "sha256": "9871b0bea6ccb9322854caa04f11d40cc36096bd8a9c68a15783f844673336ef"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "to": "src/RepoContext.Core/Scanning/GitignoreMatcher.cs",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "repocontext-ignore-de",
+      "repository": "repocontext",
+      "query": "Generierte Dateien ausschliessen und Gitignore beachten",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": true,
+      "rationale": "Scanner loads scoped ignore files; matcher parses their rules.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "start_line": 417,
+          "end_line": 434,
+          "sha256": "9f2f882383fd067d2b4b0318f237b878533575758d43a438c0743e21cc2ae7ab"
+        },
+        {
+          "path": "src/RepoContext.Core/Scanning/GitignoreMatcher.cs",
+          "start_line": 23,
+          "end_line": 25,
+          "sha256": "9871b0bea6ccb9322854caa04f11d40cc36096bd8a9c68a15783f844673336ef"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "to": "src/RepoContext.Core/Scanning/GitignoreMatcher.cs",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "repocontext-receipts",
+      "repository": "repocontext",
+      "query": "avoid sending the same source spans twice using receipts",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": true,
+      "rationale": "Slice delivery suppresses exact seen receipts; Receipt.For binds source identity and delivered text.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Context/ContextEngine.cs",
+          "start_line": 1324,
+          "end_line": 1342,
+          "sha256": "80ee0c288c56786d67f01db5990fe3a1e1056eb5b93a4e88440f92aa612dd491"
+        },
+        {
+          "path": "src/RepoContext.Core/Identity/Receipt.cs",
+          "start_line": 63,
+          "end_line": 79,
+          "sha256": "1d584cf46e3976f1752dc34f447e46bd9e2f9f0763a0c31cef83c05027dfe45e"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "src/RepoContext.Core/Context/ContextEngine.cs",
+          "to": "src/RepoContext.Core/Identity/Receipt.cs",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "repocontext-packing",
+      "repository": "repocontext",
+      "query": "fix response token budget packing",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": true,
+      "rationale": "Packing checks the proposed complete response through the rendering and tokenizer cost oracle.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Context/ContextEngine.cs",
+          "start_line": 655,
+          "end_line": 678,
+          "sha256": "00f735b15714a1a315fdb9b9144b4b3cd392e9f4bb7aea2f05a0bcd8f2f22a10"
+        },
+        {
+          "path": "src/RepoContext.Cli/Output/ContextCostModel.cs",
+          "start_line": 51,
+          "end_line": 62,
+          "sha256": "077d61527eb214eda51fcb47ddbded6fc29a10feacd8496a122158d18af7d34b"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-imports",
+      "repository": "repocontext",
+      "query": "resolve TypeScript module imports to source files",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": true,
+      "rationale": "Reference extraction records module specifiers and the graph resolves those specifiers to source paths.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Graph/GraphBuilder.cs",
+          "start_line": 367,
+          "end_line": 395,
+          "sha256": "634346ff8cb005a1792927b2bb26caac8220d7541425a5b27cd243b52b4911ee"
+        },
+        {
+          "path": "src/RepoContext.Core/Graph/ReferenceExtractor.cs",
+          "start_line": 135,
+          "end_line": 142,
+          "sha256": "95230f22957981ca34cca5f5bfc3f7c636773639ede5710de7e294606268f1c4"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "src/RepoContext.Core/Graph/GraphBuilder.cs",
+          "to": "src/RepoContext.Core/Graph/ReferenceExtractor.cs",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "repocontext-session",
+      "repository": "repocontext",
+      "query": "persist and load agent session receipts",
+      "language": "CSharp",
+      "class": "explain",
+      "historical_diagnostic": true,
+      "rationale": "LoadState reads session state; Save accumulates exact receipts and atomically writes them.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Context/SessionStore.cs",
+          "start_line": 53,
+          "end_line": 75,
+          "sha256": "956bdb71b8dea5d36a71be8d6b0097d57e1d98a8bd89b65ef1ab88d9b5774d5e"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/SessionStore.cs",
+          "start_line": 127,
+          "end_line": 143,
+          "sha256": "59ff66ea9bcd55f43ed7ab8c32b8c6f2589103fa8edfbb02c5a2358019006f67"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-config-defaults",
+      "repository": "repocontext",
+      "query": "preserve default exclusions when configuration fields are missing",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": false,
+      "rationale": "The pinned source has empty property defaults versus explicit factory defaults; deserialization is the entry point.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Configuration/ConfigStore.cs",
+          "start_line": 14,
+          "end_line": 17,
+          "sha256": "f3abc5504d97038cfc806408e7dd378493a039bfc7b006d46ad2ab41ee85818e"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/RepoctxConfig.cs",
+          "start_line": 18,
+          "end_line": 29,
+          "sha256": "228f3075f7a6a834bd46b4fa8cda659a83e79b4f97825f5bcdafa418b065feab"
+        },
+        {
+          "path": "src/RepoContext.Core/Configuration/RepoctxConfig.cs",
+          "start_line": 46,
+          "end_line": 60,
+          "sha256": "5b39f77cecd3468121db76907a48ff7e2ebe57bde11aea6002de2943d3ef394a"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-hash-layout",
+      "repository": "repocontext",
+      "query": "make canonical hashes unambiguous for Unicode text containing separators",
+      "language": "CSharp",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Hash fields are length-prefixed with their UTF-8 byte counts.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Identity/Canonical.cs",
+          "start_line": 25,
+          "end_line": 33,
+          "sha256": "f26109b20731fd022abac10fef7c510a85dd914ed5ced6f547af53c36a7787e0"
+        },
+        {
+          "path": "src/RepoContext.Core/Identity/Canonical.cs",
+          "start_line": 59,
+          "end_line": 63,
+          "sha256": "cd57a5de46549b895a01593a520609c266ff624e52b1453e4616a4030ce800f6"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-sensitive-prune",
+      "repository": "repocontext",
+      "query": "exclude sensitive files before reading their content",
+      "language": "CSharp",
+      "class": "locate",
+      "historical_diagnostic": false,
+      "rationale": "Sensitive and ordinary ignore checks precede FileInfo and content reads.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "start_line": 306,
+          "end_line": 317,
+          "sha256": "71ef8493c4d0cbd26d29b931a4525d923ca2fd917e09b8a4a51f67b3d8bb0e43"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-binary-unreadable",
+      "repository": "repocontext",
+      "query": "distinguish an unreadable file from binary content during scanning",
+      "language": "CSharp",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Sniff classifies readable bytes and maps access failures to the separate Unreadable value.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Scanning/FileScanner.cs",
+          "start_line": 570,
+          "end_line": 585,
+          "sha256": "de2c8be50694fade24bcdf952bf1d7f92b4c45ce0e1e4c3d07770f56e5a68431"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-session-merge",
+      "repository": "repocontext",
+      "query": "prevent concurrent agents from overwriting each other in a saved session",
+      "language": "CSharp",
+      "class": "fix",
+      "historical_diagnostic": false,
+      "rationale": "Save holds a path mutex across reading, merging and atomic replacement.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Context/SessionStore.cs",
+          "start_line": 101,
+          "end_line": 116,
+          "sha256": "0c8bc7b317caa9471b0be2ed1a2876c24284154786a9f14c5632829a24369f04"
+        },
+        {
+          "path": "src/RepoContext.Core/Context/SessionStore.cs",
+          "start_line": 127,
+          "end_line": 143,
+          "sha256": "59ff66ea9bcd55f43ed7ab8c32b8c6f2589103fa8edfbb02c5a2358019006f67"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "repocontext-savings",
+      "repository": "repocontext",
+      "query": "do not credit a partial receipt as avoiding a full file read in usage statistics",
+      "language": "CSharp",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The accounting credits delivered content and explicit whole-file reuse, with per-path deduplication.",
+      "required_spans": [
+        {
+          "path": "src/RepoContext.Core/Stats/UsageMeter.cs",
+          "start_line": 25,
+          "end_line": 45,
+          "sha256": "2d7cd9a6639211a8b3ddc14fce9fd6a96975636fd41a18ff0aa783064bb0478f"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-limit-validation",
+      "repository": "p-limit",
+      "query": "validate the concurrency limit and allow an unlimited value",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Validation admits positive integers or positive infinity.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 100,
+          "end_line": 103,
+          "sha256": "0a084f4589e551ce41f2e71c9ded103bd0bdc4e14e739ce89aad9069b9a9a940"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-limit-release",
+      "repository": "p-limit",
+      "query": "release a concurrency slot after a task rejects",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "run awaits either fulfillment or rejection before next decrements activeCount.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 23,
+          "end_line": 32,
+          "sha256": "30ea8ae45d59d0ec7d87e1a0337aa45e62151784c1595edc87fe9724518ed2fb"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-limit-microtask",
+      "repository": "p-limit",
+      "query": "preserve asynchronous context while queuing a function",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Internal promise resolution queues work and waits a microtask before checking capacity.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 35,
+          "end_line": 53,
+          "sha256": "78a0988c3ade3babac05d3b2d033975b4906fb8763eaceda5dc7fe0a14928b23"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-limit-resize",
+      "repository": "p-limit",
+      "query": "start waiting tasks when the concurrency limit increases",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The concurrency setter validates and resumes queued work in a microtask.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 73,
+          "end_line": 85,
+          "sha256": "7473eab6894acb2ba27ab59a3592b5b62ddb50acbb050f2c6f77e9d5ca46c3ef"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-limit-counts",
+      "repository": "p-limit",
+      "query": "report running and waiting task counts without removing queued tasks",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Getter descriptors expose activeCount and queue.size independently.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 61,
+          "end_line": 67,
+          "sha256": "aa02b4d846ee808ff2d1bfda628c71b2e770896bb028eb4ca1949707f0117506"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-limit-wrapper",
+      "repository": "p-limit",
+      "query": "wrap a single asynchronous function with its own concurrency limit",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "limitFunction creates one limiter and forwards each call through it.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 93,
+          "end_line": 97,
+          "sha256": "b3ac3f105e46846facf44c39a63968ec81277cecf88970ca0976160392609e92"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-retry-abort-error",
+      "repository": "p-retry",
+      "query": "preserve the original error when explicitly aborting retries",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "AbortError stores its original error and the retry catch path unwraps it.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 8,
+          "end_line": 17,
+          "sha256": "65fe1c0f4b12da4bb5f068c69de7154005dd970dc5637cb6f426dcc4c16068e1"
+        },
+        {
+          "path": "index.js",
+          "start_line": 64,
+          "end_line": 66,
+          "sha256": "819b497d0e7aa8556473566e33607a9d71e8c0b1237d629ec5ce4994ce557fb4"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-retry-counts",
+      "repository": "p-retry",
+      "query": "report attempt number and remaining retries to failure hooks",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The first attempt is excluded from retriesLeft before invoking the hooks.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 21,
+          "end_line": 27,
+          "sha256": "7b2eea80eb64feade3c0a753ac40b19af63bc24f74eea38ac1a2f0de0a6de85b"
+        },
+        {
+          "path": "index.js",
+          "start_line": 72,
+          "end_line": 79,
+          "sha256": "e3f025f9b4275839e6a663fc2aefc62c3e564ad3480f1b8ac7de34beff14d673"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-retry-undefined-hooks",
+      "repository": "p-retry",
+      "query": "apply default callbacks when retry options are explicitly undefined",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Nullish assignments provide the hooks and retry count defaults.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 30,
+          "end_line": 37,
+          "sha256": "9d14b6ecff3ad04349f8ecb8451c936de7db6e693dbe839f5fdbdd09d4fcc322"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-retry-abort-signal",
+      "repository": "p-retry",
+      "query": "stop a retry operation when its abort signal fires and remove the listener",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The abort handler stops/rejects; cleanup unregisters the listener.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 39,
+          "end_line": 50,
+          "sha256": "19bee2555ea5d2738df3e454078aeaf8999326a28e3e7b8def367f7bc0183ed3"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-retry-type-errors",
+      "repository": "p-retry",
+      "query": "retry network errors but reject ordinary TypeError failures",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The catch branch filters non-errors, explicit aborts and non-network TypeErrors.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 60,
+          "end_line": 70,
+          "sha256": "30cd59d04b8623590887d7cd1f65b0f00307590ef6f78133b9e0543cfcf879c7"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-retry-retry-hook",
+      "repository": "p-retry",
+      "query": "honor an asynchronous decision about whether a failed attempt should retry",
+      "language": "JavaScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The retry decision and failed-attempt hook are awaited before retry or final error cleanup.",
+      "required_spans": [
+        {
+          "path": "index.js",
+          "start_line": 72,
+          "end_line": 87,
+          "sha256": "6de2ed045bfef159f8afc3308e3c4b5dc8aef36e5d050c1b7dc9f17cd3e00251"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-queue-sorted-insert",
+      "repository": "p-queue",
+      "query": "insert higher priority tasks before lower priority tasks while keeping equal priorities in order",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "PriorityQueue uses a binary insertion point after equal-priority elements.",
+      "required_spans": [
+        {
+          "path": "source/priority-queue.ts",
+          "start_line": 24,
+          "end_line": 33,
+          "sha256": "c80a3fd7da9b0071a08959345763f17184bc92c4ffb10dd50e5b1f7a5c0689c5"
+        },
+        {
+          "path": "source/lower-bound.ts",
+          "start_line": 3,
+          "end_line": 19,
+          "sha256": "4644091229feeb98d62fa9a8d28b8acc31abebbfaa0c1784ed52228eccc6703b"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "source/priority-queue.ts",
+          "to": "source/lower-bound.ts",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "p-queue-reprioritize",
+      "repository": "p-queue",
+      "query": "change the priority of a queued task by its identifier",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The public method delegates to a remove-and-reinsert operation that preserves the task id.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 270,
+          "end_line": 271,
+          "sha256": "62eefd4f998148ccb7c039a384f10e81d0b6e6535ecdc1e8bc4cd177d82eb96f"
+        },
+        {
+          "path": "source/priority-queue.ts",
+          "start_line": 36,
+          "end_line": 43,
+          "sha256": "21ce4155f2d5278bc2df51b804963bf840c8cf876b18fa8df92f15de6c5eb376"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "source/index.ts",
+          "to": "source/priority-queue.ts",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "p-queue-missing-id",
+      "repository": "p-queue",
+      "query": "report an error when reprioritizing a task whose identifier is not queued",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "setPriority throws ReferenceError if the id cannot be found.",
+      "required_spans": [
+        {
+          "path": "source/priority-queue.ts",
+          "start_line": 36,
+          "end_line": 39,
+          "sha256": "22714e014d868e6fde181dce7e8177a65316e82dc3e4aad64057104a41553b5b"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-queue-filtered-size",
+      "repository": "p-queue",
+      "query": "count waiting tasks with a particular priority",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "sizeBy uses the queue filter whose implementation selects matching priorities.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 448,
+          "end_line": 450,
+          "sha256": "73db846ae69c6292bb6d69d33c818df4d938f6b18a9cb14b3bea5663eb0f3709"
+        },
+        {
+          "path": "source/priority-queue.ts",
+          "start_line": 51,
+          "end_line": 54,
+          "sha256": "6e7ef96fe24b5e7a597806c824b92d63a5e4813f1c0b735f3505a685e5f98d57"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "source/index.ts",
+          "to": "source/priority-queue.ts",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "p-queue-timeout",
+      "repository": "p-queue",
+      "query": "decide whether a timed out queued operation rejects or fulfills",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Timeout wrapping and catch behavior depend on timeout and throwOnTimeout options.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 299,
+          "end_line": 300,
+          "sha256": "b745be01500460f8455d1b87fd7dc6248c25dbbb41dfd0fa77bce8ed98cd25d3"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 310,
+          "end_line": 319,
+          "sha256": "f9d595240e1a5400907ba6df8e41eb5a18f78a7dc63e4fdb4cc57935468482ea"
+        },
+        {
+          "path": "source/options.ts",
+          "start_line": 3,
+          "end_line": 14,
+          "sha256": "73c01f975023d8efc717fc9f14902b2032076e66ed12248a5fd7ef40f755581a"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "source/index.ts",
+          "to": "source/options.ts",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "p-queue-cancellation",
+      "repository": "p-queue",
+      "query": "cancel a queued operation before it starts or while it is running",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "add first checks an aborted signal and then races active work against an abort listener.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 226,
+          "end_line": 230,
+          "sha256": "7acb9db32174cebf551579de540079acb4b38db317fe80850e27c39168e40176"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 294,
+          "end_line": 305,
+          "sha256": "6bcf5fb970d4a459da87c02de3023011e08b3e7e3938faba8dc6beac1cb24073"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-queue-idle-empty",
+      "repository": "p-queue",
+      "query": "distinguish an empty queue from completion of all running work",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "onEmpty observes waiting work only; onIdle also waits for pending jobs.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 382,
+          "end_line": 388,
+          "sha256": "26779c7e3e6f5ce703e450e4a456fc18938c402a7b5f1a3bd3ee93480785986f"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 412,
+          "end_line": 418,
+          "sha256": "a725805765d222f76b9738e68614f11821ec08bdb82228f130fbebe9ac52ab90"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 148,
+          "end_line": 151,
+          "sha256": "484c54cf71d1204603a9f58d5be4b8fe757548e3c445a6dada01168756b73533"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-queue-backpressure",
+      "repository": "p-queue",
+      "query": "wait until the number of waiting tasks falls below a limit",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "onSizeLessThan waits for a next event whose filtered size satisfies the bound.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 398,
+          "end_line": 404,
+          "sha256": "7bd04839f996fbe192d2af7f0a871d265417be69438c107a4d67e38edfbdbffb"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 421,
+          "end_line": 432,
+          "sha256": "4f0a0157a31b8a5173008acbf30674c789cffb895a0fe47030324e084905c22d"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-queue-pause-resume",
+      "repository": "p-queue",
+      "query": "pause queue execution and resume pending tasks later",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "Pause changes the flag checked during scheduling; start clears it and processes the queue.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 352,
+          "end_line": 367,
+          "sha256": "af9ae7ea4f801923ad206da18234c32b1ada0d2e873f71600b6a8bcb2ed8209b"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 157,
+          "end_line": 166,
+          "sha256": "5ccd16404b7ff1f8139d65c4a152db7f9f0b430db38f020027bc7288b44dc7c6"
+        }
+      ],
+      "required_relationships": []
+    },
+    {
+      "id": "p-queue-carryover",
+      "repository": "p-queue",
+      "query": "count unfinished tasks against the next rate limit interval",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The interval counter resets to pending when carryoverConcurrencyCount is enabled.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 194,
+          "end_line": 201,
+          "sha256": "68e151634036083f15e56f9f81888f082b2faef425214b69cb03db35e3a4cbcf"
+        },
+        {
+          "path": "source/options.ts",
+          "start_line": 57,
+          "end_line": 62,
+          "sha256": "2baa6c8d25311edca882c6a3069d858cfe3c095115a839befda0a6a9e06924dc"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "source/index.ts",
+          "to": "source/options.ts",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "p-queue-custom-queue",
+      "repository": "p-queue",
+      "query": "implement a custom queue class accepted by the concurrency controller",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "The queue contract declares required operations and options select the instantiated class.",
+      "required_spans": [
+        {
+          "path": "source/queue.ts",
+          "start_line": 1,
+          "end_line": 8,
+          "sha256": "deb92d0bdb5ed37518a89d533759c81424a20dd7e9bb638750c8f0547611f132"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 79,
+          "end_line": 85,
+          "sha256": "251f97fedf019d9bad3535f9a774da80e047a1002efbabac062c51afbfeb50dc"
+        },
+        {
+          "path": "source/options.ts",
+          "start_line": 34,
+          "end_line": 37,
+          "sha256": "d76f0cbeca89e2f86a1536fd7f74395a3082a1cc9247ec0bfa6db133c9c3f02a"
+        }
+      ],
+      "required_relationships": [
+        {
+          "from": "source/index.ts",
+          "to": "source/queue.ts",
+          "kind": "import"
+        },
+        {
+          "from": "source/index.ts",
+          "to": "source/options.ts",
+          "kind": "import"
+        }
+      ]
+    },
+    {
+      "id": "p-queue-clear",
+      "repository": "p-queue",
+      "query": "discard waiting tasks without changing the running task count",
+      "language": "TypeScript",
+      "class": "explain",
+      "historical_diagnostic": false,
+      "rationale": "clear replaces the backing queue while pending remains a separate counter.",
+      "required_spans": [
+        {
+          "path": "source/index.ts",
+          "start_line": 373,
+          "end_line": 374,
+          "sha256": "36329dd1d5e7f575a79bb15b090ca6cbc5d36f6f3a36e90a1bb9223b357ae614"
+        },
+        {
+          "path": "source/index.ts",
+          "start_line": 456,
+          "end_line": 457,
+          "sha256": "a67b30cb2dc2dfbd04be29e8b53214aab7a56f7b16ef87bbef6c9f63c3b2218e"
+        }
+      ],
+      "required_relationships": []
+    }
+  ]
+}
