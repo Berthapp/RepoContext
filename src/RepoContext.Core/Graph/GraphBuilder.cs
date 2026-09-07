@@ -146,9 +146,8 @@ public sealed class GraphBuilder
     }
 
     /// <summary>
-    /// Resolves the type-like identifiers a C# file uses to the nearest file
-    /// declaring a type of that name — the language has no import statement that
-    /// names a file, so proximity is the available signal (ADR 0006).
+    /// Resolves syntax-derived C# type references using qualified names and
+    /// namespace facts. Ambiguous declarations remain unresolved.
     /// </summary>
     private void AddTypeEdges(
         FileRow file, List<FileReference> references, Dictionary<string, List<TypeDef>> typeDefs,

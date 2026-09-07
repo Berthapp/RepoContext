@@ -7,6 +7,7 @@ It measures evidence retrieval, not an LLM's ability to complete a coding task.
 """
 
 import argparse
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -53,10 +54,12 @@ def main():
     parser.add_argument("--output", required=True, type=Path,
                         help="New JSON result file, outside the audited checkout.")
     parser.add_argument("--dotnet", default="dotnet", help="dotnet executable.")
+    parser.add_argument("--cli", type=Path,
+                        help="Optional built CLI from another checkout, for fixed-source comparisons.")
     args = parser.parse_args()
     repo = args.repo.resolve()
     output = args.output.resolve()
-    cli = repo / "src/RepoContext.Cli/bin/Release/net10.0/repoctx.dll"
+    cli = (args.cli or repo / "src/RepoContext.Cli/bin/Release/net10.0/repoctx.dll").resolve()
     if not cli.is_file():
         parser.error("Build the supplied checkout in Release configuration first.")
     if output == repo or repo in output.parents:
@@ -70,7 +73,9 @@ def main():
 
     if git("status", "--porcelain"):
         parser.error("Use a clean checkout; uncommitted files can change rankings.")
-    results = {"source_commit": git("rev-parse", "HEAD"), "self_tasks": []}
+    results = {"source_commit": git("rev-parse", "HEAD"),
+               "cli_sha256": hashlib.sha256(cli.read_bytes()).hexdigest(),
+               "self_tasks": []}
     env = dict(os.environ, DOTNET_CLI_TELEMETRY_OPTOUT="1", REPOCTX_NO_STATS="1")
     env.pop("REPOCTX_SESSION", None)
 
