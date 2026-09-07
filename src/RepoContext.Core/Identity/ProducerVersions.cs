@@ -53,7 +53,7 @@ public static class ProducerVersions
     /// imports - from the artifact bound, which changes the references a file
     /// stores and therefore the edges resolved from them.
     /// </summary>
-    public const int Graph = 4;
+    public const int Graph = 5;
 
     /// <summary>Canonical indexed content-state fingerprint layout (ADR 0015).</summary>
     public const int StateFingerprint = 2;
@@ -63,14 +63,14 @@ public static class ProducerVersions
     /// seeds candidates from work-item keys and links, and expands over
     /// reference edges (ADR 0019).
     /// </summary>
-    public const int Ranking = 2;
+    public const int Ranking = 3;
 
     /// <summary>
     /// Evidence selection and receipt canonicalisation (Q1/Q2, ADR 0015). Bumped
     /// when the delivered evidence for the same query/content would change, which
     /// must invalidate outstanding receipts even though the source is unchanged.
     /// </summary>
-    public const int Evidence = 2;
+    public const int Evidence = 3;
 
     /// <summary>Output DTO shape / canonical body encoding (ADR 0009/0012).</summary>
     public const int Representation = 1;

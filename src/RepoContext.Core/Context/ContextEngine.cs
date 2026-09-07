@@ -79,6 +79,7 @@ public sealed class ContextEngine
     /// </summary>
     public ContextResult Run(string query, ContextOptions options, IResponseCostModel? cost = null)
     {
+        using var snapshot = _store.BeginReadSnapshot();
         if (!_store.IsSchemaCurrent
             || !_store.IsProducerCurrent
             || !_store.HasValidStateHash
@@ -96,7 +97,8 @@ public sealed class ContextEngine
         GenerateCandidates(analyzed, files, candidates, options.Scope);
         GenerateReferenceCandidates(query, candidates, options.Scope);
         ExpandGraph(candidates, fileByPath);
-        ScoreCandidates(candidates);
+        foreach (Candidate candidate in candidates.Values) candidate.Query = analyzed.Original;
+        ScoreCandidates(candidates, analyzed, fileByPath);
 
         List<Candidate> ordered = ApplyDiversity(candidates.Values);
         List<Memory.MemoryHit> memoryCandidates = SelectMemories(analyzed, ordered, options);
@@ -117,6 +119,7 @@ public sealed class ContextEngine
                 Candidate c = GetOrAdd(candidates, hit.Path);
                 // Max, never sum: exact duplicate evidence must not double-weight.
                 c.Fts = Math.Max(c.Fts, hit.Score);
+                c.MatchTerms(hit.MatchingText, analyzed.Terms);
                 c.AddChunkHit(hit);
                 c.Reasons.Add("fts");
             }
@@ -126,6 +129,7 @@ public sealed class ContextEngine
                 scope: scope))
             {
                 Candidate c = GetOrAdd(candidates, hit.Path);
+                c.MatchTerms(hit.MatchingText, analyzed.Terms);
                 c.Symbol = Math.Max(
                     c.Symbol,
                     hit.Score * (1.0 + HeadingSpecificity(hit.Heading, analyzed.Terms)));
@@ -151,6 +155,7 @@ public sealed class ContextEngine
             {
                 Candidate c = GetOrAdd(candidates, file.Path);
                 c.PathScore = matches + (exactStem ? 2 : 0);
+                foreach (string term in analyzed.Terms.Where(t => lower.Contains(t, StringComparison.Ordinal))) c.MatchedTerms.Add(term);
                 c.Reasons.Add(exactStem ? "path-name-match" : "path-match");
             }
         }
@@ -242,7 +247,7 @@ public sealed class ContextEngine
         }
 
         int matched = headingTerms.Count(term => queryTerms.Contains(term));
-        return (double)matched / headingTerms.Count;
+        return matched == 0 ? 0 : matched * (1.0 + (double)matched / headingTerms.Count);
     }
 
     /// <summary>
@@ -325,13 +330,18 @@ public sealed class ContextEngine
         }
     }
 
-    private void ScoreCandidates(Dictionary<string, Candidate> candidates)
+    private void ScoreCandidates(Dictionary<string, Candidate> candidates, AnalyzedQuery analyzed, Dictionary<string, FileRow> fileByPath)
     {
         double ftsMax = Max(candidates.Values.Select(c => c.Fts));
         double symMax = Max(candidates.Values.Select(c => c.Symbol));
         double graphMax = Max(candidates.Values.Select(c => c.Graph));
         double pathMax = Max(candidates.Values.Select(c => (double)c.PathScore));
         RankingWeights w = _config.Ranking.Weights;
+        Dictionary<string, double> termWeights = analyzed.Terms
+            .Select(term => (Term: term, Count: candidates.Values.Count(c => c.MatchedTerms.Contains(term))))
+            .Where(t => t.Count > 0)
+            .ToDictionary(t => t.Term, t => Math.Log(1.0 + (double)candidates.Count / t.Count), StringComparer.Ordinal);
+        double totalTermWeight = termWeights.Values.Sum();
 
         foreach (Candidate c in candidates.Values)
         {
@@ -341,12 +351,32 @@ public sealed class ContextEngine
                 w.Graph * Normalize(c.Graph, graphMax) +
                 w.Path * Normalize(c.PathScore, pathMax);
 
+            // Distinct term coverage, weighted by rarity among candidates.
+            if (totalTermWeight > 0)
+                score *= 0.5 + 0.5 * c.MatchedTerms.Sum(t => termWeights.GetValueOrDefault(t)) / totalTermWeight;
+
             if (IsVendorOrGenerated(c.Path))
             {
                 score *= VendorPenalty;
                 c.Reasons.Add("penalty:vendor-or-generated");
             }
 
+            bool exactTarget = analyzed.Original.Contains(c.Path, StringComparison.OrdinalIgnoreCase)
+                || c.SymbolMatches().Any(x => analyzed.Original.Trim().Equals(x.Name, StringComparison.OrdinalIgnoreCase));
+            if (!exactTarget && fileByPath.TryGetValue(c.Path, out FileRow file))
+            {
+                string[] segments = c.Path.ToLowerInvariant().Split('/');
+                bool fixturesRequested = analyzed.Terms.Any(t => t is "fixture" or "example" or "sample" or "beispiel");
+                bool testsRequested = analyzed.Terms.Any(t => t is "test" or "testing" or "spec" or "testen");
+                bool docsRequested = analyzed.Terms.Any(t => t is "doc" or "documentation" or "document"
+                    or "readme" or "requirement" or "policy" or "ticket" or "dokumentation");
+                if (!fixturesRequested && segments.Any(x => x is "fixtures" or "samples" or "examples"))
+                { score *= 0.2; c.Reasons.Add("penalty:fixture"); }
+                else if (!testsRequested && file.Kind == "test")
+                { score *= 0.55; c.Reasons.Add("penalty:test"); }
+                else if (!docsRequested && file.Kind == "doc")
+                { score *= 0.65; c.Reasons.Add("penalty:doc"); }
+            }
             c.Score = score;
         }
     }
@@ -364,7 +394,7 @@ public sealed class ContextEngine
         {
             string dir = Directory(c.Path);
             int prior = perDir.GetValueOrDefault(dir);
-            c.AdjustedScore = c.Score * Math.Pow(DiversityFactor, prior);
+            c.AdjustedScore = c.Score * Math.Pow(DiversityFactor, Math.Min(prior, 3));
             perDir[dir] = prior + 1;
         }
 
@@ -437,7 +467,8 @@ public sealed class ContextEngine
             ContextItem? item = BuildItem(c, row, options, seen, reused);
             if (item is not null)
             {
-                prepared.Add(new PreparedCandidate(prepared.Count, item, row.ContentHash));
+                prepared.Add(new PreparedCandidate(prepared.Count, item, row.ContentHash)
+                { Variants = CandidateVariants(item, options).ToArray() });
             }
         }
 
@@ -483,7 +514,7 @@ public sealed class ContextEngine
         // while preventing a stale note from turning a code query into a
         // memory-only false success.
         bool sourceFitsNonResponseBudgets = options.Top > 0 && prepared.Any(candidate =>
-            CandidateVariants(candidate.Item, options)
+            candidate.Variants
                 .Any(item => FitsNonResponseBudgets(item, options)));
         while (selected.Count == 0 && memories.Count > 0 && sourceFitsNonResponseBudgets)
         {
@@ -515,7 +546,7 @@ public sealed class ContextEngine
                 .Select(c => (
                     c.Ordinal,
                     c.ContentHash,
-                    Item: CandidateVariants(c.Item, options)
+                    Item: c.Variants
                         .Where(item => FitsNonResponseBudgets(item, packingOptions))
                         .OrderBy(ResponseSizeEstimate)
                         .ThenBy(item => item.StartLine)
@@ -609,7 +640,7 @@ public sealed class ContextEngine
             }
 
             IEnumerable<ContextItem> variants = duplicate is null
-                ? CandidateVariants(candidate.Item, responseOptions)
+                ? candidate.Variants
                 : [duplicate];
             foreach (ContextItem item in variants)
             {
@@ -689,9 +720,20 @@ public sealed class ContextEngine
         int nonpositive,
         IReadOnlySet<int>? acknowledgedOrdinals)
     {
-        var selectedOrdinals = selected.Select(c => c.Ordinal).ToHashSet();
         var omissions = new OmissionTally { NonpositiveScore = nonpositive };
         int lastSelected = selected.Count == 0 ? -1 : selected.Max(c => c.Ordinal);
+        // Response-only budgets need counts, not a re-tokenization of every
+        // other file for every proposed variant.
+        if (options.BudgetTokens is null && options.ProjectedReadBudgetTokens is null)
+        {
+            int remaining = prepared.Count - selected.Count - (acknowledgedOrdinals?.Count ?? 0);
+            int top = options.Top <= 0 ? remaining : selected.Count >= options.Top
+                ? prepared.Count - lastSelected - 1 - (acknowledgedOrdinals?.Count(i => i > lastSelected) ?? 0) : 0;
+            omissions.Top = options.ResponseBudgetTokens is null ? remaining : top;
+            omissions.ResponseBudget = options.ResponseBudgetTokens is null ? 0 : remaining - top;
+            return omissions;
+        }
+        var selectedOrdinals = selected.Select(c => c.Ordinal).ToHashSet();
 
         foreach (PreparedCandidate candidate in prepared)
         {
@@ -789,7 +831,7 @@ public sealed class ContextEngine
     {
         ContextItem? duplicate = DuplicatePointer(candidate, selected, options);
         return duplicate is null
-            ? CandidateVariants(candidate.Item, options)
+            ? candidate.Variants
             : [duplicate];
     }
 
@@ -1625,7 +1667,11 @@ public sealed class ContextEngine
     }
 
     /// <summary>A ranked, fully materialized candidate with a stable pass-local identity.</summary>
-    private sealed record PreparedCandidate(int Ordinal, ContextItem Item, string ContentHash);
+    private sealed record PreparedCandidate(int Ordinal, ContextItem Item, string ContentHash)
+    {
+        // Scoped to one query; content cannot leak across index generations.
+        public IReadOnlyList<ContextItem> Variants { get; init; } = [];
+    }
 
     private sealed class Candidate
     {
@@ -1634,6 +1680,14 @@ public sealed class ContextEngine
         private readonly HashSet<string> _hitKeys = new(StringComparer.Ordinal);
 
         public required string Path { get; init; }
+        public string Query { get; set; } = string.Empty;
+        public HashSet<string> MatchedTerms { get; } = new(StringComparer.Ordinal);
+        public void MatchTerms(string? text, IReadOnlyList<string> terms)
+        {
+            if (text is null) return;
+            HashSet<string> words = FtsQuery.Tokenize(text).ToHashSet(StringComparer.Ordinal);
+            foreach (string term in terms) if (words.Contains(term)) MatchedTerms.Add(term);
+        }
 
         public double Fts { get; set; }
 
@@ -1681,6 +1735,8 @@ public sealed class ContextEngine
         /// <summary>The symbols this query matched, used to pin query-aware outlines.</summary>
         public IReadOnlyList<SymbolMatch> SymbolMatches() => _symbolHits
             .Where(h => h.Heading is { Length: > 0 })
+            .Where(h => Query.Trim().Equals(h.Heading, StringComparison.OrdinalIgnoreCase)
+                || !_symbolHits.Any(other => !ReferenceEquals(other, h) && Contains(h, other)))
             .OrderByDescending(h => h.Score)
             .ThenBy(h => h.StartLine)
             .Select(h => new SymbolMatch(h.Heading!, h.StartLine, h.EndLine))

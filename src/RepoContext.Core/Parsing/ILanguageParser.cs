@@ -19,4 +19,6 @@ public interface ILanguageParser : IDisposable
     /// imports and re-exports). Empty for languages without module imports.
     /// </summary>
     IReadOnlyList<string> ExtractImportSpecifiers(SourceLanguage language, string content);
+    /// <summary>C# syntax facts: type uses, qualified declarations and namespaces.</summary>
+    IReadOnlyList<(string Kind, string Name, int Line)> ExtractCSharpReferences(string content) => [];
 }

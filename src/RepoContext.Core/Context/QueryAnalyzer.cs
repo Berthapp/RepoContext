@@ -45,6 +45,10 @@ public static class QueryAnalyzer
             }
 
             AddTerm(token);
+            // Preserve literal identifiers while also finding singular symbols.
+            if (token.Length > 4 && token.EndsWith('s') && !token.EndsWith("ss", StringComparison.Ordinal)
+                && !token.EndsWith("us", StringComparison.Ordinal) && !token.EndsWith("is", StringComparison.Ordinal))
+                AddTerm(token.EndsWith("ies", StringComparison.Ordinal) ? token[..^3] + "y" : token[..^1]);
             if (config.Ranking.Synonyms.TryGetValue(token, out IReadOnlyList<string>? synonyms))
             {
                 foreach (string synonym in synonyms)

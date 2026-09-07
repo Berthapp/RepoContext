@@ -20,7 +20,7 @@ namespace RepoContext.Cli.Mcp;
 /// ADR 0008/0010/0013). Each tool is a thin wrapper over the same
 /// deterministic engines the CLI uses and returns the identical JSON contract
 /// as <c>--format json</c> (same <c>schema_version</c>, same fields). Tools
-/// never mutate the index; <c>memory_add</c> appends to the separate agent
+/// refresh the index only when ensureFresh is requested; <c>memory_add</c> appends to the separate agent
 /// memory store (curation via <c>memory rm</c> stays CLI-only, under human
 /// supervision).
 /// </summary>
@@ -46,13 +46,13 @@ public static class McpTools
                     + "scores, kinds, and reasons; path narrows the scope.")),
             McpServerTool.Create(
                 (Func<string, int, int?, int?, int?, string, string[]?, string[]?, string?, bool, bool,
-                    string[]?, CallToolResult>)GetContext,
+                    string[]?, bool, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Primary context tool. Ranks task-relevant files under response/read budgets. "
                     + "detail: auto=pick per task, paths=locations, outline=symbols, slices=source "
                     + "spans. Reuse evidence via seen receipts or session; known=path@hash requires "
                     + "a full-file read. stripComments is lossy; matching memories are included by "
-                    + "default; path narrows the scope.")),
+                    + "default; path narrows the scope. ensureFresh refreshes the index first.")),
             McpServerTool.Create(
                 (Func<string, int, string[]?, CallToolResult>)TraceRef,
                 Describe("repoctx.trace",
@@ -142,7 +142,8 @@ public static class McpTools
         bool stripComments = false,
         [Description("Include relevant local memories.")]
         bool includeMemory = true,
-        [Description("Restrict to directories or globs.")] string[]? path = null)
+        [Description("Restrict to directories or globs.")] string[]? path = null,
+        [Description("Refresh the local index first, including a missing index.")] bool ensureFresh = false)
     {
         if (top <= 0)
         {
@@ -224,11 +225,19 @@ public static class McpTools
                 : "Invalid session. Use 1-64 characters from A-Z, a-z, 0-9, '.', '_', '-'.");
         }
 
-        if (Locate() is not { } layout)
+        RepoLayout? layout = ensureFresh ? RepoLayout.Discover(Directory.GetCurrentDirectory()) : Locate();
+        if (layout is null)
         {
             return NoIndex();
         }
 
+        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+        if (ensureFresh)
+        {
+            IndexStats refreshed = new Indexer(layout, config, CliInfo.Version).Run(full: false);
+            if (refreshed.Unreadable > 0 || refreshed.UnreadableIgnoreFiles.Count > 0)
+                return Fail("Could not verify freshness: files or ignore rules were unreadable.");
+        }
         if (session is not null)
         {
             SessionState state = SessionStore.LoadState(layout, session);
@@ -247,7 +256,6 @@ public static class McpTools
                 .ToArray();
         }
 
-        RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         using IndexStore store = IndexStore.Open(layout.DatabasePath);
         if (OutdatedIndex(store, config) is { } outdated)
         {

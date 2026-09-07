@@ -33,6 +33,7 @@ public static class StatsOutput
         var sb = new StringBuilder();
         sb.Append("Token savings (per-call calibrated counts, ")
           .Append(report.FirstDay).Append(" to ").Append(report.LastDay).Append("):\n\n");
+        sb.Append("Savings are estimates assuming avoided full-file reads; later agent reads and task success are not measured.\n\n");
         sb.Append($"  calls            {N(report.Totals.Calls),12}\n");
         sb.Append($"  response tokens  {N(report.Totals.ServedTokens),12}\n");
         sb.Append($"  reads replaced   {N(report.Totals.ReplacedTokens),12}\n");
@@ -73,7 +74,7 @@ public static class StatsOutput
         }
 
         var sb = new StringBuilder();
-        sb.Append("# Token savings\n\n");
+        sb.Append("# Token savings\n\nSavings are estimates assuming avoided full-file reads; later agent reads and task success are not measured.\n\n");
         sb.Append("_Per-call calibrated counts, ").Append(report.FirstDay).Append(" to ")
           .Append(report.LastDay).Append("._\n\n");
         sb.Append("- calls: **").Append(N(report.Totals.Calls)).Append("**\n");
@@ -182,6 +183,8 @@ public static class StatsOutput
 
         /// <summary>Replaced reads minus response cost; negative means net overhead so far.</summary>
         public long SavedTokens { get; init; }
+
+        public bool SavingsAreEstimated { get; init; } = true;
 
         /// <summary>Currency of <see cref="SavedCost"/>; absent when pricing is unset.</summary>
         public string? Currency { get; init; }

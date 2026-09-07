@@ -31,7 +31,7 @@ public sealed record IndexStats
 
     public bool FullRebuild { get; init; }
 
-    /// <summary>Source bytes read for hashing during this scan.</summary>
+    /// <summary>Source bytes read for hashing and changed-file analysis during this scan.</summary>
     public long BytesRead { get; init; }
 
     /// <summary>Added/changed files whose chunks and symbols were recomputed.</summary>
@@ -97,7 +97,10 @@ public sealed class Indexer
     public IndexStats Run(bool full)
     {
         var stopwatch = Stopwatch.StartNew();
+        ConfigStore.Validate(_config);
         using IndexStore store = IndexStore.Open(_layout.DatabasePath);
+        // Serialize writers before reading old state; publish files, graph and metadata atomically.
+        using SqliteTransaction tx = store.BeginTransaction();
 
         string configHash = ConfigStore.ComputeIndexHash(_config);
         bool configChanged = store.GetMeta(MetaKeys.ConfigHash) != configHash;
@@ -141,7 +144,6 @@ public sealed class Indexer
 
         var referenceExtractor = new ReferenceExtractor(_config.Artifacts);
         using ILanguageParser parser = new TreeSitterParser();
-        using (SqliteTransaction tx = store.BeginTransaction())
         {
             for (int i = 0; i < scanned.Count; i++)
             {
@@ -172,12 +174,17 @@ public sealed class Indexer
 
                 // Read before touching the index, so a failure here cannot leave
                 // the file half-removed.
-                if (ReadText(file.AbsolutePath) is not { } content)
+                if (ReadBytes(file.AbsolutePath) is not { } bytes)
                 {
                     unreadable.Add(file.RelativePath);
                     Keep(known, file.RelativePath, seen, ref indexedFiles);
                     continue;
                 }
+
+                // Hash exactly the bytes being parsed, even if the file changed after the first digest.
+                bytesRead += bytes.Length;
+                hash = Convert.ToHexStringLower(SHA256.HashData(bytes));
+                string content = DecodeUtf8(bytes);
 
                 seen.Add(file.RelativePath);
                 indexedFiles++;
@@ -201,7 +208,7 @@ public sealed class Indexer
                 int tokenCount = Tokens.Count(content);
                 var labels = new FileKindLabel(Label(file.Kind), Label(file.Language));
                 store.InsertFile(
-                    file.RelativePath, labels, file.SizeBytes, lineCount, tokenCount, hash,
+                    file.RelativePath, labels, bytes.Length, lineCount, tokenCount, hash,
                     chunks, symbols, tx, references);
             }
 
@@ -242,11 +249,11 @@ public sealed class Indexer
                 }
             }
 
-            tx.Commit();
         }
 
         var graphBuilder = new GraphBuilder(store, _config.Artifacts);
-        int totalEdges = graphBuilder.Rebuild();
+        bool graphChanged = rebuild || added > 0 || changed > 0 || deleted > 0;
+        int totalEdges = graphChanged ? graphBuilder.Rebuild(tx) : store.CountEdges();
 
         int totalChunks = store.CountChunks();
         int totalSymbols = store.CountSymbols();
@@ -262,6 +269,7 @@ public sealed class Indexer
         store.SetMeta(MetaKeys.SymbolCount, totalSymbols.ToString());
         store.SetMeta(MetaKeys.EdgeCount, totalEdges.ToString());
         store.SetMeta(MetaKeys.RefCount, totalRefs.ToString());
+        tx.Commit();
         stopwatch.Stop();
 
         return new IndexStats
@@ -277,7 +285,7 @@ public sealed class Indexer
             FullRebuild = rebuild,
             BytesRead = bytesRead,
             FilesParsed = filesParsed,
-            EdgesRecomputed = totalEdges,
+            EdgesRecomputed = graphChanged ? totalEdges : 0,
             GraphFilesAnalyzed = graphBuilder.FilesAnalyzed,
             TotalRefs = totalRefs,
             ReferenceEdges = graphBuilder.ReferenceEdges,
@@ -342,11 +350,11 @@ public sealed class Indexer
     }
 
     /// <summary>Reads and decodes a file, or null when it became unreadable.</summary>
-    private static string? ReadText(string absolutePath)
+    private static byte[]? ReadBytes(string absolutePath)
     {
         try
         {
-            return DecodeUtf8(File.ReadAllBytes(absolutePath));
+            return File.ReadAllBytes(absolutePath);
         }
         catch (IOException)
         {

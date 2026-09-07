@@ -22,11 +22,12 @@ public sealed record RepoctxConfig
     /// matches at any depth, which is what keeps per-project build output out
     /// of a multi-project repository.
     /// </summary>
-    public IReadOnlyList<string> Exclude { get; init; } = [];
+    public IReadOnlyList<string> Exclude { get; init; } = [.. DefaultExclude];
 
     public bool RespectGitignore { get; init; } = true;
 
-    public IReadOnlyList<string> SensitiveFiles { get; init; } = [];
+    public IReadOnlyList<string> SensitiveFiles { get; init; } =
+        [".env*", "*.secret.*", "appsettings.Production.json"];
 
     public IndexingOptions Indexing { get; init; } = new();
 
@@ -43,31 +44,7 @@ public sealed record RepoctxConfig
     public PricingOptions Pricing { get; init; } = new();
 
     /// <summary>The default configuration written by <c>repoctx init</c>.</summary>
-    public static RepoctxConfig CreateDefault() => new()
-    {
-        // Empty include = the whole repository. Coverage is subtractive
-        // (excludes, ignore files, sensitive patterns) rather than a root
-        // allow-list, which used to silently miss nested projects and any
-        // top-level directory that was not src/app/lib/docs.
-        Include = [],
-        Exclude = DefaultExclude,
-        RespectGitignore = true,
-        SensitiveFiles = [".env*", "*.secret.*", "appsettings.Production.json"],
-        Indexing = new IndexingOptions
-        {
-            MaxFileSizeKb = 512,
-            IncludeTests = true,
-            IncludeDocs = true,
-        },
-        Artifacts = new ArtifactOptions(),
-        Ranking = new RankingOptions
-        {
-            Weights = new RankingWeights { Fts = 0.4, Symbol = 0.3, Graph = 0.2, Path = 0.1 },
-            Synonyms = new Dictionary<string, IReadOnlyList<string>>(),
-        },
-        Tokens = new TokenOptions { Profile = "o200k" },
-        Pricing = new PricingOptions(),
-    };
+    public static RepoctxConfig CreateDefault() => new();
 
     /// <summary>
     /// Directory names that are generated build output in practically every

@@ -8,7 +8,7 @@ namespace RepoContext.Core.Parsing;
 /// tree-sitter based <see cref="ILanguageParser"/> for TS/TSX/JS/C# (ADR 0001).
 /// Languages, parsers and queries are created lazily and reused. Not thread-safe.
 /// </summary>
-public sealed class TreeSitterParser : ILanguageParser
+public sealed partial class TreeSitterParser : ILanguageParser
 {
     private static readonly HashSet<string> HttpMethods = new(StringComparer.Ordinal)
     {

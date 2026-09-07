@@ -157,7 +157,7 @@ public static class StatsHtmlOutput
     private static void AppendTiles(StringBuilder sb, UsageBucket totals, TokenPricing pricing)
     {
         sb.Append("<section class=\"tiles\">\n");
-        Tile(sb, "Net saved", N(totals.SavedTokens), DeltaHtml(totals));
+        Tile(sb, "Net saved (estimate)", N(totals.SavedTokens), DeltaHtml(totals));
         if (pricing.Format(totals.SavedTokens) is { } money)
         {
             string rate = WebUtility.HtmlEncode(pricing.Format(1_000_000) + "/M input");
@@ -165,7 +165,7 @@ public static class StatsHtmlOutput
                 string.Create(CultureInfo.InvariantCulture, $"<div class=\"delta\">{rate}</div>"));
         }
 
-        Tile(sb, "Reads replaced", N(totals.ReplacedTokens), null);
+        Tile(sb, "Reads replaced (estimate)", N(totals.ReplacedTokens), null);
         Tile(sb, "Response tokens", N(totals.ServedTokens), null);
         Tile(sb, "Calls", N(totals.Calls), null);
         sb.Append("</section>\n");

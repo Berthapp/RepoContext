@@ -12,9 +12,35 @@ public static class ConfigStore
         JsonSerializer.Serialize(config, RepoctxConfig.SerializerOptions);
 
     /// <summary>Deserializes config text, falling back to defaults for missing members.</summary>
-    public static RepoctxConfig Deserialize(string json) =>
-        JsonSerializer.Deserialize<RepoctxConfig>(json, RepoctxConfig.SerializerOptions)
-        ?? RepoctxConfig.CreateDefault();
+    public static RepoctxConfig Deserialize(string json)
+    {
+        RepoctxConfig config = JsonSerializer.Deserialize<RepoctxConfig>(json, RepoctxConfig.SerializerOptions)
+            ?? throw new JsonException("Configuration must be an object, not null.");
+        Validate(config);
+        return config;
+    }
+
+    public static void Validate(RepoctxConfig config)
+    {
+        static void Strings(IEnumerable<string>? values, string name)
+        {
+            if (values is null || values.Any(string.IsNullOrWhiteSpace))
+                throw new JsonException($"{name} must be an array of non-empty strings (an empty array is allowed).");
+        }
+        Strings(config.Include, "include");
+        Strings(config.Exclude, "exclude");
+        Strings(config.SensitiveFiles, "sensitiveFiles");
+        if (config.Indexing is null || config.Artifacts is null || config.Ranking?.Weights is null
+            || config.Ranking.Synonyms is null || config.Tokens is null || config.Pricing is null)
+            throw new JsonException("Configuration sections must be objects, not null.");
+        if (config.Indexing.MaxFileSizeKb <= 0 || config.Indexing.MaxFileSizeKb > int.MaxValue / 1024)
+            throw new JsonException("indexing.maxFileSizeKb must be positive and at most 2097151.");
+        if (config.Artifacts.MaxRefsPerFile < 0)
+            throw new JsonException("artifacts.maxRefsPerFile must be non-negative.");
+        Strings(config.Artifacts.KeyPatterns, "artifacts.keyPatterns");
+        foreach ((string key, IReadOnlyList<string> values) in config.Ranking.Synonyms)
+            Strings(values, $"ranking.synonyms.{key}");
+    }
 
     /// <summary>Loads the config from <paramref name="path"/>.</summary>
     public static RepoctxConfig Load(string path) => Deserialize(File.ReadAllText(path));

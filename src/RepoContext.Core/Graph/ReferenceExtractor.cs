@@ -146,18 +146,16 @@ public sealed partial class ReferenceExtractor
         bool isCSharp = file.Language == SourceLanguage.CSharp;
         bool documentLike = file.Kind is FileKind.Doc or FileKind.Config or FileKind.Other;
 
+        if (isCSharp)
+        {
+            foreach ((string kind, string name, int line) in parser.ExtractCSharpReferences(content))
+                Add(kind, name, line);
+        }
+
         for (int i = 0; i < lines.Length; i++)
         {
             string line = lines[i];
             int number = i + 1;
-
-            if (isCSharp)
-            {
-                foreach (Match match in TypeNameRegex().Matches(line))
-                {
-                    Add(RefKind.Type, match.Value, number);
-                }
-            }
 
             foreach (Match match in UrlRegex().Matches(line))
             {
