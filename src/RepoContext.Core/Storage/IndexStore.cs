@@ -154,6 +154,9 @@ public sealed class IndexStore : IDisposable
 
     public SqliteTransaction BeginTransaction() => _connection.BeginTransaction();
 
+    /// <summary>One consistent generation across all reads in a context query.</summary>
+    public SqliteTransaction BeginReadSnapshot() => _connection.BeginTransaction(deferred: true);
+
     /// <summary>Deletes a file and its chunks (including FTS rows).</summary>
     public void DeleteFile(long fileId, SqliteTransaction transaction)
     {
@@ -536,7 +539,7 @@ public sealed class IndexStore : IDisposable
             cmd.CommandText =
                 "WITH matched AS MATERIALIZED (" +
                 "  SELECT f.path, f.kind AS file_kind, c.kind AS chunk_kind, " +
-                "         c.start_line, c.end_line, c.heading, bm25(chunks_fts) AS score " +
+                "         c.start_line, c.end_line, c.heading, c.content AS matched_text, bm25(chunks_fts) AS score " +
                 "  FROM chunks_fts " +
                 "  JOIN chunks c ON c.id = chunks_fts.rowid " +
                 "  JOIN files f ON f.id = c.file_id " +
@@ -549,7 +552,7 @@ public sealed class IndexStore : IDisposable
                 "    chunk_kind COLLATE BINARY ASC, coalesce(heading, '') COLLATE BINARY ASC" +
                 "  ) AS file_rank FROM matched" +
                 ") " +
-                "SELECT path, file_kind, chunk_kind, start_line, end_line, heading, score " +
+                "SELECT path, file_kind, chunk_kind, start_line, end_line, heading, score, matched_text " +
                 "FROM ranked WHERE file_rank <= $per_file " +
                 "ORDER BY score ASC, path COLLATE BINARY ASC, start_line ASC, end_line ASC, " +
                 "chunk_kind COLLATE BINARY ASC, coalesce(heading, '') COLLATE BINARY ASC " +
@@ -571,6 +574,7 @@ public sealed class IndexStore : IDisposable
                     Heading = reader.IsDBNull(5) ? null : reader.GetString(5),
                     Score = -reader.GetDouble(6), // bm25: lower is better -> flip.
                     Reasons = ["fts"],
+                    MatchingText = reader.GetString(7),
                 });
             }
         }
@@ -644,8 +648,8 @@ public sealed class IndexStore : IDisposable
         var defs = new List<TypeDef>();
         using SqliteCommand cmd = _connection.CreateCommand();
         cmd.CommandText =
-            "SELECT s.name, s.file_id, f.path FROM symbols s JOIN files f ON f.id = s.file_id " +
-            "WHERE f.language = 'csharp' AND s.kind IN ('class','interface','struct','record','enum')";
+            "SELECT r.value, r.file_id, f.path FROM refs r JOIN files f ON f.id = r.file_id " +
+            "WHERE f.language = 'csharp' AND r.kind = 'type_definition'";
         using SqliteDataReader reader = cmd.ExecuteReader();
         while (reader.Read())
         {

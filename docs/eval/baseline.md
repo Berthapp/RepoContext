@@ -23,21 +23,21 @@ Wall-clock time is exposed by `IndexStats`/`repoctx index` but excluded from thi
 
 | scenario | bytes read | files parsed | graph files analyzed | edges recomputed |
 | --- | ---: | ---: | ---: | ---: |
-| cold | 8228 | 6 | 4 | 6 |
-| no-op | 8228 | 0 | 4 | 6 |
-| one-file-change | 8264 | 1 | 4 | 6 |
+| cold | 16456 | 6 | 4 | 6 |
+| no-op | 8228 | 0 | 0 | 0 |
+| one-file-change | 8909 | 1 | 4 | 6 |
 
 ## Per-task metrics
 
 | task | class | lang | r@1 | r@3 | r@8 | ndcg@8 | sym | span | density | core | content | read | gap |
 | --- | --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | --- |
-| locate-cs-packer | Locate | CSharp | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 646 | 0 | 1541 | none |
-| fix-cs-budget | Fix | CSharp | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 0.316 | 2156 | 805 | 0 | none |
-| explain-cs-envelope | Explain | CSharp | 0.00 | 1.00 | 1.00 | 0.631 | 1.00 | 1.00 | 1.000 | 1996 | 381 | 0 | none |
-| locate-ts-login | Locate | TypeScript | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 359 | 0 | 259 | none |
-| fix-ts-session-validity | Fix | TypeScript | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 0.176 | 719 | 120 | 0 | none |
-| explain-ts-session | Explain | TypeScript | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 834 | 111 | 0 | none |
-| impact-ts-session | Impact | TypeScript | 0.50 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 355 | 0 | 259 | none |
+| locate-cs-packer | Locate | CSharp | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 651 | 0 | 1541 | none |
+| fix-cs-budget | Fix | CSharp | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 0.316 | 2170 | 805 | 0 | none |
+| explain-cs-envelope | Explain | CSharp | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 2013 | 381 | 0 | none |
+| locate-ts-login | Locate | TypeScript | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 355 | 0 | 259 | none |
+| fix-ts-session-validity | Fix | TypeScript | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 0.176 | 712 | 120 | 0 | none |
+| explain-ts-session | Explain | TypeScript | 1.00 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 833 | 111 | 0 | none |
+| impact-ts-session | Impact | TypeScript | 0.50 | 1.00 | 1.00 | 1.000 | 1.00 | 1.00 | 1.000 | 350 | 0 | 259 | none |
 
 ## Simulated workflow accounting
 
@@ -45,13 +45,13 @@ Layers are reported separately so a saving in one cannot be counted twice.
 
 | task | calls | core | cli stdout | mcp content | mcp transport | session | args | full reads | full-read tokens | model-visible CLI | wire MCP |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |
-| locate-cs-packer | 1 | 646 | 649 | 647 | 700 | 1602 | 25 | 1 | 1008 | 1682 | 3982 |
-| fix-cs-budget | 1 | 2156 | 2156 | 2156 | 1126 | 1602 | 23 | 0 | 0 | 2179 | 4907 |
-| explain-cs-envelope | 1 | 1996 | 1998 | 1998 | 2066 | 1602 | 22 | 0 | 0 | 2020 | 5688 |
-| locate-ts-login | 1 | 359 | 358 | 358 | 446 | 1602 | 22 | 1 | 116 | 496 | 2544 |
-| fix-ts-session-validity | 1 | 719 | 717 | 716 | 680 | 1602 | 24 | 0 | 0 | 741 | 3022 |
-| explain-ts-session | 1 | 834 | 835 | 836 | 996 | 1602 | 21 | 0 | 0 | 856 | 3455 |
-| impact-ts-session | 1 | 355 | 355 | 355 | 442 | 1602 | 20 | 2 | 259 | 634 | 2678 |
+| locate-cs-packer | 1 | 651 | 653 | 651 | 706 | 1641 | 25 | 1 | 1008 | 1686 | 4031 |
+| fix-cs-budget | 1 | 2170 | 2172 | 2172 | 1132 | 1641 | 23 | 0 | 0 | 2195 | 4968 |
+| explain-cs-envelope | 1 | 2013 | 2015 | 2015 | 2094 | 1641 | 22 | 0 | 0 | 2037 | 5772 |
+| locate-ts-login | 1 | 355 | 357 | 354 | 454 | 1641 | 22 | 1 | 116 | 495 | 2587 |
+| fix-ts-session-validity | 1 | 712 | 713 | 713 | 683 | 1641 | 24 | 0 | 0 | 737 | 3061 |
+| explain-ts-session | 1 | 833 | 833 | 836 | 997 | 1641 | 21 | 0 | 0 | 854 | 3495 |
+| impact-ts-session | 1 | 350 | 350 | 350 | 441 | 1641 | 20 | 2 | 259 | 629 | 2711 |
 
 ## Reuse economics
 
@@ -59,5 +59,5 @@ Query: `change budget packing` at slices detail, top 3.
 
 | | core tokens | content tokens | results | reused |
 | --- | ---: | ---: | ---: | ---: |
-| first call | 1912 | 756 | 3 | 0 |
-| repeat with receipts | 607 | 49 | 1 | 4 |
+| first call | 1916 | 756 | 3 | 0 |
+| repeat with receipts | 616 | 49 | 1 | 4 |

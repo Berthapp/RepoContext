@@ -76,6 +76,8 @@ public static class ContextCommand
             Description = "Exclude stored agent memories from the bundle.",
         };
         var path = CommandSupport.PathScopeOption();
+        var ensureFresh = new Option<bool>("--ensure-fresh")
+        { Description = "Refresh the local index before querying, including after edits or branch changes." };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -99,6 +101,7 @@ public static class ContextCommand
             stripComments,
             noMemory,
             path,
+            ensureFresh,
             format,
         };
 
@@ -177,10 +180,21 @@ public static class ContextCommand
             }
 
             RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
-            if (layout is null || !layout.HasIndex)
+            if (layout is null || (!layout.HasIndex && !parseResult.GetValue(ensureFresh)))
             {
                 Console.Error.WriteLine("No index found. Run 'repoctx index' first.");
                 return ExitCode.NoIndex;
+            }
+
+            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
+            if (parseResult.GetValue(ensureFresh))
+            {
+                IndexStats refreshed = new Indexer(layout, config, CliInfo.Version).Run(full: false);
+                if (refreshed.Unreadable > 0 || refreshed.UnreadableIgnoreFiles.Count > 0)
+                {
+                    Console.Error.WriteLine("Could not verify freshness: files or ignore rules were unreadable. Run 'repoctx index' for details.");
+                    return ExitCode.NoIndex;
+                }
             }
 
             if (sessionName is not null)
@@ -191,7 +205,6 @@ public static class ContextCommand
             }
 
             string query = parseResult.GetValue(task) ?? string.Empty;
-            RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
 
             // 'auto' is resolved here, before the engine runs, so the response
             // reports the concrete level exactly as if the caller had named it —

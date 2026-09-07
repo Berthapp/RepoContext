@@ -8,6 +8,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
+
 env:
   DOTNET_CLI_TELEMETRY_OPTOUT: "1"
   DOTNET_NOLOGO: "1"
@@ -27,6 +31,13 @@ jobs:
     env:
       NUGET_USER: ${{ secrets.NUGET_USER }}
     steps:
+      - name: Require NuGet publishing configuration
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          if [ -z "$NUGET_USER" ]; then
+            echo "::error::NUGET_USER is required for release tags. Configure the NuGet Trusted Publishing profile before retrying."
+            exit 1
+          fi
       - uses: actions/checkout@v7
       - uses: actions/setup-dotnet@v5
         with:
@@ -61,19 +72,19 @@ jobs:
         with:
           name: repoctx-nupkgs
           path: artifacts/nupkg/*.nupkg
-      # Publish to NuGet.org only for tag builds, and only when the NUGET_USER
-      # secret is configured. Trusted Publishing: exchange the GitHub OIDC
+      # Publish to NuGet.org for tag builds; missing configuration fails above.
+      # Trusted Publishing: exchange the GitHub OIDC
       # token for a 1-hour API key against the policy registered on nuget.org
       # (repo Berthapp/RepoContext, workflow release.yml). No long-lived key.
       - name: NuGet login (OIDC -> temp API key)
-        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_USER != ''
+        if: startsWith(github.ref, 'refs/tags/v')
         uses: NuGet/login@v1
         id: nuget-login
         with:
           user: ${{ secrets.NUGET_USER }}
       # --skip-duplicate makes re-runs idempotent.
       - name: Push to NuGet.org
-        if: startsWith(github.ref, 'refs/tags/v') && env.NUGET_USER != ''
+        if: startsWith(github.ref, 'refs/tags/v')
         run: >
           dotnet nuget push "artifacts/nupkg/*.nupkg"
           --api-key "${{ steps.nuget-login.outputs.NUGET_API_KEY }}"
@@ -264,16 +275,23 @@ jobs:
         with:
           path: dist
           merge-multiple: true
-      - name: Create draft release
+      - name: Publish GitHub release
         env:
           GH_TOKEN: ${{ github.token }}
-        # Draft so the release notes and attached binaries can be reviewed
-        # before it is made public. Attaches the self-contained archives and
-        # the NuGet package for direct download.
-        run: >
-          gh release create "${{ github.ref_name }}"
-          dist/repoctx-*.tar.gz dist/repoctx-*.zip dist/*.nupkg
-          --repo "${{ github.repository }}"
-          --title "RepoContext ${{ github.ref_name }}"
-          --draft
-          --generate-notes
+        # All package and binary jobs must succeed before making the release
+        # public. Re-runs also finish an existing draft without creating duplicates.
+        run: |
+          set -euo pipefail
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" \
+              dist/repoctx-*.tar.gz dist/repoctx-*.zip dist/*.nupkg \
+              --repo "$GITHUB_REPOSITORY" --clobber
+            gh release edit "$GITHUB_REF_NAME" \
+              --repo "$GITHUB_REPOSITORY" --draft=false
+          else
+            gh release create "$GITHUB_REF_NAME" \
+              dist/repoctx-*.tar.gz dist/repoctx-*.zip dist/*.nupkg \
+              --repo "$GITHUB_REPOSITORY" \
+              --title "RepoContext $GITHUB_REF_NAME" \
+              --verify-tag --generate-notes
+          fi

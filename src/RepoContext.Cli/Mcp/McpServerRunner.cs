@@ -17,7 +17,7 @@ public static class McpServerRunner
     /// substitute that can drift.
     /// </summary>
     public const string Instructions =
-        "Start with repoctx.get_context(detail='auto', responseBudgetTokens=2000); auto returns "
+        "Start with repoctx.get_context(detail='auto', responseBudgetTokens=2000, ensureFresh=true); auto returns "
         + "source spans for change tasks and outlines for survey questions. Override with "
         + "slices, outline for breadth, or paths for locations. Escalate only on a gap: search "
         + "for missing files/symbols, get_outline for a missing symbol in a known file, "
@@ -26,7 +26,7 @@ public static class McpServerRunner
         + "Set known=path@hash only after a full-file read. stripComments is lossy. "
         + "get_context already recalls matching memories; call memory_search only for a "
         + "concrete prior-knowledge gap, memory_add only for durable findings. After edits "
-        + "call get_changes(patch=true), then run repoctx index if stale. Stop when evidence "
+        + "call get_changes(patch=true), then get_context(ensureFresh=true) if stale. Stop when evidence "
         + "is sufficient. All processing is local, offline, deterministic.";
 
     /// <summary>

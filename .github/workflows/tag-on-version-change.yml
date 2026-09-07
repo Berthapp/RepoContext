@@ -1,13 +1,12 @@
 # Automates the release trigger: whenever main carries a VersionPrefix that
 # has no tag yet, this workflow creates and pushes `v<version>` — which fires
-# release.yml (NuGet publish, self-contained binaries, draft GitHub release)
+# release.yml (NuGet/npm publish, self-contained binaries, public GitHub release)
 # exactly as a manual tag would.
 #
 # The release flow therefore is:
 #   1. Bump <VersionPrefix> in Directory.Build.props inside the feature PR.
 #   2. Merge the PR into main (branch protection keeps main green).
-#   3. This workflow tags vX.Y.Z; release.yml builds and drafts the release.
-#   4. Review and publish the draft release on GitHub.
+#   3. This workflow tags vX.Y.Z; release.yml builds and publishes the release.
 # A merge that does not change VersionPrefix releases nothing.
 #
 # Why a PAT: tags pushed with the default GITHUB_TOKEN do not trigger other

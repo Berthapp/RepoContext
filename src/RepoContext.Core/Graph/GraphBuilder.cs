@@ -19,9 +19,6 @@ namespace RepoContext.Core.Graph;
 /// </remarks>
 public sealed class GraphBuilder
 {
-    private static readonly string[] TsExtensions =
-        [".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mts", ".cts", ".mjs", ".cjs"];
-
     /// <summary>
     /// Upper bound on reference edges contributed by one file. A release-notes
     /// document that names two hundred files would otherwise dominate graph
@@ -53,11 +50,14 @@ public sealed class GraphBuilder
     /// <summary>Cross-artifact reference edges created in the last rebuild.</summary>
     public int ReferenceEdges { get; private set; }
 
-    public int Rebuild()
+    public int Rebuild(SqliteTransaction? transaction = null)
     {
+        using SqliteTransaction? owned = transaction is null ? _store.BeginTransaction() : null;
+        SqliteTransaction tx = transaction ?? owned!;
         IReadOnlyList<FileRow> files = _store.GetFiles();
         var idByPath = files.ToDictionary(f => f.Path, f => f.Id, StringComparer.Ordinal);
         var pathSet = new HashSet<string>(idByPath.Keys, StringComparer.Ordinal);
+        var imports = new TsImportResolver(_store, pathSet);
         var byBasename = BuildBasenameIndex(files);
         Dictionary<string, List<TypeDef>> typeDefs = BuildTypeIndex(_store.GetTypeDefiners());
         Dictionary<string, long> uniqueSymbols = _artifacts.LinkSymbols
@@ -74,7 +74,6 @@ public sealed class GraphBuilder
         List<FileRow> byId = [.. files.OrderBy(f => f.Id)];
 
         _store.ClearEdges();
-        using (SqliteTransaction tx = _store.BeginTransaction())
         {
             for (int start = 0; start < byId.Count; start += ResolutionBatchSize)
             {
@@ -91,14 +90,14 @@ public sealed class GraphBuilder
                     }
 
                     FilesAnalyzed++;
-                    AddImportEdges(file, references, pathSet, idByPath, tx);
+                    AddImportEdges(file, references, imports, idByPath, tx);
                     AddTypeEdges(file, references, typeDefs, tx);
                     AddReferenceEdges(file, references, pathSet, idByPath, byBasename, uniqueSymbols, tx);
                 }
             }
 
             AddTestEdges(files, idByPath, tx);
-            tx.Commit();
+            owned?.Commit();
         }
 
         return _store.CountEdges();
@@ -128,17 +127,17 @@ public sealed class GraphBuilder
     }
 
     private void AddImportEdges(
-        FileRow file, List<FileReference> references, HashSet<string> pathSet,
+        FileRow file, List<FileReference> references, TsImportResolver imports,
         Dictionary<string, long> idByPath, SqliteTransaction tx)
     {
         foreach (FileReference reference in references)
         {
-            if (reference.Kind != RefKind.Import || !reference.Value.StartsWith('.'))
+            if (reference.Kind != RefKind.Import)
             {
-                continue; // bare/external specifier
+                continue;
             }
 
-            string? target = ResolveTsImport(file.Path, reference.Value, pathSet);
+            string? target = imports.Resolve(file.Path, reference.Value);
             if (target is not null && idByPath.TryGetValue(target, out long dst) && dst != file.Id)
             {
                 _store.InsertEdge(file.Id, dst, EdgeKind.Import, tx);
@@ -147,9 +146,8 @@ public sealed class GraphBuilder
     }
 
     /// <summary>
-    /// Resolves the type-like identifiers a C# file uses to the nearest file
-    /// declaring a type of that name — the language has no import statement that
-    /// names a file, so proximity is the available signal (ADR 0006).
+    /// Resolves syntax-derived C# type references using qualified names and
+    /// namespace facts. Ambiguous declarations remain unresolved.
     /// </summary>
     private void AddTypeEdges(
         FileRow file, List<FileReference> references, Dictionary<string, List<TypeDef>> typeDefs,
@@ -163,30 +161,13 @@ public sealed class GraphBuilder
                 continue;
             }
 
-            TypeDef? nearest = null;
-            int bestDistance = int.MaxValue;
-            foreach (TypeDef declaration in declarations)
-            {
-                if (declaration.Path == file.Path)
-                {
-                    continue;
-                }
-
-                int distance = DirectoryDistance(file.Path, declaration.Path);
-                if (distance < bestDistance
-                    || (distance == bestDistance
-                        && nearest is { } current
-                        && string.CompareOrdinal(declaration.Path, current.Path) < 0))
-                {
-                    nearest = declaration;
-                    bestDistance = distance;
-                }
-            }
-
-            if (nearest is { } target)
-            {
-                _store.InsertEdge(file.Id, target.FileId, EdgeKind.Import, tx);
-            }
+            if (declarations.Any(d => d.Path == file.Path)) continue;
+            string[] namespaces = references.Where(r => r.Kind == "namespace").Select(r => r.Value).ToArray();
+            List<TypeDef> scoped = declarations.Where(d => d.Name == reference.Value
+                || namespaces.Any(ns => d.Name == ns + "." + reference.Value)).ToList();
+            List<TypeDef> possible = scoped.Count > 0 ? scoped : declarations;
+            if (possible.Count == 1)
+                _store.InsertEdge(file.Id, possible[0].FileId, EdgeKind.Import, tx);
         }
     }
 
@@ -201,13 +182,13 @@ public sealed class GraphBuilder
         var index = new Dictionary<string, List<TypeDef>>(StringComparer.Ordinal);
         foreach (TypeDef definition in typeDefs)
         {
-            if (!index.TryGetValue(definition.Name, out List<TypeDef>? declarations))
+            foreach (string key in new[] { definition.Name, definition.Name[(definition.Name.LastIndexOf('.') + 1)..] }
+                .Distinct(StringComparer.Ordinal))
             {
-                declarations = [];
-                index[definition.Name] = declarations;
+                if (!index.TryGetValue(key, out List<TypeDef>? declarations))
+                    index[key] = declarations = [];
+                declarations.Add(definition);
             }
-
-            declarations.Add(definition);
         }
 
         return index;
@@ -364,50 +345,6 @@ public sealed class GraphBuilder
         }
     }
 
-    private static string? ResolveTsImport(string fromPath, string specifier, HashSet<string> pathSet)
-    {
-        string baseDir = DirName(fromPath);
-        string combined = Normalize(Join(baseDir, specifier));
-
-        foreach (string ext in TsExtensions)
-        {
-            string candidate = combined + ext;
-            if (pathSet.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        if (pathSet.Contains(combined))
-        {
-            return combined;
-        }
-
-        foreach (string ext in TsExtensions)
-        {
-            string candidate = combined + "/index" + ext;
-            if (pathSet.Contains(candidate))
-            {
-                return candidate;
-            }
-        }
-
-        return null;
-    }
-
-    private static int DirectoryDistance(string a, string b)
-    {
-        string[] da = DirName(a).Split('/', StringSplitOptions.RemoveEmptyEntries);
-        string[] db = DirName(b).Split('/', StringSplitOptions.RemoveEmptyEntries);
-        int common = 0;
-        while (common < da.Length && common < db.Length && da[common] == db[common])
-        {
-            common++;
-        }
-
-        return da.Length - common + (db.Length - common);
-    }
-
     private static string DirName(string path)
     {
         int slash = path.LastIndexOf('/');
@@ -417,34 +354,9 @@ public sealed class GraphBuilder
     private static string Join(string dir, string rel) =>
         dir.Length == 0 ? rel : dir + "/" + rel;
 
-    private static string Normalize(string path)
-    {
-        var stack = new List<string>();
-        foreach (string segment in path.Split('/'))
-        {
-            if (segment is "" or ".")
-            {
-                continue;
-            }
 
-            if (segment == "..")
-            {
-                if (stack.Count > 0)
-                {
-                    stack.RemoveAt(stack.Count - 1);
-                }
-            }
-            else
-            {
-                stack.Add(segment);
-            }
-        }
-
-        return string.Join('/', stack);
-    }
 }
 
-/// <summary>Edge kind labels.</summary>
 public static class EdgeKind
 {
     public const string Import = "import";

@@ -15,6 +15,10 @@ public sealed record SearchHit
 
     public string? Heading { get; init; }
 
+    /// <summary>Index-local ranking text, never rendered in search output.</summary>
+    [System.Text.Json.Serialization.JsonIgnore]
+    public string? MatchingText { get; init; }
+
     /// <summary>Positive relevance score (higher is better).</summary>
     public required double Score { get; init; }
 

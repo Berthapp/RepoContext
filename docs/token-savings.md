@@ -33,10 +33,10 @@ The harness keeps each layer separate:
 | call arguments | actual serialized MCP argument objects |
 | full-file reads | exact indexed token counts for reads required by the frozen workflow |
 
-The default seven-tool MCP declaration, including production instructions, is
-1,339 tokens in the current golden. Tool descriptions deliberately keep the
+The default eight-tool MCP declaration, including production instructions, is
+1,641 tokens in the current golden. Tool descriptions deliberately keep the
 receipt/full-file distinction, exact-budget guidance, lossy-strip warning, and
-stale/re-index workflow while avoiding repeated prose. A 1,500-token test
+stale/re-index workflow while avoiding repeated prose. A 1,700-token test
 ceiling prevents later schema growth from being accepted by merely refreshing
 the golden.
 
@@ -64,6 +64,20 @@ deterministically chosen compact useful payload; it may exceed the mathematical
 minimum so the error path remains bounded on large repositories.
 
 Active limits are echoed in the schema-v3 `budgets` object with explicit bases.
+
+## Index freshness
+
+`repoctx context "<task>" --ensure-fresh` refreshes the index before querying.
+MCP callers can pass `ensureFresh: true` to `repoctx.get_context`. An initialized
+repository does not need a pre-existing index for these calls. Refresh failures
+caused by unreadable source files or ignore rules stop the query. Without this
+option, queries intentionally use the last committed index; call `index` after
+editing files. A refresh hashes eligible files, so it adds I/O even on a no-op.
+
+Files, references, graph and index metadata commit in one SQLite transaction.
+Concurrent indexing is serialized, and context queries use a read snapshot.
+This does not make filesystem reads a repository-wide atomic snapshot: files
+can still change while a scan is in progress.
 
 ## Safe reuse
 

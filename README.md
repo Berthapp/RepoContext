@@ -33,7 +33,7 @@ Every token figure repoctx reports is a real BPE count, and
 `--response-budget-tokens 2000` is a hard ceiling measured against the exact
 bytes emitted — not an estimate. In the current deterministic candidate
 evaluation, repeating a slices request with its receipts cuts the core response
-from 1,904 to 609 tokens (68%) while retaining every labelled must-find file,
+from 1,916 to 616 tokens (68%) while retaining every labelled must-find file,
 symbol and span. See the [methodology, limitations and raw
 artifacts](docs/token-savings.md); the candidate is a baseline for future
 changes, not a retroactive pre/post quality comparison.
@@ -288,7 +288,7 @@ via `repoctx related`).
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--path`, `--format` |
 | `related <file>` | Imports, dependents, linked tests, and the documents that describe a file. | `--format` |
 | `trace <ref>` | Every file that declares or mentions one exact term: a work-item key (`ABC-123`), a link, a symbol name or a path. | `--top`, `--path`, `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--strip-comments`, `--no-memory`, `--path`, `--format` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--ensure-fresh`, `--strip-comments`, `--no-memory`, `--path`, `--format` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
 | `prime` | Cache-stable repository primer for a cacheable prompt prefix (byte-identical for unchanged indexed content and token calibration). | `--files`, `--format` |
@@ -632,7 +632,7 @@ server over stdio and exposes eight non-destructive tools:
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols`, `path` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path`, `ensureFresh` |
 | `repoctx.trace` | `trace` | `reference`, `top`, `path` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |
@@ -836,13 +836,16 @@ Releases are cut by merging, not by hand:
    (contract changes bump the minor version while pre-1.0).
 2. Merge to `main`. The `Tag on version change` workflow notices the new
    version, pushes `v<version>`, and `release.yml` publishes to NuGet and npm,
-   builds the self-contained binaries and drafts the GitHub release.
-3. Review and publish the draft release.
+   builds the self-contained binaries and publishes the GitHub release
+   automatically once all package and binary jobs succeed.
 
 A merge that leaves `VersionPrefix` untouched releases nothing. One-time
 setup: an Actions secret `RELEASE_PAT` (fine-grained PAT, this repository
 only, Contents: Read and write) — required because tags pushed with the
 default workflow token do not trigger `release.yml`.
+NuGet Trusted Publishing also requires `NUGET_USER`; a release fails explicitly
+if it is missing. Re-running the release skips existing package versions and
+updates an existing GitHub release, including publishing a remaining draft.
 
 #### npm authentication
 
