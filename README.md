@@ -836,13 +836,16 @@ Releases are cut by merging, not by hand:
    (contract changes bump the minor version while pre-1.0).
 2. Merge to `main`. The `Tag on version change` workflow notices the new
    version, pushes `v<version>`, and `release.yml` publishes to NuGet and npm,
-   builds the self-contained binaries and drafts the GitHub release.
-3. Review and publish the draft release.
+   builds the self-contained binaries and publishes the GitHub release
+   automatically once all package and binary jobs succeed.
 
 A merge that leaves `VersionPrefix` untouched releases nothing. One-time
 setup: an Actions secret `RELEASE_PAT` (fine-grained PAT, this repository
 only, Contents: Read and write) — required because tags pushed with the
 default workflow token do not trigger `release.yml`.
+NuGet Trusted Publishing also requires `NUGET_USER`; a release fails explicitly
+if it is missing. Re-running the release skips existing package versions and
+updates an existing GitHub release, including publishing a remaining draft.
 
 #### npm authentication
 
