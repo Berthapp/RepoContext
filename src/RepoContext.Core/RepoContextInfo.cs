@@ -28,6 +28,12 @@ public static class RepoContextInfo
     /// </remarks>
     public const int SchemaVersion = 4;
 
+    /// <summary>
+    /// Opt-in compact context JSON. V5 removes deprecated compatibility fields;
+    /// other commands and default context output retain the v4 contract.
+    /// </summary>
+    public const int CompactContextSchemaVersion = 5;
+
     /// <summary>The name of the index directory created inside a repository.</summary>
     public const string IndexDirectoryName = ".repoctx";
 

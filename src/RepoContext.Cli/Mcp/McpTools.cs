@@ -46,7 +46,7 @@ public static class McpTools
                     + "scores, kinds, and reasons; path narrows the scope.")),
             McpServerTool.Create(
                 (Func<string, int, int?, int?, int?, string, string[]?, string[]?, string?, bool, bool,
-                    string[]?, bool, CallToolResult>)GetContext,
+                    string[]?, bool, bool, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Primary context tool. Ranks task-relevant files under response/read budgets. "
                     + "detail: auto=pick per task, paths=locations, outline=symbols, slices=source "
@@ -143,7 +143,8 @@ public static class McpTools
         [Description("Include relevant local memories.")]
         bool includeMemory = true,
         [Description("Restrict to directories or globs.")] string[]? path = null,
-        [Description("Refresh the local index first, including a missing index.")] bool ensureFresh = false)
+        [Description("Refresh the local index first, including a missing index.")] bool ensureFresh = false,
+        [Description("Compact JSON v5 without deprecated duplicate fields.")] bool compact = false)
     {
         if (top <= 0)
         {
@@ -270,7 +271,7 @@ public static class McpTools
             : detailLevel!.Value;
 
         TokenScale scale = TokenScale.From(config);
-        var costModel = ContextCostModel.ForMcpText(scale);
+        var costModel = ContextCostModel.ForMcpText(scale, compact);
         var engine = new ContextEngine(store, config);
         ContextResult result = engine.Run(task ?? string.Empty, new ContextOptions
         {
@@ -298,7 +299,7 @@ public static class McpTools
                 + $"useful response. retry_budget_tokens={shortfall.RetryBudgetTokens}");
         }
 
-        string rendered = ContextOutput.Render(result, OutputFormat.Json, Surfaces.McpText);
+        string rendered = ContextOutput.Render(result, OutputFormat.Json, Surfaces.McpText, compact);
         UsageRecorder.Record(layout, "context", UsageSources.Mcp, rendered,
             UsageMeter.ReplacedTokens(result,
                 filePath => store.FindFile(filePath) is { } f ? scale.Apply(f.TokenCount) : null),

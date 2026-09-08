@@ -1,0 +1,52 @@
+diff --git a/src/RepoContext.Core/Context/ContextEngine.cs b/src/RepoContext.Core/Context/ContextEngine.cs
+index 4cb562c..b5cfacb 100644
+--- a/src/RepoContext.Core/Context/ContextEngine.cs
++++ b/src/RepoContext.Core/Context/ContextEngine.cs
+@@ -642,6 +642,10 @@ public sealed class ContextEngine
+             IEnumerable<ContextItem> variants = duplicate is null
+                 ? candidate.Variants
+                 : [duplicate];
++            if (responseOptions.ResponseBudgetTokens is not null)
++            {
++                variants = variants.Where(item => (item.Spans?.Count ?? item.Symbols?.Count ?? 0) <= 1);
++            }
+             foreach (ContextItem item in variants)
+             {
+                 if (packingOptions.BudgetTokens is { } fileBudget
+@@ -676,6 +680,36 @@ public sealed class ContextEngine
+             }
+         }
+ 
++        if (responseOptions.ResponseBudgetTokens is not null)
++        {
++            // Give new files their best fitting unit before spending spare room
++            // on additional units from files that already have evidence.
++            for (int i = 0; i < selected.Count; i++)
++            {
++                PreparedCandidate chosen = selected[i];
++                if (chosen.Item.DuplicateOf is not null) continue;
++                HashSet<string> retained = UnitReceipts(chosen.Item).ToHashSet(StringComparer.Ordinal);
++                foreach (ContextItem variant in chosen.Variants)
++                {
++                    if (!retained.IsSubsetOf(UnitReceipts(variant))) continue;
++                    if (packingOptions.BudgetTokens is { } budget
++                        && usedLegacy - chosen.Item.EstimatedTokens + variant.EstimatedTokens > budget) continue;
++                    if (packingOptions.ProjectedReadBudgetTokens is { } readBudget
++                        && usedProjected - chosen.Item.ProjectedReadTokens + variant.ProjectedReadTokens > readBudget) continue;
++                    var proposed = selected.ToList();
++                    proposed[i] = chosen with { Item = variant };
++                    OmissionTally omissions = ClassifyOmissions(
++                        prepared, proposed, packingOptions, nonpositive, acknowledgedOrdinals);
++                    if (!TryComposeWithinResponseBudget(
++                        query, analyzed, responseOptions, proposed, reused, omissions,
++                        totalCandidates, memories, cost, out _)) continue;
++                    selected[i] = proposed[i];
++                    usedLegacy += variant.EstimatedTokens - chosen.Item.EstimatedTokens;
++                    usedProjected += variant.ProjectedReadTokens - chosen.Item.ProjectedReadTokens;
++                    break;
++                }
++            }
++        }
+         return selected;
+     }
+ 

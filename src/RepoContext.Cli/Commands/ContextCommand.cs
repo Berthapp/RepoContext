@@ -78,6 +78,8 @@ public static class ContextCommand
         var path = CommandSupport.PathScopeOption();
         var ensureFresh = new Option<bool>("--ensure-fresh")
         { Description = "Refresh the local index before querying, including after edits or branch changes." };
+        var compact = new Option<bool>("--compact")
+        { Description = "Use context JSON schema v5, omitting deprecated fields and duplicated source text. Requires --format json." };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -102,6 +104,7 @@ public static class ContextCommand
             noMemory,
             path,
             ensureFresh,
+            compact,
             format,
         };
 
@@ -114,6 +117,13 @@ public static class ContextCommand
             }
 
             int topN = parseResult.GetValue(top);
+            bool compactJson = parseResult.GetValue(compact);
+            if (compactJson && outputFormat != OutputFormat.Json)
+            {
+                Console.Error.WriteLine("--compact requires --format json.");
+                return ExitCode.InvalidArguments;
+            }
+
             if (topN <= 0)
             {
                 Console.Error.WriteLine("--top must be greater than zero.");
@@ -219,7 +229,7 @@ public static class ContextCommand
             }
 
             TokenScale scale = TokenScale.From(config);
-            var costModel = ContextCostModel.ForCli(outputFormat, scale);
+            var costModel = ContextCostModel.ForCli(outputFormat, scale, compactJson);
             var engine = new ContextEngine(store, config);
             ContextResult result = engine.Run(query, new ContextOptions
             {
@@ -249,7 +259,7 @@ public static class ContextCommand
                 return ExitCode.InvalidArguments;
             }
 
-            string rendered = ContextOutput.Render(result, outputFormat, Surfaces.Cli);
+            string rendered = ContextOutput.Render(result, outputFormat, Surfaces.Cli, compactJson);
             CommandSupport.WriteRendered(rendered);
             UsageRecorder.Record(layout, "context", UsageSources.Cli, costModel.SurfaceText(result),
                 UsageMeter.ReplacedTokens(result, path => store.FindFile(path)?.TokenCount),

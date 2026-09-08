@@ -62,3 +62,51 @@ rounded to 4 decimals.
 ## Consequences
 
 - M4 (`architecture`) reuses `edges` for centrality (most-imported files).
+
+## September 2026 correction: local resolution and visible uncertainty
+
+The original MVP rules above are historical. Graphs now rebuild only when the
+indexed content or analysis producer changes, using stored references and
+configuration inside the indexing transaction.
+
+TS/JS resolution supports runtime extension substitution, index files, the
+nearest indexed tsconfig/jsconfig, paths/baseUrl and local JSONC `extends`.
+Package exports and package-based configuration inheritance are not evaluated.
+Missing local targets, missing aliases, unsupported packages, malformed
+configuration and cyclic or missing configuration inheritance remain unresolved.
+An unsupported inherited configuration prevents alias inference; ordinary
+relative imports can still resolve independently of that configuration.
+
+C# references exclude declaration names, comments and strings. Namespace facts
+and indexed SDK project references narrow the local type candidates. The
+ordinary project layout assumes ownership by the single `.csproj` in the nearest
+ancestor directory and follows literal, unconditional `ProjectReference` entries
+transitively. Files without an indexed ancestor project retain namespace/name
+inference. Multiple owners or reachable duplicate types remain unresolved.
+
+This is a syntax approximation, not MSBuild or Roslyn evaluation. In particular,
+SDK default globs can include files inside nested project directories; nearest
+project ownership does not model those overlapping compile sets. Custom compile
+items, custom default exclusions, conditional or expression-based references,
+disabled reference output, and indexed Directory.Build.props/targets that modify
+compile/project membership are reported as unsupported. Project configurations
+or imported build files absent from the index cannot supply facts. Arbitrary
+SDK/imported targets, compiler aliases and semantic type binding remain outside
+this resolver's scope.
+
+An unevaluated `Import` alone leaves project scope unknown. In that case,
+globally unambiguous namespace/type matches retain the existing syntax-inferred
+edges, so shared analyzer/build settings do not erase ordinary dependencies.
+Unknown project scope never selects between duplicate type declarations or
+ambiguous project owners. Explicit unsupported compile/reference changes in
+the project or its literal reference closure still prevent resolution.
+
+`related` and MCP `get_related_files` expose unresolved references from the
+queried file through an optional JSON `unresolved` array, with `kind`, `value`,
+`line` and `reason`. A line of zero means the stored module reference has no line
+evidence. Text and Markdown show the same failures, including when no graph edge
+exists. Unknown C# framework/package type names are omitted from diagnostics;
+local candidates that are ambiguous or outside project scope are reported.
+C# import relations carry `csharp-syntax` in `reasons` and are labelled as syntax
+inference in human-readable output. Edges and diagnostics use one database read
+snapshot, so live source/config edits appear only after indexing.

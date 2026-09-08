@@ -261,6 +261,33 @@ public class McpServerTests
     }
 
     [Fact]
+    public async Task GetContext_Compact_UsesVersionedShapeAndExactBudget()
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+        CallToolResult result = await client.CallToolAsync("repoctx.get_context",
+            new Dictionary<string, object?>
+            {
+                ["task"] = "change login",
+                ["detail"] = "slices",
+                ["compact"] = true,
+                ["responseBudgetTokens"] = 900,
+            });
+        Assert.True(result.IsError is not true, TextOf(result));
+        string text = TextOf(result);
+        Assert.True(Tokens.Count(text) <= 900);
+        using JsonDocument doc = JsonDocument.Parse(text);
+        Assert.Equal(5, doc.RootElement.GetProperty("schema_version").GetInt32());
+        Assert.False(doc.RootElement.TryGetProperty("estimated_tokens", out _));
+        Assert.NotEmpty(doc.RootElement.GetProperty("results").EnumerateArray());
+        Assert.All(doc.RootElement.GetProperty("results").EnumerateArray(), item =>
+        {
+            Assert.False(item.TryGetProperty("snippet", out _));
+            Assert.NotEmpty(item.GetProperty("spans").EnumerateArray());
+        });
+    }
+
+    [Fact]
     public async Task Search_ReturnsSchemaVersionedJsonWithReasons()
     {
         using FixtureWorkspace ws = Indexed();

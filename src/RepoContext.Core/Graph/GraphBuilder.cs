@@ -6,9 +6,9 @@ namespace RepoContext.Core.Graph;
 
 /// <summary>
 /// Recomputes the file graph (import, test and reference edges) from the
-/// references stored with each file. The graph is rebuilt in full on every
-/// index run (not incremental) — see ADR 0006 — but since M10 it is rebuilt
-/// from the index alone: no repository file is opened (ADR 0019).
+/// references stored with each file. When indexed content or configuration
+/// changes, the graph is rebuilt in full from the index alone: no repository
+/// file is opened (ADR 0006/0019). Unchanged index runs reuse the graph.
 /// </summary>
 /// <remarks>
 /// The previous implementation re-read and re-scanned every indexed file on
@@ -59,7 +59,7 @@ public sealed class GraphBuilder
         var pathSet = new HashSet<string>(idByPath.Keys, StringComparer.Ordinal);
         var imports = new TsImportResolver(_store, pathSet);
         var byBasename = BuildBasenameIndex(files);
-        Dictionary<string, List<TypeDef>> typeDefs = BuildTypeIndex(_store.GetTypeDefiners());
+        var types = new CSharpTypeResolver(_store, files);
         Dictionary<string, long> uniqueSymbols = _artifacts.LinkSymbols
             ? _store.GetUniqueSymbolDefiners()
             : [];
@@ -91,7 +91,7 @@ public sealed class GraphBuilder
 
                     FilesAnalyzed++;
                     AddImportEdges(file, references, imports, idByPath, tx);
-                    AddTypeEdges(file, references, typeDefs, tx);
+                    AddTypeEdges(file, references, types, idByPath, tx);
                     AddReferenceEdges(file, references, pathSet, idByPath, byBasename, uniqueSymbols, tx);
                 }
             }
@@ -137,7 +137,7 @@ public sealed class GraphBuilder
                 continue;
             }
 
-            string? target = imports.Resolve(file.Path, reference.Value);
+            string? target = imports.Resolve(file.Path, reference.Value).Path;
             if (target is not null && idByPath.TryGetValue(target, out long dst) && dst != file.Id)
             {
                 _store.InsertEdge(file.Id, dst, EdgeKind.Import, tx);
@@ -150,48 +150,19 @@ public sealed class GraphBuilder
     /// namespace facts. Ambiguous declarations remain unresolved.
     /// </summary>
     private void AddTypeEdges(
-        FileRow file, List<FileReference> references, Dictionary<string, List<TypeDef>> typeDefs,
-        SqliteTransaction tx)
+        FileRow file, List<FileReference> references, CSharpTypeResolver types,
+        Dictionary<string, long> idByPath, SqliteTransaction tx)
     {
         foreach (FileReference reference in references)
         {
-            if (reference.Kind != RefKind.Type
-                || !typeDefs.TryGetValue(reference.Value, out List<TypeDef>? declarations))
+            if (reference.Kind != RefKind.Type)
             {
                 continue;
             }
 
-            if (declarations.Any(d => d.Path == file.Path)) continue;
-            string[] namespaces = references.Where(r => r.Kind == "namespace").Select(r => r.Value).ToArray();
-            List<TypeDef> scoped = declarations.Where(d => d.Name == reference.Value
-                || namespaces.Any(ns => d.Name == ns + "." + reference.Value)).ToList();
-            List<TypeDef> possible = scoped.Count > 0 ? scoped : declarations;
-            if (possible.Count == 1)
-                _store.InsertEdge(file.Id, possible[0].FileId, EdgeKind.Import, tx);
+            if (types.Resolve(file.Path, reference, references).Path is { } path)
+                _store.InsertEdge(file.Id, idByPath[path], EdgeKind.Import, tx);
         }
-    }
-
-    /// <summary>
-    /// Declared types grouped by name. Resolving a file's type uses by lookup
-    /// rather than by scanning every declaration is what keeps the rebuild
-    /// linear in stored references: the previous shape was O(files x types),
-    /// which only stopped mattering once the disk reads were gone.
-    /// </summary>
-    private static Dictionary<string, List<TypeDef>> BuildTypeIndex(IReadOnlyList<TypeDef> typeDefs)
-    {
-        var index = new Dictionary<string, List<TypeDef>>(StringComparer.Ordinal);
-        foreach (TypeDef definition in typeDefs)
-        {
-            foreach (string key in new[] { definition.Name, definition.Name[(definition.Name.LastIndexOf('.') + 1)..] }
-                .Distinct(StringComparer.Ordinal))
-            {
-                if (!index.TryGetValue(key, out List<TypeDef>? declarations))
-                    index[key] = declarations = [];
-                declarations.Add(definition);
-            }
-        }
-
-        return index;
     }
 
     /// <summary>

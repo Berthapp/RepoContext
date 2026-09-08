@@ -1,5 +1,6 @@
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using RepoContext.Core;
 using RepoContext.Core.Graph;
 
@@ -23,7 +24,6 @@ public static class RelatedOutput
         if (result.Entries.Count == 0)
         {
             sb.Append("_No related files._\n");
-            return sb.ToString();
         }
 
         foreach (IGrouping<Relation, RelatedEntry> group in result.Entries
@@ -33,12 +33,20 @@ public static class RelatedOutput
             sb.Append("## ").Append(Label(group.Key)).Append("\n\n");
             foreach (RelatedEntry entry in group.OrderBy(e => e.Path, StringComparer.Ordinal))
             {
-                sb.Append("- `").Append(entry.Path).Append("`\n");
+                sb.Append("- `").Append(entry.Path).Append('`');
+                if (entry.Reasons.Contains("csharp-syntax")) sb.Append(" (C# syntax inference)");
+                sb.Append('\n');
             }
 
             sb.Append('\n');
         }
 
+        if (result.Unresolved.Count > 0)
+        {
+            sb.Append("## Unresolved dependencies\n\n");
+            foreach (UnresolvedReference reference in result.Unresolved)
+                sb.Append("- `").Append(reference.Value).Append("`: ").Append(reference.Reason).Append('\n');
+        }
         return sb.ToString();
     }
 
@@ -49,7 +57,6 @@ public static class RelatedOutput
         if (result.Entries.Count == 0)
         {
             sb.Append("  (no related files)\n");
-            return sb.ToString();
         }
 
         foreach (IGrouping<Relation, RelatedEntry> group in result.Entries
@@ -59,10 +66,18 @@ public static class RelatedOutput
             sb.Append("  ").Append(Label(group.Key)).Append(":\n");
             foreach (RelatedEntry entry in group.OrderBy(e => e.Path, StringComparer.Ordinal))
             {
-                sb.Append("    - ").Append(entry.Path).Append('\n');
+                sb.Append("    - ").Append(entry.Path);
+                if (entry.Reasons.Contains("csharp-syntax")) sb.Append(" (C# syntax inference)");
+                sb.Append('\n');
             }
         }
 
+        if (result.Unresolved.Count > 0)
+        {
+            sb.Append("  Unresolved dependencies:\n");
+            foreach (UnresolvedReference reference in result.Unresolved)
+                sb.Append("    - ").Append(reference.Value).Append(": ").Append(reference.Reason).Append('\n');
+        }
         return sb.ToString();
     }
 
@@ -75,6 +90,7 @@ public static class RelatedOutput
             Path = result.Path,
             Kind = result.Kind,
             Count = result.Entries.Count,
+            Unresolved = result.Unresolved.Count > 0 ? result.Unresolved : null,
             Results = result.Entries
                 .OrderBy(e => e.Relation)
                 .ThenBy(e => e.Path, StringComparer.Ordinal)
@@ -114,6 +130,9 @@ public static class RelatedOutput
         public int Count { get; init; }
 
         public required IReadOnlyList<RelatedItem> Results { get; init; }
+
+        [JsonIgnore(Condition = JsonIgnoreCondition.WhenWritingNull)]
+        public IReadOnlyList<UnresolvedReference>? Unresolved { get; init; }
     }
 
     private sealed record RelatedItem
