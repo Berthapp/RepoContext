@@ -91,3 +91,24 @@ To reproduce the intent report, set `REPOCTX_WRITE_INTENT_REPORT=1` only for
 Without that variable the test measures and validates without writing a report.
 Summarize the retained result with
 `python docs/eval/holdout/summarize.py intent-evaluation.json`.
+
+## Review corrections — 2026-09-08
+
+Fixed both review findings. Symbol uniqueness now uses the complete scoped
+source-symbol index with ordinal case-insensitive comparison, rather than the
+capped FTS evidence. A second declaration hidden behind eight stronger hits
+therefore prevents promotion; a declaration outside the requested scope does
+not. Sentence-ending periods after explicit paths are accepted without treating
+filename suffixes such as `.backup` as the target itself.
+
+All five new regression cases failed before the fix and pass afterward. The
+full Release suite passes **447 core + 256 integration tests (703 total)**.
+CLI and MCP budget tests also exercise paths followed by sentence punctuation.
+The intent request identity advances to `intent.v2`; default request identities
+and exact-unit receipts are unchanged, and no index schema migration is needed.
+
+The refreshed 144-arm comparison matches the final binaries and preserves
+required-file coverage, relevant-line coverage and oracle follow-up reads in
+every arm. Changed identity-token costs trim two to six non-required source
+lines in four opt-in arms; default arms are unchanged. The report retains the
+actual rendered costs and ranges rather than masking those differences.

@@ -208,4 +208,53 @@ public sealed class SelectionIntentTests
         Assert.Equal(Dependent, exact.Items[1].Path);
         Assert.Contains("intent:review:dependent", exact.Items[1].Reasons);
     }
+
+    [Theory]
+    [InlineData("checkout")]
+    [InlineData("CHECKOUT")]
+    public void SymbolUniqueness_UsesAllScopedDefinitions_WhenSearchHitsAreTruncated(string duplicateName)
+    {
+        using var repo = Fixture();
+        string duplicatePath = "src/alternate.ts";
+        string helpers = string.Join("\n", Enumerable.Range(0, 8).Select(i =>
+            "/** " + string.Join(' ', Enumerable.Repeat("checkout", 50)) + " */\n"
+            + $"export function helper{i}() {{ return 1; }}"));
+        repo.Write(duplicatePath, helpers + "\n/** "
+            + string.Join(' ', Enumerable.Repeat("unrelated", 500))
+            + $" */\nexport function {duplicateName}() {{ return 0; }}\n");
+        using IndexStore store = IndexHelper.BuildIndex(repo);
+        var options = new ContextOptions { Top = 50 };
+        ContextResult original = Engine(store).Run("checkout", options);
+        ContextItem truncated = Assert.Single(original.Items, i => i.Path == duplicatePath);
+        Assert.DoesNotContain(truncated.Reasons, r => r.Equals("symbol:" + duplicateName, StringComparison.Ordinal));
+        Assert.Contains(store.GetSymbols(store.FindFile(duplicatePath)!.Value.Id), s => s.Name == duplicateName);
+
+        ContextResult ambiguous = Engine(store).Run("checkout", options with { Intent = ContextIntent.Explain });
+        Assert.All(ambiguous.Items, item => Assert.DoesNotContain(item.Reasons,
+            reason => reason.StartsWith("intent:", StringComparison.Ordinal)));
+        Assert.Equal(original.Items.Select(i => i.Path), ambiguous.Items.Select(i => i.Path));
+
+        ContextResult scoped = Engine(store).Run("checkout", options with
+        {
+            Intent = ContextIntent.Explain, Scope = PathScope.From(["src/feature"]),
+        });
+        Assert.Equal(Anchor, scoped.Items[0].Path);
+        Assert.Equal(Dependency, scoped.Items[1].Path);
+        Assert.Contains("intent:explain:dependency", scoped.Items[1].Reasons);
+    }
+
+    [Theory]
+    [InlineData(".")]
+    [InlineData(". Then inspect its tests.")]
+    [InlineData(".)")]
+    public void SentenceFinalPeriod_DoesNotDisableFileIntent(string suffix)
+    {
+        using var repo = Fixture();
+        using IndexStore store = IndexHelper.BuildIndex(repo);
+        ContextResult result = Engine(store).Run("review " + Anchor + suffix,
+            new ContextOptions { Intent = ContextIntent.Review, Top = 2 });
+        Assert.Equal(Anchor, result.Items[0].Path);
+        Assert.Equal(Dependent, result.Items[1].Path);
+        Assert.Contains("intent:review:dependent", result.Items[1].Reasons);
+    }
 }

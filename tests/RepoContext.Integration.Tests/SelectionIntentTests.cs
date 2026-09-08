@@ -25,7 +25,7 @@ public sealed class SelectionIntentTests
     public void IntentAndDiagnostics_RespectExactBudget_AndAreDeterministic(string format, bool compact, string intent, int budget)
     {
         using var ws = Indexed();
-        string[] args = ["context", "src/auth/login.ts", "--detail", "slices", "--format", format,
+        string[] args = ["context", "review src/auth/login.ts.", "--detail", "slices", "--format", format,
             "--intent", intent, "--explain", "--response-budget-tokens", budget.ToString(CultureInfo.InvariantCulture),
             .. compact ? new[] { "--compact" } : []];
         CliResult result = ws.Run(args);

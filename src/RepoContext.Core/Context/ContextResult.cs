@@ -171,7 +171,7 @@ public sealed record ContextOptions
         $"strip_comments={StripComments}",
         $"scope={(Scope is null ? "-" : Canonical.JoinRecords(Scope.Patterns))}",
         // Opt-in policy versioning preserves identities for existing requests.
-        .. Intent is { } intent ? new[] { $"intent.v1={intent.ToString().ToLowerInvariant()}" } : [],
+        .. Intent is { } intent ? new[] { $"intent.v2={intent.ToString().ToLowerInvariant()}" } : [],
     ]);
 
     private static string Invariant(int? value) =>

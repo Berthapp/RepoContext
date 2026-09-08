@@ -388,6 +388,28 @@ public sealed class IndexStore : IDisposable
     }
 
     /// <summary>
+    /// A source file declaring this exact symbol (ordinal, ignoring case), or
+    /// null when absent or declared in multiple scoped source files. Unlike FTS
+    /// evidence, this lookup examines the complete symbol index. Two distinct
+    /// paths suffice to disprove uniqueness; overloads in one file count once.
+    /// </summary>
+    public string? FindUniqueSourceSymbolPath(string name, PathScope? scope = null)
+    {
+        _connection.CreateCollation("REPOCTX_ORDINAL_NOCASE", StringComparer.OrdinalIgnoreCase.Compare);
+        using SqliteCommand cmd = _connection.CreateCommand();
+        cmd.CommandText =
+            "SELECT DISTINCT f.path FROM symbols s JOIN files f ON f.id = s.file_id " +
+            "WHERE f.kind = 'source' AND s.name COLLATE REPOCTX_ORDINAL_NOCASE = $n" +
+            PathScopeSql.Filter(scope, "f") + " LIMIT 2";
+        cmd.Parameters.AddWithValue("$n", name);
+        PathScopeSql.Bind(cmd, scope);
+        using SqliteDataReader reader = cmd.ExecuteReader();
+        if (!reader.Read()) return null;
+        string path = reader.GetString(0);
+        return reader.Read() ? null : path;
+    }
+
+    /// <summary>
     /// Symbol names that some document actually mentions and that exactly one
     /// file declares, mapped to that file. A name declared in two places is
     /// absent: an ambiguous link would point an agent at the wrong file.

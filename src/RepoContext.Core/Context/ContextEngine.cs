@@ -101,7 +101,7 @@ public sealed class ContextEngine
         ScoreCandidates(candidates, analyzed, fileByPath);
 
         List<Candidate> ordered = ApplyDiversity(candidates.Values);
-        ordered = ApplyIntent(ordered, fileByPath, options.Intent);
+        ordered = ApplyIntent(query, ordered, fileByPath, options);
         for (int i = 0; i < ordered.Count; i++) ordered[i].Rank = i + 1;
         List<Memory.MemoryHit> memoryCandidates = SelectMemories(analyzed, ordered, options);
         return Pack(
@@ -414,26 +414,31 @@ public sealed class ContextEngine
     /// span variants still receive the normal exact-budget admission; this does
     /// not reserve slots for unrelated files or shrink every file to a fragment.
     /// </summary>
-    private static List<Candidate> ApplyIntent(
-        List<Candidate> ordered, Dictionary<string, FileRow> files, ContextIntent? intent)
+    private List<Candidate> ApplyIntent(
+        string query, List<Candidate> ordered, Dictionary<string, FileRow> files, ContextOptions options)
     {
-        if (intent is null) return ordered;
-        string normalizedQuery = Canonical.NormalizePath(ordered.FirstOrDefault()?.Query ?? string.Empty);
-        List<Candidate> targets = ordered.Where(c => c.Score > 0
-            && files.TryGetValue(c.Path, out FileRow file) && file.Kind == "source"
-            && (c.Fts > 0 || c.Symbol > 0 || c.PathScore > 0)
-            && ((normalizedQuery.Contains(c.Path, StringComparison.Ordinal)
+        if (options.Intent is not { } intent || ordered.Count == 0) return ordered;
+        string normalizedQuery = Canonical.NormalizePath(query);
+        List<string> paths = files.Values.Where(file => file.Kind == "source"
+            && normalizedQuery.Contains(file.Path, StringComparison.Ordinal)
                 && System.Text.RegularExpressions.Regex.IsMatch(normalizedQuery,
-                    @"(?<![\w./-])(?:\./)?" + System.Text.RegularExpressions.Regex.Escape(c.Path) + @"(?![\w./-])",
+                    @"(?<![\w./-])(?:\./)?" + System.Text.RegularExpressions.Regex.Escape(file.Path)
+                    + @"(?=$|[^\w./-]|\.(?=$|[\s`'""\)\]\}]))",
                     System.Text.RegularExpressions.RegexOptions.CultureInvariant))
-                || c.SymbolMatches().Any(s => c.Query.Trim().Equals(s.Name, StringComparison.OrdinalIgnoreCase)))
+            .Select(file => file.Path).Take(2).ToList();
+        // Prove uniqueness before considering the ranked/capped candidate pool.
+        // A duplicate definition can be hidden by either FTS evidence ceiling.
+        string? target = paths.Count == 1 ? paths[0]
+            : paths.Count > 1 ? null : _store.FindUniqueSourceSymbolPath(query.Trim(), options.Scope);
+        if (target is null) return ordered;
+        Candidate? anchor = ordered.FirstOrDefault(c => c.Path == target && c.Score > 0
+            && (c.Fts > 0 || c.Symbol > 0 || c.PathScore > 0)
             && !c.Reasons.Contains("penalty:fixture")
-            && !c.Reasons.Contains("penalty:vendor-or-generated")).Take(2).ToList();
-        if (targets.Count != 1) return ordered;
-        Candidate anchor = targets[0];
+            && !c.Reasons.Contains("penalty:vendor-or-generated"));
+        if (anchor is null) return ordered;
 
         var promoted = new List<Candidate> { anchor };
-        string label = intent.Value.ToString().ToLowerInvariant();
+        string label = intent.ToString().ToLowerInvariant();
         anchor.Reasons.Add($"intent:{label}:implementation");
         switch (intent)
         {

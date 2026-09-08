@@ -45,7 +45,13 @@ into a purpose. Intent is not inferred from prose. Promotion requires exactly
 one eligible source file explicitly identified by a repository-relative path
 in the query, or by a query consisting of one exact symbol name. Ambiguous
 symbol names, multiple targets and general questions keep their normal order.
-Path separators are normalized; a path prefix is not an exact target.
+Uniqueness is checked against all scoped source declarations, independently of
+FTS hit limits, using ordinal case-insensitive name comparison. Multiple
+declarations within one source file count as one file target.
+Path separators are normalized; a path prefix is not an exact target. A
+sentence-ending period after a path is accepted, including before whitespace
+or closing quotation/bracket characters; suffixes such as `.backup` remain
+part of a different filename.
 
 The identified implementation is followed by up to two directly linked,
 positive-scoring candidates already in the scoped pool:
@@ -70,7 +76,9 @@ pass. When a promoted companion cannot fit, normal budget omission applies.
 
 ## Identity and compatibility
 
-Intent adds an `intent.v1` canonical request component. Default requests retain
+Intent adds an `intent.v2` canonical request component. This advances v1 after
+the review fixes for truncated symbol hits and sentence punctuation, without
+changing exact-unit receipts or requiring an index migration. Default requests retain
 their old identity inputs, ranking and wire shape. Diagnostics describe the
 selection and affect the representation hash; they do not independently change
 evidence identity when the delivered/reused evidence is identical. A different

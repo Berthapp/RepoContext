@@ -296,7 +296,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
         var args = new Dictionary<string, object?>
         {
-            ["task"] = "src/auth/login.ts", ["detail"] = "slices", ["compact"] = compact,
+            ["task"] = "fix src/auth/login.ts.", ["detail"] = "slices", ["compact"] = compact,
             ["intent"] = "fix", ["explain"] = true, ["responseBudgetTokens"] = 900,
         };
         CallToolResult result = await client.CallToolAsync("repoctx.get_context", args);
@@ -305,6 +305,9 @@ public class McpServerTests
         Assert.InRange(Tokens.Count(text), 1, 900);
         using JsonDocument doc = JsonDocument.Parse(text);
         Assert.Equal("fix", doc.RootElement.GetProperty("intent").GetString());
+        Assert.Contains(doc.RootElement.GetProperty("results").EnumerateArray()
+            .SelectMany(item => item.GetProperty("reasons").EnumerateArray()),
+            reason => reason.GetString() == "intent:fix:implementation");
         Assert.True(doc.RootElement.TryGetProperty("selection", out _));
         Assert.NotEmpty(doc.RootElement.GetProperty("results").EnumerateArray());
         args["responseBudgetTokens"] = 40;
