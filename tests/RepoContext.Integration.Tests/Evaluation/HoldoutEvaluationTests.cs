@@ -69,7 +69,34 @@ public sealed class HoldoutEvaluationTests
         }
     }
 
-    private static HoldoutTaskReport Measure(HoldoutRepo repo, HoldoutSource source, HoldoutTask task)
+    [Fact]
+    public void ExplicitIntents_AreMeasuredAgainstDefault_WithExactBudgets()
+    {
+        HoldoutManifest manifest = HoldoutManifest.Load();
+        manifest.Validate();
+        var reports = new List<HoldoutTaskReport>();
+        foreach (HoldoutSource source in manifest.Repositories)
+        {
+            using var repo = new HoldoutRepo(source);
+            foreach (HoldoutTask task in manifest.Tasks.Where(t => t.Repository == source.Id))
+                reports.Add(Measure(repo, source, task, compareIntents: true));
+        }
+        Assert.All(reports.SelectMany(r => r.Arms), arm =>
+        {
+            Assert.False(arm.Shortfall, arm.Name);
+            Assert.InRange(arm.ResponseTokens, 1, 2000);
+        });
+        if (Environment.GetEnvironmentVariable("REPOCTX_WRITE_INTENT_REPORT") == "1")
+        {
+            var report = new HoldoutReport(HoldoutManifest.FrozenSha256,
+                HoldoutManifest.Hash(File.ReadAllBytes(typeof(ContextEngine).Assembly.Location)),
+                HoldoutManifest.Hash(File.ReadAllBytes(typeof(ContextCostModel).Assembly.Location)), reports);
+            File.WriteAllText(Path.Combine(HoldoutManifest.DirectoryPath, "intent-evaluation.json"),
+                JsonSerializer.Serialize(report, HoldoutManifest.JsonOptions) + "\n");
+        }
+    }
+
+    private static HoldoutTaskReport Measure(HoldoutRepo repo, HoldoutSource source, HoldoutTask task, bool compareIntents = false)
     {
         var engine = new ContextEngine(repo.Store, repo.Config);
         int fileCount = repo.Store.GetFiles().Count;
@@ -89,13 +116,19 @@ public sealed class HoldoutEvaluationTests
         ContextCostModel jsonCost = ContextCostModel.ForCli(OutputFormat.Json);
         ContextCostModel compactCost = ContextCostModel.ForCli(OutputFormat.Json, compact: true);
         ContextCostModel markdownCost = ContextCostModel.ForCli(OutputFormat.Md);
-        var arms = new List<HoldoutArm>
-        {
+        List<HoldoutArm> arms = compareIntents ?
+        [
+            Arm("default_compact_2000", engine.Run(task.Query, options with { ResponseBudgetTokens = 2000 }, compactCost), compactCost, 2000),
+            .. Enum.GetValues<ContextIntent>().Select(intent => Arm(
+                intent.ToString().ToLowerInvariant() + "_compact_2000",
+                engine.Run(task.Query, options with { ResponseBudgetTokens = 2000, Intent = intent }, compactCost), compactCost, 2000)),
+        ] :
+        [
             Arm("top8_unbudgeted", unbudgeted, jsonCost, null),
             Arm("json_2000", engine.Run(task.Query, options with { ResponseBudgetTokens = 2000 }, jsonCost), jsonCost, 2000),
             Arm("compact_json_2000", engine.Run(task.Query, options with { ResponseBudgetTokens = 2000 }, compactCost), compactCost, 2000),
             Arm("markdown_2000", engine.Run(task.Query, options with { ResponseBudgetTokens = 2000, SerializedCharging = false }, markdownCost), markdownCost, 2000),
-        };
+        ];
 
         List<HoldoutFileDiagnostic> fileDiagnostics = task.RequiredPaths.Select(path => new HoldoutFileDiagnostic(
             path,

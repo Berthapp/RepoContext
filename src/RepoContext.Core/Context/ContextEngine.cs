@@ -101,6 +101,8 @@ public sealed class ContextEngine
         ScoreCandidates(candidates, analyzed, fileByPath);
 
         List<Candidate> ordered = ApplyDiversity(candidates.Values);
+        ordered = ApplyIntent(ordered, fileByPath, options.Intent);
+        for (int i = 0; i < ordered.Count; i++) ordered[i].Rank = i + 1;
         List<Memory.MemoryHit> memoryCandidates = SelectMemories(analyzed, ordered, options);
         return Pack(
             query, analyzed, ordered, options, fileByPath, candidates.Count,
@@ -405,6 +407,68 @@ public sealed class ContextEngine
     }
 
     /// <summary>
+    /// Explicit task purposes promote at most two direct companions of a source
+    /// anchor explicitly named by file path or exact symbol query. Broad prose
+    /// keeps its normal ranking: a lexical hit alone cannot justify choosing one
+    /// implementation as the task's target. Only positive candidates qualify. Complete
+    /// span variants still receive the normal exact-budget admission; this does
+    /// not reserve slots for unrelated files or shrink every file to a fragment.
+    /// </summary>
+    private static List<Candidate> ApplyIntent(
+        List<Candidate> ordered, Dictionary<string, FileRow> files, ContextIntent? intent)
+    {
+        if (intent is null) return ordered;
+        string normalizedQuery = Canonical.NormalizePath(ordered.FirstOrDefault()?.Query ?? string.Empty);
+        List<Candidate> targets = ordered.Where(c => c.Score > 0
+            && files.TryGetValue(c.Path, out FileRow file) && file.Kind == "source"
+            && (c.Fts > 0 || c.Symbol > 0 || c.PathScore > 0)
+            && ((normalizedQuery.Contains(c.Path, StringComparison.Ordinal)
+                && System.Text.RegularExpressions.Regex.IsMatch(normalizedQuery,
+                    @"(?<![\w./-])(?:\./)?" + System.Text.RegularExpressions.Regex.Escape(c.Path) + @"(?![\w./-])",
+                    System.Text.RegularExpressions.RegexOptions.CultureInvariant))
+                || c.SymbolMatches().Any(s => c.Query.Trim().Equals(s.Name, StringComparison.OrdinalIgnoreCase)))
+            && !c.Reasons.Contains("penalty:fixture")
+            && !c.Reasons.Contains("penalty:vendor-or-generated")).Take(2).ToList();
+        if (targets.Count != 1) return ordered;
+        Candidate anchor = targets[0];
+
+        var promoted = new List<Candidate> { anchor };
+        string label = intent.Value.ToString().ToLowerInvariant();
+        anchor.Reasons.Add($"intent:{label}:implementation");
+        switch (intent)
+        {
+            case ContextIntent.Fix:
+                Promote("test", c => Kind(c, "test") && Linked(c));
+                Promote("dependency", c => Kind(c, "source") && Has(c, "imported-by:"));
+                break;
+            case ContextIntent.Explain:
+                Promote("dependency", c => Kind(c, "source") && Has(c, "imported-by:"));
+                Promote("document", c => Kind(c, "doc") && Linked(c));
+                break;
+            case ContextIntent.Review:
+                Promote("dependent", c => Kind(c, "source") && Has(c, "imports:"));
+                Promote("test", c => Kind(c, "test") && Linked(c));
+                break;
+        }
+        return [.. promoted, .. ordered.Where(c => !promoted.Contains(c))];
+
+        bool Kind(Candidate c, string kind) => files.TryGetValue(c.Path, out FileRow file) && file.Kind == kind;
+        bool Has(Candidate c, string prefix) => c.Reasons.Contains(prefix + anchor.Path);
+        bool Linked(Candidate c) => Has(c, "imports:") || Has(c, "imported-by:")
+            || Has(c, "test-of:") || Has(c, "tested-by:")
+            || Has(c, "mentions:") || Has(c, "mentioned-by:");
+        void Promote(string role, Func<Candidate, bool> matches)
+        {
+            Candidate? companion = ordered.FirstOrDefault(c => c.Score > 0 && !promoted.Contains(c)
+                && !c.Reasons.Contains("penalty:fixture")
+                && !c.Reasons.Contains("penalty:vendor-or-generated") && matches(c));
+            if (companion is null) return;
+            companion.Reasons.Add($"intent:{label}:{role}");
+            promoted.Add(companion);
+        }
+    }
+
+    /// <summary>
     /// Packs ranked candidates into the bundle.
     /// </summary>
     /// <remarks>
@@ -468,7 +532,7 @@ public sealed class ContextEngine
             if (item is not null)
             {
                 prepared.Add(new PreparedCandidate(prepared.Count, item, row.ContentHash)
-                { Variants = CandidateVariants(item, options).ToArray() });
+                { Rank = c.Rank, Variants = CandidateVariants(item, options).ToArray() });
             }
         }
 
@@ -706,6 +770,21 @@ public sealed class ContextEngine
         result = Compose(
             query, analyzed, options, selected.Select(c => c.Item).ToList(),
             reused, omissions, totalCandidates, reusedListLimit: 0, memories);
+        // The summary stays present, but optional samples must not crowd out
+        // source evidence. Omission totals remain exact as the listing shrinks.
+        if (result.Selection is { } diagnostics)
+        {
+            for (int listed = diagnostics.Samples.Count - 1; listed >= 0; listed--)
+            {
+                result = result with { Selection = diagnostics with
+                {
+                    Samples = diagnostics.Samples.Take(listed).ToArray(),
+                    Unlisted = diagnostics.Omitted - listed,
+                } };
+                if (options.ResponseBudgetTokens is not { } limit || cost!.Measure(result) <= limit)
+                    return true;
+            }
+        }
         return false;
     }
 
@@ -731,6 +810,20 @@ public sealed class ContextEngine
                 ? prepared.Count - lastSelected - 1 - (acknowledgedOrdinals?.Count(i => i > lastSelected) ?? 0) : 0;
             omissions.Top = options.ResponseBudgetTokens is null ? remaining : top;
             omissions.ResponseBudget = options.ResponseBudgetTokens is null ? 0 : remaining - top;
+            if (options.Explain)
+            {
+                var selectedIds = selected.Select(c => c.Ordinal).ToHashSet();
+                foreach (PreparedCandidate candidate in prepared)
+                {
+                    if (selectedIds.Contains(candidate.Ordinal)
+                        || acknowledgedOrdinals?.Contains(candidate.Ordinal) == true) continue;
+                    string reason = options.ResponseBudgetTokens is null || options.Top <= 0
+                        || (selected.Count >= options.Top && candidate.Ordinal > lastSelected)
+                        ? "top" : "response_budget";
+                    omissions.Sample(candidate, reason);
+                    if (omissions.Samples.Count == 8) break;
+                }
+            }
             return omissions;
         }
         var selectedOrdinals = selected.Select(c => c.Ordinal).ToHashSet();
@@ -751,6 +844,7 @@ public sealed class ContextEngine
                 || (selected.Count >= options.Top && candidate.Ordinal > lastSelected))
             {
                 omissions.Top++;
+                if (options.Explain) omissions.Sample(candidate, "top");
             }
             else
             {
@@ -769,6 +863,7 @@ public sealed class ContextEngine
                 if (!anyLegacyFit)
                 {
                     omissions.BudgetTokens++;
+                    if (options.Explain) omissions.Sample(candidate, "budget_tokens");
                     continue;
                 }
 
@@ -780,16 +875,19 @@ public sealed class ContextEngine
                 if (!anyReadFit)
                 {
                     omissions.ProjectedReadBudget++;
+                    if (options.Explain) omissions.Sample(candidate, "projected_read_budget");
                 }
                 else if (options.ResponseBudgetTokens is not null)
                 {
                     omissions.ResponseBudget++;
+                    if (options.Explain) omissions.Sample(candidate, "response_budget");
                 }
                 else
                 {
                     // Defensive fallback for invalid direct-core options.
                     // Public CLI/MCP validation rejects those values.
                     omissions.Top++;
+                    if (options.Explain) omissions.Sample(candidate, "top");
                 }
             }
         }
@@ -1034,7 +1132,7 @@ public sealed class ContextEngine
             ContextOptions retryOptions = options with { ResponseBudgetTokens = proposed };
             ContextResult candidate = Compose(
                 query, analyzed, retryOptions, selection.Select(c => c.Item).ToList(),
-                reused, omissions, totalCandidates, reusedListLimit: 0, retryMemories);
+                reused, omissions, totalCandidates, reusedListLimit: 0, retryMemories, diagnosticsListLimit: 0);
             int measured = cost.Measure(candidate);
             if (measured <= proposed)
             {
@@ -1058,7 +1156,7 @@ public sealed class ContextEngine
             ContextOptions retryOptions = options with { ResponseBudgetTokens = proposed };
             ContextResult candidate = Compose(
                 query, analyzed, retryOptions, selection.Select(c => c.Item).ToList(),
-                reused, omissions, totalCandidates, reusedListLimit: 0, retryMemories);
+                reused, omissions, totalCandidates, reusedListLimit: 0, retryMemories, diagnosticsListLimit: 0);
             if (cost.Measure(candidate) <= proposed)
             {
                 return proposed;
@@ -1072,7 +1170,7 @@ public sealed class ContextEngine
     private ContextResult Compose(
         string query, AnalyzedQuery analyzed, ContextOptions options, List<ContextItem> items,
         List<ReusedUnit> reused, OmissionTally omissions, int totalCandidates,
-        int reusedListLimit, IReadOnlyList<Memory.MemoryHit> memories)
+        int reusedListLimit, IReadOnlyList<Memory.MemoryHit> memories, int diagnosticsListLimit = 8)
     {
         List<ReusedUnit> orderedReused = reused
             .OrderBy(r => r.Path, StringComparer.Ordinal)
@@ -1096,6 +1194,11 @@ public sealed class ContextEngine
 
         return new ContextResult
         {
+            Intent = options.Intent,
+            Selection = options.Explain ? new SelectionDiagnostics(
+                totalCandidates, totalCandidates - omissions.NonpositiveScore, options.Scope?.Patterns,
+                omissions.Deliverable, omissions.Deliverable - Math.Min(omissions.Samples.Count, diagnosticsListLimit),
+                omissions.Samples.Take(diagnosticsListLimit).ToArray()) : null,
             Query = query,
             Terms = analyzed.Terms,
             State = Hashes.Short(contentState),
@@ -1643,6 +1746,16 @@ public sealed class ContextEngine
     /// <summary>Running tally of why candidates did not make the bundle.</summary>
     private sealed class OmissionTally
     {
+        private List<SelectionOmission>? _samples;
+        public IReadOnlyList<SelectionOmission> Samples => _samples is null ? [] : _samples;
+
+        public void Sample(PreparedCandidate candidate, string reason)
+        {
+            if (_samples?.Count >= 8) return;
+            (_samples ??= []).Add(new SelectionOmission(candidate.Item.Path, candidate.Rank,
+                candidate.Item.Score, reason, new SelectionLookup("outline", candidate.Item.Path)));
+        }
+
         public int Top { get; set; }
 
         public int ResponseBudget { get; set; }
@@ -1669,6 +1782,7 @@ public sealed class ContextEngine
     /// <summary>A ranked, fully materialized candidate with a stable pass-local identity.</summary>
     private sealed record PreparedCandidate(int Ordinal, ContextItem Item, string ContentHash)
     {
+        public int Rank { get; init; }
         // Scoped to one query; content cannot leak across index generations.
         public IReadOnlyList<ContextItem> Variants { get; init; } = [];
     }
@@ -1680,6 +1794,7 @@ public sealed class ContextEngine
         private readonly HashSet<string> _hitKeys = new(StringComparer.Ordinal);
 
         public required string Path { get; init; }
+        public int Rank { get; set; }
         public string Query { get; set; } = string.Empty;
         public HashSet<string> MatchedTerms { get; } = new(StringComparer.Ordinal);
         public void MatchTerms(string? text, IReadOnlyList<string> terms)

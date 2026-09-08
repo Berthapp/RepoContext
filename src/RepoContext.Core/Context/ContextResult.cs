@@ -50,6 +50,12 @@ public sealed record OmissionReasons
 /// <summary>Options controlling the context pipeline.</summary>
 public sealed record ContextOptions
 {
+    /// <summary>Explicit task ordering; null preserves the default ranking policy.</summary>
+    public ContextIntent? Intent { get; init; }
+
+    /// <summary>Include bounded omission diagnostics within the response budget.</summary>
+    public bool Explain { get; init; }
+
     /// <summary>
     /// Caps <i>new</i> entries in the bundle. Reused units acknowledged from
     /// <see cref="Seen"/> never consume a slot, so <c>Top = N</c> can always
@@ -164,6 +170,8 @@ public sealed record ContextOptions
         $"serialized_charging={SerializedCharging}",
         $"strip_comments={StripComments}",
         $"scope={(Scope is null ? "-" : Canonical.JoinRecords(Scope.Patterns))}",
+        // Opt-in policy versioning preserves identities for existing requests.
+        .. Intent is { } intent ? new[] { $"intent.v1={intent.ToString().ToLowerInvariant()}" } : [],
     ]);
 
     private static string Invariant(int? value) =>
@@ -323,6 +331,10 @@ public sealed record ContextItem
 /// <summary>The result of <c>repoctx context</c>.</summary>
 public sealed record ContextResult
 {
+    public ContextIntent? Intent { get; init; }
+
+    public SelectionDiagnostics? Selection { get; init; }
+
     public required string Query { get; init; }
 
     public required IReadOnlyList<string> Terms { get; init; }

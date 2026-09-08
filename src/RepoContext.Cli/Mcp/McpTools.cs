@@ -46,7 +46,7 @@ public static class McpTools
                     + "scores, kinds, and reasons; path narrows the scope.")),
             McpServerTool.Create(
                 (Func<string, int, int?, int?, int?, string, string[]?, string[]?, string?, bool, bool,
-                    string[]?, bool, bool, CallToolResult>)GetContext,
+                    string[]?, bool, bool, string?, bool, CallToolResult>)GetContext,
                 Describe("repoctx.get_context",
                     "Primary context tool. Ranks task-relevant files under response/read budgets. "
                     + "detail: auto=pick per task, paths=locations, outline=symbols, slices=source "
@@ -144,8 +144,13 @@ public static class McpTools
         bool includeMemory = true,
         [Description("Restrict to directories or globs.")] string[]? path = null,
         [Description("Refresh the local index first, including a missing index.")] bool ensureFresh = false,
-        [Description("Compact JSON v5 without deprecated duplicate fields.")] bool compact = false)
+        [Description("Compact JSON v5.")] bool compact = false,
+        [Description("Purpose: fix, explain or review.")] string? intent = null,
+        [Description("Omission diagnostics.")] bool explain = false)
     {
+        if (!ContextIntentParser.TryParse(intent, out ContextIntent? taskIntent))
+            return Fail("Invalid intent. Use 'fix', 'explain' or 'review'.");
+
         if (top <= 0)
         {
             return Fail("top must be greater than zero.");
@@ -276,6 +281,8 @@ public static class McpTools
         ContextResult result = engine.Run(task ?? string.Empty, new ContextOptions
         {
             Top = top,
+            Intent = taskIntent,
+            Explain = explain,
             BudgetTokens = budgetTokens,
             ResponseBudgetTokens = responseBudgetTokens,
             ProjectedReadBudgetTokens = projectedReadBudgetTokens,

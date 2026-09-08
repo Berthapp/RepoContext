@@ -50,3 +50,5 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   reported count of what the tool itself excluded.
 - `0021-compact-context-json.md` — opt-in context JSON v5 without deprecated
   compatibility copies; shared exact budgets and reuse receipts across formats.
+- `0022-context-selection-intent.md` — bounded per-file omission diagnostics and
+  opt-in task companions for an explicitly identified source target.
