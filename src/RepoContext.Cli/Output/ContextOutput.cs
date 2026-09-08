@@ -93,6 +93,7 @@ public static class ContextOutput
 
         sb.Append("._\n");
         AppendBudgetsMd(sb, result);
+        AppendSelection(sb, result);
         string body = sb.ToString();
         sb.Append("_Representation: `")
           .Append(RepresentationDisplayId(result, "md", surface, body))
@@ -382,6 +383,7 @@ public static class ContextOutput
             sb.Append("Active budgets: ").Append(string.Join(" · ", budgets)).Append('\n');
         }
 
+        AppendSelection(sb, result);
         string body = sb.ToString();
         sb.Append("Representation: ")
           .Append(RepresentationDisplayId(result, "text", surface, body))
@@ -408,6 +410,21 @@ public static class ContextOutput
         }
 
         return labels;
+    }
+
+    private static void AppendSelection(StringBuilder sb, ContextResult result)
+    {
+        if (result.Intent is { } intent)
+            sb.Append("Intent: ").Append(intent.ToString().ToLowerInvariant()).Append('\n');
+        if (result.Selection is not { } selection) return;
+        sb.Append($"Selection: {selection.Eligible}/{selection.Candidates} generated candidates eligible; ")
+            .Append($"{selection.Omitted} omitted, {selection.Unlisted} unlisted.\n");
+        if (selection.Scope is { } scope)
+            sb.Append("Scope: ").Append(string.Join(", ", scope)).Append(" (outside files were not ranked).\n");
+        foreach (SelectionOmission omission in selection.Samples)
+            sb.Append(FormattableString.Invariant(
+                $"- {omission.Path}: rank {omission.Rank}, score {omission.Score:F4}, {omission.Reason}; "))
+                .Append("next lookup: outline of ").Append(omission.NextLookup.File).Append('\n');
     }
 
     /// <summary>
@@ -452,6 +469,8 @@ public static class ContextOutput
             EvidenceId = result.EvidenceId,
             RepresentationId = representationId,
             Detail = result.Detail.ToString().ToLowerInvariant(),
+            Intent = result.Intent?.ToString().ToLowerInvariant(),
+            Selection = result.Selection,
             Top = result.Top,
             Budgets = BuildBudgets(result),
             TokenProfile = result.TokenProfile,
@@ -574,6 +593,10 @@ public static class ContextOutput
         public string? RepresentationId { get; init; }
 
         public required string Detail { get; init; }
+
+        public string? Intent { get; init; }
+
+        public SelectionDiagnostics? Selection { get; init; }
 
         /// <summary>The cap on new entries; reused units never consume it.</summary>
         public int Top { get; init; }

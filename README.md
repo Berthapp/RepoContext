@@ -287,7 +287,7 @@ via `repoctx related`).
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--path`, `--format` |
 | `related <file>` | Imports, dependents, linked tests, and the documents that describe a file. | `--format` |
 | `trace <ref>` | Every file that declares or mentions one exact term: a work-item key (`ABC-123`), a link, a symbol name or a path. | `--top`, `--path`, `--format` |
-| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--ensure-fresh`, `--strip-comments`, `--no-memory`, `--path`, `--format`, `--compact` |
+| `context <task>` | Ranked, explained context bundle packed into a token budget. | `--top`, `--budget-tokens`, `--response-budget-tokens`, `--projected-read-budget-tokens`, `--detail auto\|paths\|outline\|slices`, `--seen <receipt>`, `--known <path>@<hash>`, `--session <name>`, `--ensure-fresh`, `--strip-comments`, `--no-memory`, `--path`, `--format`, `--compact`, `--intent fix\|explain\|review`, `--explain` |
 | `outline <file>` | A file's skeleton: symbols, signatures, doc summaries, exact full-read token cost. | `--format` |
 | `changed` | Working-tree diff against the index, with impacted dependents. | `--patch`, `--format` |
 | `prime` | Cache-stable repository primer for a cacheable prompt prefix (byte-identical for unchanged indexed content and token calibration). | `--files`, `--format` |
@@ -386,6 +386,36 @@ indexed), `analysis_state` (that content plus config and producer versions),
 Using a non-OpenAI model? Set `tokens.profile` (e.g. `"claude"`) in
 `repoctx.config.json` so budgets and reported counts match your tokenizer —
 the index keeps raw counts, so no re-index is needed when you switch.
+
+### Diagnose selection and request task companions
+
+Use `--explain` to see which generated candidates lost a ranking slot or failed
+a budget. The response includes up to eight omitted files with their rank,
+score, limiting constraint and a structured `outline` lookup. `unlisted` makes
+sample truncation explicit. Diagnostics count toward the response budget; the
+sample list can shrink to zero. Scoped queries only diagnose their scoped pool.
+
+```bash
+repoctx context "change login" --explain --format json --compact --response-budget-tokens 2000
+```
+
+When you know the implementation target, `--intent` prioritizes directly linked
+companions: tests and dependencies for `fix`, dependencies and documents for
+`explain`, or dependents and tests for `review`.
+
+```bash
+repoctx context "src/auth/login.ts" --intent fix --detail slices --format json --compact --response-budget-tokens 2000
+repoctx context "loginUser" --intent review --detail slices --format md --response-budget-tokens 2000
+```
+
+Promotion requires one explicitly named source path or an unambiguous exact
+symbol query. General questions retain normal ordering. The `intent` field
+reports the requested purpose; `intent:<purpose>:<role>` item reasons identify
+actual promotions. Existing source-span packing, reuse and hard budgets still
+apply. A linked test is a suggested companion, not proof of test coverage.
+`--intent explain` selects a purpose; `--explain` requests diagnostics. They can
+be combined. MCP exposes the same options as `intent` and `explain` on
+`repoctx.get_context`. See the [contract and evaluation](docs/decisions/0022-context-selection-intent.md).
 
 ### The token-savings dashboard
 
@@ -638,7 +668,7 @@ server over stdio and exposes eight non-destructive tools:
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
 | `repoctx.search` | `search` | `query`, `top`, `symbols`, `path` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path`, `ensureFresh` |
+| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path`, `ensureFresh`, `compact`, `intent`, `explain` |
 | `repoctx.trace` | `trace` | `reference`, `top`, `path` |
 | `repoctx.get_related_files` | `related` | `file` |
 | `repoctx.get_outline` | `outline` | `file` |

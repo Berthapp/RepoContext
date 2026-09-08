@@ -80,6 +80,10 @@ public static class ContextCommand
         { Description = "Refresh the local index before querying, including after edits or branch changes." };
         var compact = new Option<bool>("--compact")
         { Description = "Use context JSON schema v5, omitting deprecated fields and duplicated source text. Requires --format json." };
+        var intent = new Option<string?>("--intent")
+        { Description = "Prioritize direct task companions: fix, explain or review. Omit for default ranking." };
+        var explain = new Option<bool>("--explain")
+        { Description = "Include bounded per-file omission diagnostics within the response budget." };
         var format = new Option<string>("--format")
         {
             Description = "Output format: text, json or md.",
@@ -105,6 +109,8 @@ public static class ContextCommand
             path,
             ensureFresh,
             compact,
+            intent,
+            explain,
             format,
         };
 
@@ -117,6 +123,11 @@ public static class ContextCommand
             }
 
             int topN = parseResult.GetValue(top);
+            if (!ContextIntentParser.TryParse(parseResult.GetValue(intent), out ContextIntent? taskIntent))
+            {
+                Console.Error.WriteLine("Invalid --intent. Use 'fix', 'explain' or 'review'.");
+                return ExitCode.InvalidArguments;
+            }
             bool compactJson = parseResult.GetValue(compact);
             if (compactJson && outputFormat != OutputFormat.Json)
             {
@@ -234,6 +245,8 @@ public static class ContextCommand
             ContextResult result = engine.Run(query, new ContextOptions
             {
                 Top = topN,
+                Intent = taskIntent,
+                Explain = parseResult.GetValue(explain),
                 BudgetTokens = budgetTokens,
                 ResponseBudgetTokens = responseBudgetTokens,
                 ProjectedReadBudgetTokens = readBudgetTokens,

@@ -1,0 +1,9 @@
+{
+  "servers": {
+    "repoctx": {
+      "type": "stdio",
+      "command": "repoctx",
+      "args": ["mcp"]
+    }
+  }
+}

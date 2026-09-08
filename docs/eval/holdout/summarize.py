@@ -23,7 +23,7 @@ for subset in ['historical', 'holdout', 'CSharp', 'JavaScript', 'TypeScript']:
     lines = sum(t['required_lines'] for t in tasks)
     eligible = sum(t['eligible_required_files'] for t in tasks)
     print(f'| {subset} | eligible candidates | {eligible}/{files} | — | — | — | — |')
-    for name in ['top8_unbudgeted', 'json_2000', 'compact_json_2000', 'markdown_2000']:
+    for name in [arm['name'] for arm in report['tasks'][0]['arms']]:
         arms = [next(a for a in t['arms'] if a['name'] == name) for t in tasks]
         delivered_files = sum(a['required_files_delivered'] for a in arms)
         delivered_lines = sum(a['relevant_lines_delivered'] for a in arms)
@@ -32,10 +32,10 @@ for subset in ['historical', 'holdout', 'CSharp', 'JavaScript', 'TypeScript']:
         tokens = sum(r['body_tokens'] for a in arms for r in a['oracle_followup_reads'])
         print(f'| {subset} | {name} | {delivered_files}/{files} | {delivered_lines}/{lines} | {complete}/{len(tasks)} | {reads} | {tokens:,} |')
 
-print('\nHistorical required-file diagnoses (eligible rank; top-8 rank; JSON rank; compact rank):')
+print('\nHistorical required-file diagnoses (eligible rank; top-8 rank; delivered ranks by arm):')
 for task in report['tasks']:
     if task['historical_diagnostic']:
         for file in task['file_diagnostics']:
             ranks = file['delivered_ranks']
             print(task['task_id'], file['path'], file['eligible_rank'], file['unbudgeted_rank'],
-                  ranks['json_2000'], ranks['compact_json_2000'])
+                  ranks)

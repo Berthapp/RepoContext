@@ -287,6 +287,45 @@ public class McpServerTests
         });
     }
 
+    [Theory]
+    [InlineData(false)]
+    [InlineData(true)]
+    public async Task GetContext_IntentAndDiagnostics_RespectBudgetAndValidateInput(bool compact)
+    {
+        using FixtureWorkspace ws = Indexed();
+        await using McpClient client = await ConnectAsync(ws);
+        var args = new Dictionary<string, object?>
+        {
+            ["task"] = "fix src/auth/login.ts.", ["detail"] = "slices", ["compact"] = compact,
+            ["intent"] = "fix", ["explain"] = true, ["responseBudgetTokens"] = 900,
+        };
+        CallToolResult result = await client.CallToolAsync("repoctx.get_context", args);
+        Assert.True(result.IsError is not true, TextOf(result));
+        string text = TextOf(result);
+        Assert.InRange(Tokens.Count(text), 1, 900);
+        using JsonDocument doc = JsonDocument.Parse(text);
+        Assert.Equal("fix", doc.RootElement.GetProperty("intent").GetString());
+        Assert.Contains(doc.RootElement.GetProperty("results").EnumerateArray()
+            .SelectMany(item => item.GetProperty("reasons").EnumerateArray()),
+            reason => reason.GetString() == "intent:fix:implementation");
+        Assert.True(doc.RootElement.TryGetProperty("selection", out _));
+        Assert.NotEmpty(doc.RootElement.GetProperty("results").EnumerateArray());
+        args["responseBudgetTokens"] = 40;
+        CallToolResult failed = await client.CallToolAsync("repoctx.get_context", args);
+        Assert.True(failed.IsError);
+        var match = System.Text.RegularExpressions.Regex.Match(TextOf(failed), @"retry_budget_tokens[=:]\s*(\d+)");
+        Assert.True(match.Success, TextOf(failed));
+        int retryBudget = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
+        args["responseBudgetTokens"] = retryBudget;
+        CallToolResult retry = await client.CallToolAsync("repoctx.get_context", args);
+        Assert.True(retry.IsError is not true, TextOf(retry));
+        Assert.InRange(Tokens.Count(TextOf(retry)), 1, retryBudget);
+        args["intent"] = "repair";
+        CallToolResult invalid = await client.CallToolAsync("repoctx.get_context", args);
+        Assert.True(invalid.IsError);
+        Assert.Contains("Invalid intent", TextOf(invalid), StringComparison.Ordinal);
+    }
+
     [Fact]
     public async Task Search_ReturnsSchemaVersionedJsonWithReasons()
     {

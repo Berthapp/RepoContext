@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Text;
 
 namespace RepoContext.Integration.Tests;
 
@@ -54,14 +53,11 @@ public static class CliHarness
         }
 
         using var process = new Process { StartInfo = startInfo };
-        var stdout = new StringBuilder();
-        var stderr = new StringBuilder();
-        process.OutputDataReceived += (_, e) => { if (e.Data is not null) stdout.AppendLine(e.Data); };
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
-
         process.Start();
-        process.BeginOutputReadLine();
-        process.BeginErrorReadLine();
+        // Preserve the exact emitted newlines for response-budget assertions.
+        // Line events + AppendLine silently converted LF into CRLF on Windows.
+        Task<string> stdout = process.StandardOutput.ReadToEndAsync();
+        Task<string> stderr = process.StandardError.ReadToEndAsync();
 
         if (!process.WaitForExit(milliseconds: 60_000))
         {
@@ -69,8 +65,7 @@ public static class CliHarness
             throw new TimeoutException($"repoctx {string.Join(' ', args)} did not exit within 60s.");
         }
 
-        process.WaitForExit(); // ensure async output is flushed
-        return new CliResult(process.ExitCode, stdout.ToString(), stderr.ToString());
+        return new CliResult(process.ExitCode, stdout.GetAwaiter().GetResult(), stderr.GetAwaiter().GetResult());
     }
 
     private static string LocateCliDll()
