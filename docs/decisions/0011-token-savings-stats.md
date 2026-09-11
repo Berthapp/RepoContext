@@ -66,6 +66,24 @@ aggregates them.
    per command and per day, tooltips + table view + aria-labels so no value
    is color- or hover-gated, light/dark via tokens). Like every renderer it
    is a pure projection of the log: identical log ⇒ byte-identical HTML.
+
+   **The lead chart is cumulative over calls.** Totals answer "how much";
+   they do not show *where* the saving came from — which is typically a few
+   many-file `context` calls, not a steady drip. The page therefore opens
+   with three figures (reads replaced, response cost, the difference) and one
+   chart that accumulates both figures over the recorded calls, in log order,
+   with the band between the two curves as the running net. The report gains
+   a `timeline` for it: at most `UsageReport.TimelinePointCount` (120) points,
+   each carrying the running totals after the call it is anchored on. A longer
+   log is bucketed — every call still lands in the sum, only the drawn curve
+   is thinned, and the last point is the report total by construction. Records
+   are ordered by timestamp with a stable sort, so the axis cannot run
+   backwards while the log order is otherwise preserved. While the ledger is
+   discovery-heavy the net is negative; the band is then drawn and labelled as
+   a cost, never as a saving. The crosshair carries pre-formatted figures in a
+   data attribute (no number formatting in JavaScript, which would be
+   locale-dependent), reads out both series at once and steps with the arrow
+   keys, and the tables below still carry every figure without hover.
 6. **The basic dashboard is free; reporting stays reusable.** The dashboard
    was evaluated as a paid "pro" feature and deliberately shipped free: this
    feature stays fully free and open, funded by sponsoring (GitHub Sponsors,

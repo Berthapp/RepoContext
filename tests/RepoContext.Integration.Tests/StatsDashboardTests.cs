@@ -177,9 +177,35 @@ public class StatsDashboardTests
         // Self-contained: no external resources (the no-network principle).
         Assert.DoesNotContain("http://", first.StdOut);
         Assert.DoesNotContain("https://", first.StdOut);
+        // A single call is a dot, not a trend, so the cumulative chart is skipped.
+        Assert.DoesNotContain("<svg class=\"trend\"", first.StdOut);
 
         // Deterministic given the same log.
         Assert.Equal(first.StdOut, ws.Run("stats", "--format", "html").StdOut);
+    }
+
+    [Fact]
+    public void HtmlDashboard_DrawsTheCumulativeCurveOverTheRecordedCalls()
+    {
+        using FixtureWorkspace ws = Indexed();
+        ws.Run("context", "change the login logic", "--detail", "slices", "--format", "json");
+        ws.Run("outline", "src/auth/login.ts", "--format", "json");
+        ws.Run("search", "login", "--format", "json");
+
+        CliResult stats = ws.Run("stats", "--format", "html");
+
+        Assert.Equal(0, stats.ExitCode);
+        Assert.Contains("Cumulative over 3 calls", stats.StdOut);
+        Assert.Contains("<svg class=\"trend\"", stats.StdOut);
+        // Both curves plus the band between them.
+        Assert.Contains("class=\"line\" stroke=\"var(--series-1)\"", stats.StdOut);
+        Assert.Contains("class=\"line\" stroke=\"var(--series-2)\"", stats.StdOut);
+        Assert.Contains("<path class=\"gap\"", stats.StdOut);
+        // The crosshair reads pre-formatted figures: no number formatting in JS,
+        // so the page cannot drift with the viewer's locale.
+        Assert.Contains("data-points=\"[[", stats.StdOut);
+        Assert.Contains("call 3 ", stats.StdOut);
+        Assert.DoesNotContain("toLocaleString", stats.StdOut);
     }
 
     [Fact]

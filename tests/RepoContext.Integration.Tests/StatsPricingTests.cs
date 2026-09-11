@@ -24,7 +24,8 @@ public class StatsPricingTests
         Assert.True(json.RootElement.TryGetProperty("saved_cost", out _));
         Assert.Equal(5.0, json.RootElement.GetProperty("input_per_mtok").GetDouble());
 
-        Assert.Contains("Net saved (money)", ws.Run("stats", "--format", "html").StdOut);
+        // The dashboard carries the money view under the net figure.
+        Assert.Contains("at $5.00/M input tokens", ws.Run("stats", "--format", "html").StdOut);
     }
 
     [Fact]

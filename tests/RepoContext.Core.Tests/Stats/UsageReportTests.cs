@@ -13,6 +13,7 @@ public class UsageReportTests
         Assert.Equal(0, report.Totals.SavedTokens);
         Assert.Empty(report.Commands);
         Assert.Empty(report.Days);
+        Assert.Empty(report.Timeline);
         Assert.Null(report.FirstDay);
         Assert.Null(report.LastDay);
     }
@@ -62,6 +63,58 @@ public class UsageReportTests
         // Totals and first/last still cover the whole log.
         Assert.Equal(20, report.Totals.Calls);
         Assert.Equal("2026-07-01", report.FirstDay);
+    }
+
+    [Fact]
+    public void Build_AccumulatesEveryCallIntoTheTimeline()
+    {
+        UsageReport report = UsageReport.Build(
+        [
+            Record("search", day: 10, served: 200, replaced: 0),
+            Record("context", day: 10, served: 2000, replaced: 5000),
+            Record("context", day: 11, served: 1000, replaced: 4000),
+        ]);
+
+        Assert.Equal(3, report.Timeline.Count);
+        Assert.Equal([1, 2, 3], report.Timeline.Select(p => p.Call));
+        Assert.Equal(["2026-07-10", "2026-07-10", "2026-07-11"], report.Timeline.Select(p => p.Day));
+
+        // Running totals, call by call.
+        Assert.Equal(200, report.Timeline[0].ServedTokens);
+        Assert.Equal(0, report.Timeline[0].ReplacedTokens);
+        Assert.Equal(-200, report.Timeline[0].SavedTokens);
+        Assert.Equal(2200, report.Timeline[1].ServedTokens);
+        Assert.Equal(5000, report.Timeline[1].ReplacedTokens);
+
+        // The last point is the report total, by construction.
+        Assert.Equal(report.Totals.ServedTokens, report.Timeline[^1].ServedTokens);
+        Assert.Equal(report.Totals.ReplacedTokens, report.Timeline[^1].ReplacedTokens);
+        Assert.Equal(report.Totals.SavedTokens, report.Timeline[^1].SavedTokens);
+    }
+
+    [Fact]
+    public void Build_BucketsALongLogWithoutLosingACall()
+    {
+        var records = new List<UsageRecord>();
+        for (int i = 0; i < 500; i++)
+        {
+            records.Add(Record("context", day: 5, served: 10, replaced: 100));
+        }
+
+        UsageReport report = UsageReport.Build(records);
+
+        Assert.Equal(UsageReport.TimelinePointCount, report.Timeline.Count);
+        // Bucketing thins the curve; it never drops a call from the running sum.
+        Assert.Equal(500, report.Timeline[^1].Call);
+        Assert.Equal(5_000, report.Timeline[^1].ServedTokens);
+        Assert.Equal(50_000, report.Timeline[^1].ReplacedTokens);
+        Assert.Equal(report.Totals.SavedTokens, report.Timeline[^1].SavedTokens);
+
+        for (int i = 1; i < report.Timeline.Count; i++)
+        {
+            Assert.True(report.Timeline[i].Call > report.Timeline[i - 1].Call);
+            Assert.True(report.Timeline[i].ReplacedTokens >= report.Timeline[i - 1].ReplacedTokens);
+        }
     }
 
     [Fact]

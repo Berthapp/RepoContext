@@ -450,8 +450,19 @@ tooling) show where the savings come from. For a visual dashboard, run
 external resources, works fully offline) to `.repoctx/stats.html` and opens it
 in your default browser; `--format html` prints the same page to stdout. There
 is deliberately no localhost server: the browser renders the local file, and
-RepoContext stays network-free. Set `REPOCTX_NO_STATS=1` to disable recording;
-delete the log file to reset the dashboard. See ADR 0011.
+RepoContext stays network-free.
+
+The page leads with three figures — reads replaced, response cost, and the
+difference — and then draws them **cumulatively over your calls, in the order
+they were recorded**: one curve for what reading those files in full would have
+cost, one for what repoctx actually returned, and the band between them as the
+running saving. That shape is the useful part: it shows *where* the savings
+came from, which is usually a handful of many-file `context` calls rather than
+a steady drip. Hover (or focus the plot and use the arrow keys) for a single
+call; grouped bars per command and per day and a full table follow below, so no
+figure is hover- or colour-gated. Logs longer than 120 calls are bucketed into
+120 points — the curve is thinned, never the sum. Set `REPOCTX_NO_STATS=1` to
+disable recording; delete the log file to reset the dashboard. See ADR 0011.
 
 ### Agent memory: never re-derive
 
