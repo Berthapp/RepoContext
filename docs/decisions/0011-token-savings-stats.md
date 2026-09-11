@@ -59,7 +59,20 @@ aggregates them.
    external resources — CI asserts no `http(s)://` in the output), and
    `stats --open` writes it to `.repoctx/stats.html` and launches the default
    browser (`REPOCTX_NO_LAUNCH` suppresses the launch for headless runs; a
-   failed launch is non-fatal). A `--serve` localhost endpoint was rejected:
+   failed launch is non-fatal).
+
+   **The dashboard is the default for a human.** A bare `repoctx stats` at an
+   interactive terminal prints the text summary *and* opens the page: the
+   command exists to show the savings, and a table of four numbers is not what
+   the reader came for. It stays on stdout whenever something signals a machine
+   at the other end — a redirected stdin/stdout (pipes, scripts, CI, the
+   integration harness), an explicit `--format`, or `--no-open` (which also
+   wins over `--open`) — and an empty ledger opens nothing, since there is no
+   page worth looking at yet. `--open` forces it in every case. The decision is
+   one pure predicate (`StatsCommand.ShouldOpenDashboard`) so it is unit-tested
+   rather than inferred from behaviour. This does not touch the determinism
+   contract: it changes *whether a browser is launched*, never what a given
+   format renders, and every captured stream keeps the output it had before. A `--serve` localhost endpoint was rejected:
    the no-network constraint bans socket APIs at compile time, and a browser
    renders local files fine — a server adds attack surface for zero benefit.
    Charts follow the dataviz spec (validated two-slot palette, grouped bars

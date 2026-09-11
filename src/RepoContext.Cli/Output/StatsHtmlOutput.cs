@@ -47,7 +47,7 @@ public static class StatsHtmlOutput
         {
             sb.Append("<section class=\"card empty\"><p>No usage recorded yet.</p>" +
                       "<p class=\"note\">Run queries (context, outline, search, ...) and " +
-                      "re-generate this page with <code>repoctx stats --open</code>.</p></section>\n");
+                      "re-generate this page with <code>repoctx stats</code>.</p></section>\n");
         }
         else
         {

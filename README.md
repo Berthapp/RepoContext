@@ -295,7 +295,7 @@ via `repoctx related`).
 | `memory search [query]` | Deterministic recall with reasons and hash-based `stale` flags; omit the query to list. | `--top`, `--kind`, `--file`, `--session`, `--stale`, `--format` |
 | `memory rm <id>` | Remove one memory entry (curation). | `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
-| `stats` | Token-savings dashboard aggregated from your local usage (see below). | `--format` (incl. `html`), `--open` |
+| `stats` | Token-savings dashboard aggregated from your local usage; opens in your browser when run in a terminal (see below). | `--format` (incl. `html`), `--open`, `--no-open` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
 Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments · `4` drift (`integrate --check` only).
@@ -445,12 +445,19 @@ discovery calls (`search`, `related`, `changed`, `architecture`, and
 `context --detail paths`) receive no credit, while credited content assumes a
 full read would otherwise have happened.
 Breakdowns per command and per day (`--format md`/`json` for reports and
-tooling) show where the savings come from. For a visual dashboard, run
-`repoctx stats --open` — it writes a self-contained HTML page (charts, no
-external resources, works fully offline) to `.repoctx/stats.html` and opens it
-in your default browser; `--format html` prints the same page to stdout. There
-is deliberately no localhost server: the browser renders the local file, and
-RepoContext stays network-free.
+tooling) show where the savings come from.
+
+**`repoctx stats` shows you the visual dashboard.** Typed at a terminal, it
+prints the summary above *and* writes a self-contained HTML page (charts, no
+external resources, works fully offline) to `.repoctx/stats.html`, then opens
+it in your default browser. Everything that says a machine is reading instead
+keeps it on stdout: a redirected or piped stream, an explicit `--format`, or
+`--no-open` — so `repoctx stats > report.txt` and CI runs behave exactly as
+before, and nothing opens before the first query is recorded. `--open` forces
+the browser anyway (`REPOCTX_NO_LAUNCH=1` suppresses just the launch), and
+`--format html` prints the page to stdout. There is deliberately no localhost
+server: the browser renders the local file, and RepoContext stays
+network-free.
 
 The page leads with three figures — reads replaced, response cost, and the
 difference — and then draws them **cumulatively over your calls, in the order

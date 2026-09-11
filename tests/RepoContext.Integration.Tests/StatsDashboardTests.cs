@@ -1,4 +1,5 @@
 using System.Text.Json;
+using RepoContext.Cli.Commands;
 using RepoContext.Core.Indexing;
 
 namespace RepoContext.Integration.Tests;
@@ -206,6 +207,68 @@ public class StatsDashboardTests
         Assert.Contains("data-points=\"[[", stats.StdOut);
         Assert.Contains("call 3 ", stats.StdOut);
         Assert.DoesNotContain("toLocaleString", stats.StdOut);
+    }
+
+    [Fact]
+    public void PlainStats_OpensTheDashboardOnlyForAnInteractiveTerminalWithUsage()
+    {
+        // The human case: `repoctx stats` typed at a terminal, with something
+        // to show. That is what the command is for, so it opens.
+        Assert.True(StatsCommand.ShouldOpenDashboard(
+            openRequested: false, noOpen: false, formatGiven: false,
+            interactive: true, hasUsage: true));
+
+        // Every signal that a machine reads the output keeps it on stdout.
+        Assert.False(StatsCommand.ShouldOpenDashboard(
+            openRequested: false, noOpen: false, formatGiven: false,
+            interactive: false, hasUsage: true));
+        Assert.False(StatsCommand.ShouldOpenDashboard(
+            openRequested: false, noOpen: false, formatGiven: true,
+            interactive: true, hasUsage: true));
+        Assert.False(StatsCommand.ShouldOpenDashboard(
+            openRequested: false, noOpen: true, formatGiven: false,
+            interactive: true, hasUsage: true));
+
+        // An empty ledger has no page worth opening on its own.
+        Assert.False(StatsCommand.ShouldOpenDashboard(
+            openRequested: false, noOpen: false, formatGiven: false,
+            interactive: true, hasUsage: false));
+
+        // --open forces it regardless; --no-open still wins over --open.
+        Assert.True(StatsCommand.ShouldOpenDashboard(
+            openRequested: true, noOpen: false, formatGiven: true,
+            interactive: false, hasUsage: false));
+        Assert.False(StatsCommand.ShouldOpenDashboard(
+            openRequested: true, noOpen: true, formatGiven: false,
+            interactive: true, hasUsage: true));
+    }
+
+    [Fact]
+    public void RedirectedStats_PrintsTextAndLeavesNoDashboardFile()
+    {
+        using FixtureWorkspace ws = Indexed();
+        ws.Run("search", "login", "--format", "json");
+
+        // The harness captures stdout, so this is the piped/CI case.
+        CliResult result = ws.Run("stats");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Token savings", result.StdOut);
+        Assert.DoesNotContain("Dashboard written to", result.StdOut);
+        Assert.False(File.Exists(ws.PathOf(".repoctx/stats.html")));
+    }
+
+    [Fact]
+    public void NoOpen_KeepsTheDashboardOnStdout()
+    {
+        using FixtureWorkspace ws = Indexed();
+        ws.Run("search", "login", "--format", "json");
+
+        CliResult result = ws.Run("stats", "--no-open");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("Token savings", result.StdOut);
+        Assert.False(File.Exists(ws.PathOf(".repoctx/stats.html")));
     }
 
     [Fact]
