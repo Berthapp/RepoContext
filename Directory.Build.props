@@ -19,7 +19,7 @@
 
   <!-- Product version. A single source of truth for the version option. -->
   <PropertyGroup>
-    <VersionPrefix>0.13.0</VersionPrefix>
+    <VersionPrefix>0.14.0</VersionPrefix>
     <Authors>RepoContext</Authors>
     <Product>RepoContext</Product>
     <!-- Keep the version option output stable across commits (determinism). -->
