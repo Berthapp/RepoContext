@@ -80,6 +80,13 @@ public sealed class ReadCostPolicy(
     TokenScale scale,
     Func<string, string?> resolvePath)
 {
+    /// <summary>
+    /// The response ceiling the suggested <c>context</c> call carries. The same
+    /// figure the agent playbook starts with, so a redirected read lands on the
+    /// documented loop rather than on an unbounded one.
+    /// </summary>
+    private const int SuggestedResponseBudgetTokens = 2_000;
+
     /// <summary>The limits in force.</summary>
     public ReadCostPolicyOptions Options { get; } = options;
 
@@ -204,7 +211,8 @@ public sealed class ReadCostPolicy(
             string quoted = GuardSuggestion.Quote(target.Path);
             suggestions.Add($"repoctx outline {quoted}");
             suggestions.Add(
-                $"repoctx context '<the task in your own words>' --path {quoted} --detail slices");
+                $"repoctx context '<the task in your own words>' --path {quoted} "
+                + $"--detail slices --response-budget-tokens {SuggestedResponseBudgetTokens}");
         }
 
         return suggestions;

@@ -160,4 +160,18 @@ public class GuardStateTests : IDisposable
         Assert.DoesNotContain("a.ts", described, StringComparison.Ordinal);
         Assert.DoesNotContain('\n', described);
     }
+
+    [Fact]
+    public void ConcurrentRecords_DoNotLoseTheLoopBound()
+    {
+        // Several hooks can run at once (parallel tool calls, two agents). The
+        // bound that stops an enforcing guard from denying forever must survive
+        // that, and no writer may corrupt the file for the others.
+        Parallel.For(0, 16, _ => GuardState.Record(Layout, "e1", Denial("src/big.ts"), 3));
+
+        GuardCounters counters = GuardState.ReadCounters(Layout);
+        Assert.Equal(16, counters.Observed);
+        Assert.Equal(16, counters.Denied);
+        Assert.Equal(16, GuardState.Redirects(Layout, "e1", "src/big.ts"));
+    }
 }

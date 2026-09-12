@@ -11,6 +11,23 @@ public class GuardCommandTests
 {
     private const string BigFile = "src/generated/catalog.ts";
 
+    /// <summary>
+    /// These tests assert on the guard counters, so recording must be on
+    /// regardless of what the surrounding CI job sets. A test whose expectation
+    /// depends on ambient environment is a test that passes on one runner and
+    /// fails on the next.
+    /// </summary>
+    private static readonly Dictionary<string, string> StatsOn = new()
+    {
+        ["REPOCTX_NO_STATS"] = string.Empty,
+    };
+
+    private static CliResult Hook(FixtureWorkspace ws, string payload, params string[] args) =>
+        CliHarness.RunIn(ws.Root, StatsOn, payload, args);
+
+    private static CliResult Cli(FixtureWorkspace ws, params string[] args) =>
+        CliHarness.RunIn(ws.Root, StatsOn, standardInput: null, args);
+
     /// <summary>A workspace with an indexed file far above the cost threshold.</summary>
     private static FixtureWorkspace IndexedWorkspace()
     {
@@ -68,8 +85,7 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult result = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
 
         Assert.Equal(0, result.ExitCode);
         string reason = DenialReason(result.StdOut);
@@ -83,8 +99,8 @@ public class GuardCommandTests
         using FixtureWorkspace ws = IndexedWorkspace();
         string payload = ReadEvent(ws.Root, ws.PathOf(BigFile));
 
-        CliResult denied = ws.RunWithInput(payload, "guard", "hook", "--mode", "enforce");
-        CliResult repeated = ws.RunWithInput(payload, "guard", "hook", "--mode", "enforce");
+        CliResult denied = Hook(ws, payload, "guard", "hook", "--mode", "enforce");
+        CliResult repeated = Hook(ws, payload, "guard", "hook", "--mode", "enforce");
 
         Assert.NotEmpty(denied.StdOut);
         Assert.Equal(0, repeated.ExitCode);
@@ -96,13 +112,12 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult result = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "observe");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "observe");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.StdOut.Trim());
-        Assert.Contains("redirected=1", ws.Run("guard", "status").StdOut, StringComparison.Ordinal);
-        Assert.Contains("denied=0", ws.Run("guard", "status").StdOut, StringComparison.Ordinal);
+        Assert.Contains("redirected=1", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
+        Assert.Contains("denied=0", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -110,8 +125,7 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult result = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook");
 
         Assert.Empty(result.StdOut.Trim());
     }
@@ -121,13 +135,12 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult small = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf("src/middleware.ts")), "guard", "hook", "--mode", "enforce");
+        CliResult small = Hook(ws, ReadEvent(ws.Root, ws.PathOf("src/middleware.ts")), "guard", "hook", "--mode", "enforce");
 
         Assert.Empty(small.StdOut.Trim());
         Assert.Contains(
             "allowed",
-            ws.Run("guard", "check", BigFile, "--mode", "enforce", "--limit", "40").StdOut,
+            Cli(ws, "guard", "check", BigFile, "--mode", "enforce", "--limit", "40").StdOut,
             StringComparison.Ordinal);
     }
 
@@ -145,8 +158,7 @@ public class GuardCommandTests
             "git status",
         })
         {
-            CliResult result = ws.RunWithInput(
-                BashEvent(ws.Root, command), "guard", "hook", "--mode", "enforce");
+            CliResult result = Hook(ws, BashEvent(ws.Root, command), "guard", "hook", "--mode", "enforce");
 
             Assert.Equal(0, result.ExitCode);
             Assert.Empty(result.StdOut.Trim());
@@ -158,15 +170,13 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult judged = ws.RunWithInput(
-            BashEvent(ws.Root, $"cat {BigFile}"), "guard", "hook", "--mode", "enforce");
-        CliResult notJudged = ws.RunWithInput(
-            BashEvent(ws.Root, $"cat {BigFile} | head -n 20"), "guard", "hook", "--mode", "enforce");
+        CliResult judged = Hook(ws, BashEvent(ws.Root, $"cat {BigFile}"), "guard", "hook", "--mode", "enforce");
+        CliResult notJudged = Hook(ws, BashEvent(ws.Root, $"cat {BigFile} | head -n 20"), "guard", "hook", "--mode", "enforce");
 
         Assert.Contains("repoctx outline", DenialReason(judged.StdOut), StringComparison.Ordinal);
         Assert.Empty(notJudged.StdOut.Trim());
         Assert.Contains(
-            "unsupported=1", ws.Run("guard", "status").StdOut, StringComparison.Ordinal);
+            "unsupported=1", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
     }
 
     [Theory]
@@ -179,7 +189,7 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult result = ws.RunWithInput(payload, "guard", "hook", "--mode", "enforce");
+        CliResult result = Hook(ws, payload, "guard", "hook", "--mode", "enforce");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.StdOut.Trim());
@@ -191,8 +201,7 @@ public class GuardCommandTests
         using var ws = new FixtureWorkspace("sample-ts");
         ws.Run("init");
 
-        CliResult result = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf("src/middleware.ts")), "guard", "hook", "--mode", "enforce");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf("src/middleware.ts")), "guard", "hook", "--mode", "enforce");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.StdOut.Trim());
@@ -207,8 +216,7 @@ public class GuardCommandTests
         using FixtureWorkspace ws = IndexedWorkspace();
         File.AppendAllText(ws.PathOf(BigFile), "\nexport const added = true;\n");
 
-        CliResult result = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.StdOut.Trim());
@@ -219,12 +227,11 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult result = ws.RunWithInput(
-            ReadEvent(ws.Root, ws.PathOf(".env")), "guard", "hook", "--mode", "enforce");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(".env")), "guard", "hook", "--mode", "enforce");
 
         Assert.Equal(0, result.ExitCode);
         Assert.Empty(result.StdOut.Trim());
-        Assert.DoesNotContain(".env", ws.Run("guard", "status").StdOut, StringComparison.Ordinal);
+        Assert.DoesNotContain(".env", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -232,13 +239,11 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult started = ws.RunWithInput(
-            LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-1"), "guard", "hook");
+        CliResult started = Hook(ws, LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-1"), "guard", "hook");
         string first = Announced(started.StdOut);
 
-        ws.RunWithInput(LifecycleEvent(ws.Root, "PreCompact", "auto", "conv-1"), "guard", "hook");
-        CliResult resumed = ws.RunWithInput(
-            LifecycleEvent(ws.Root, "SessionStart", "compact", "conv-1"), "guard", "hook");
+        Hook(ws, LifecycleEvent(ws.Root, "PreCompact", "auto", "conv-1"), "guard", "hook");
+        CliResult resumed = Hook(ws, LifecycleEvent(ws.Root, "SessionStart", "compact", "conv-1"), "guard", "hook");
         string second = Announced(resumed.StdOut);
 
         Assert.NotEqual(first, second);
@@ -251,18 +256,17 @@ public class GuardCommandTests
         // The whole point of milestone 3: a local session file must not keep
         // asserting possession for a conversation whose context was replaced.
         using FixtureWorkspace ws = IndexedWorkspace();
-        string session = Announced(ws.RunWithInput(
-            LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-1"), "guard", "hook").StdOut);
+        string session = Announced(Hook(ws, LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-1"), "guard", "hook").StdOut);
 
         string[] query = ["context", "login", "--detail", "slices", "--top", "2",
             "--session", session, "--format", "json"];
-        ws.Run(query);
-        CliResult repeated = ws.Run(query);
+        Cli(ws, query);
+        CliResult repeated = Cli(ws, query);
         Assert.True(Reused(repeated.StdOut) > 0);
 
-        ws.RunWithInput(LifecycleEvent(ws.Root, "PreCompact", "auto", "conv-1"), "guard", "hook");
+        Hook(ws, LifecycleEvent(ws.Root, "PreCompact", "auto", "conv-1"), "guard", "hook");
 
-        CliResult afterCompaction = ws.Run(query);
+        CliResult afterCompaction = Cli(ws, query);
         Assert.Equal(0, afterCompaction.ExitCode);
         Assert.Equal(0, Reused(afterCompaction.StdOut));
     }
@@ -272,13 +276,11 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        string first = Announced(ws.RunWithInput(
-            LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-1"), "guard", "hook").StdOut);
-        string second = Announced(ws.RunWithInput(
-            LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-2"), "guard", "hook").StdOut);
+        string first = Announced(Hook(ws, LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-1"), "guard", "hook").StdOut);
+        string second = Announced(Hook(ws, LifecycleEvent(ws.Root, "SessionStart", "startup", "conv-2"), "guard", "hook").StdOut);
 
         Assert.NotEqual(first, second);
-        ws.Run("context", "login", "--detail", "slices", "--session", first, "--format", "json");
+        Cli(ws, "context", "login", "--detail", "slices", "--session", first, "--format", "json");
         CliResult other = ws.Run(
             "context", "login", "--detail", "slices", "--session", second, "--format", "json");
 
@@ -289,9 +291,9 @@ public class GuardCommandTests
     public void Status_ReportsCountersWithoutLeakingPaths()
     {
         using FixtureWorkspace ws = IndexedWorkspace();
-        ws.RunWithInput(ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
+        Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
 
-        CliResult status = ws.Run("guard", "status");
+        CliResult status = Cli(ws, "guard", "status");
 
         Assert.Equal(0, status.ExitCode);
         Assert.Contains("observed=1", status.StdOut, StringComparison.Ordinal);
@@ -311,7 +313,7 @@ public class GuardCommandTests
             "guard", "hook", "--mode", "enforce");
 
         Assert.Contains("repoctx outline", DenialReason(denied.StdOut), StringComparison.Ordinal);
-        Assert.Contains("observed=0", ws.Run("guard", "status").StdOut, StringComparison.Ordinal);
+        Assert.Contains("observed=0", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -319,12 +321,12 @@ public class GuardCommandTests
     {
         using FixtureWorkspace ws = IndexedWorkspace();
 
-        CliResult check = ws.Run("guard", "check", BigFile, "--mode", "enforce");
+        CliResult check = Cli(ws, "guard", "check", BigFile, "--mode", "enforce");
 
         Assert.Equal(0, check.ExitCode);
         Assert.Contains("outcome: redirected", check.StdOut, StringComparison.Ordinal);
         Assert.Contains("estimated tokens", check.StdOut, StringComparison.Ordinal);
-        Assert.Contains("observed=0", ws.Run("guard", "status").StdOut, StringComparison.Ordinal);
+        Assert.Contains("observed=0", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
     }
 
     private static string Announced(string stdout)
@@ -342,5 +344,32 @@ public class GuardCommandTests
     {
         using JsonDocument document = JsonDocument.Parse(json);
         return document.RootElement.GetProperty("reused_count").GetInt32();
+    }
+
+    [Fact]
+    public void AnExhaustedBudget_AllowsTheReadInsteadOfMakingAnyoneWait()
+    {
+        // The client is waiting on a tool call. A guard that overruns its budget
+        // stands aside; it does not hold up the work to finish being clever.
+        using FixtureWorkspace ws = IndexedWorkspace();
+
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)),
+            "guard", "hook", "--mode", "enforce", "--timeout-ms", "0");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+        Assert.Contains("error=1", Cli(ws, "guard", "status").StdOut, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void TheDenialPointsAtTheDocumentedBudgetedLoop()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)), "guard", "hook", "--mode", "enforce");
+
+        string reason = DenialReason(result.StdOut);
+        Assert.Contains("--response-budget-tokens 2000", reason, StringComparison.Ordinal);
+        Assert.Contains("--detail slices", reason, StringComparison.Ordinal);
     }
 }
