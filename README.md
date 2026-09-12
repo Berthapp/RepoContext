@@ -872,7 +872,7 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
   },
   "ranking": {
     "weights": { "fts": 0.4, "symbol": 0.3, "graph": 0.2, "path": 0.1 },
-    "synonyms": { "zahlung": ["payment", "billing"] }
+    "synonyms": { "checkout": ["payment", "billing"] }
   }
 }
 ```
@@ -890,7 +890,7 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 | `artifacts.linkSymbols` | Link a document to the file that uniquely defines a symbol it names. |
 | `artifacts.maxRefsPerFile` | Upper bound on stored *artifact* references per file and kind — the paths, keys, links and symbols a file names (default 400). The references the dependency graph is resolved from (module imports and C# type uses) are outside it: truncating those would drop real dependencies from the graph. |
 | `ranking.weights` | Signal weights used by `context` (fts, symbol, graph, path). |
-| `ranking.synonyms` | Query-term expansions used by `context`. |
+| `ranking.synonyms` | Query-term expansions used by `context` — map the vocabulary your team queries with onto the terms the code uses, including terms in another language than the code. |
 | `tokens.profile` | Calibrate reported counts/budgets to a tokenizer: `o200k`/`openai` (default) or `claude`. |
 | `tokens.factor` | Explicit calibration multiplier in `(0, 100]`; overrides `tokens.profile` (invalid values fall back to raw counts). |
 | `pricing.inputPerMtok` | Input price per million tokens; enables the money view in `stats`. |
