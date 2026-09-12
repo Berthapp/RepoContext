@@ -84,6 +84,7 @@ public static class CliApplication
         root.Subcommands.Add(PrimeCommand.Build());
         root.Subcommands.Add(MemoryCommand.Build());
         root.Subcommands.Add(StatsCommand.Build());
+        root.Subcommands.Add(GuardCommand.Build());
         root.Subcommands.Add(McpCommand.Build());
 
         return root;

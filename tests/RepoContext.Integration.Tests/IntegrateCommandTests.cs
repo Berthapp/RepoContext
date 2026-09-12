@@ -132,4 +132,131 @@ public class IntegrateCommandTests
         Assert.Contains("repoctx context", first.StdOut, StringComparison.Ordinal);
         Assert.Equal(first.StdOut, second.StdOut);
     }
+
+    [Fact]
+    public void Integrate_WithoutGuard_NeverTouchesClientSettings()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+
+        ws.Run("integrate", "--client", "claude-code");
+
+        Assert.False(File.Exists(ws.PathOf(".claude/settings.json")));
+    }
+
+    [Fact]
+    public void Integrate_Guard_InstallsObserveByDefault_AndIsIdempotent()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+
+        CliResult first = ws.Run("integrate", "--client", "claude-code", "--guard");
+
+        Assert.Equal(0, first.ExitCode);
+        string settings = File.ReadAllText(ws.PathOf(".claude/settings.json"));
+        Assert.Contains("guard hook", settings, StringComparison.Ordinal);
+        Assert.Contains("--mode observe", settings, StringComparison.Ordinal);
+        Assert.Contains("PreCompact", settings, StringComparison.Ordinal);
+
+        CliResult second = ws.Run("integrate", "--client", "claude-code", "--guard");
+
+        Assert.Equal(0, second.ExitCode);
+        Assert.Equal(settings, File.ReadAllText(ws.PathOf(".claude/settings.json")));
+        Assert.Contains("unchanged .claude/settings.json", second.StdOut, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Integrate_GuardMode_ImpliesTheGuard()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+
+        CliResult result = ws.Run(
+            "integrate", "--client", "claude-code", "--guard-mode", "enforce");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains(
+            "--mode enforce",
+            File.ReadAllText(ws.PathOf(".claude/settings.json")),
+            StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Integrate_Guard_RoundTripsAndPreservesForeignEntries()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+        Directory.CreateDirectory(ws.PathOf(".claude"));
+        const string foreign = """
+            {
+              "permissions": { "allow": ["Bash(npm test)"] },
+              "hooks": {
+                "PostToolUse": [
+                  { "matcher": "Edit", "hooks": [{ "type": "command", "command": "my-formatter" }] }
+                ]
+              }
+            }
+            """;
+        File.WriteAllText(ws.PathOf(".claude/settings.json"), foreign);
+
+        ws.Run("integrate", "--client", "claude-code", "--guard", "--guard-mode", "enforce");
+        CliResult removed = ws.Run("integrate", "--client", "claude-code", "--remove");
+
+        Assert.Equal(0, removed.ExitCode);
+        string after = File.ReadAllText(ws.PathOf(".claude/settings.json"));
+        Assert.DoesNotContain("guard hook", after, StringComparison.Ordinal);
+        Assert.Contains("my-formatter", after, StringComparison.Ordinal);
+        Assert.Contains("Bash(npm test)", after, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void Integrate_Check_ReportsGuardDrift_ThenSucceedsAfterInstalling()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+        ws.Run("integrate", "--client", "claude-code");
+
+        CliResult drift = ws.Run("integrate", "--check", "--client", "claude-code", "--guard");
+
+        Assert.Equal(4, drift.ExitCode);
+        Assert.False(File.Exists(ws.PathOf(".claude/settings.json")));
+
+        ws.Run("integrate", "--client", "claude-code", "--guard");
+
+        Assert.Equal(
+            0, ws.Run("integrate", "--check", "--client", "claude-code", "--guard").ExitCode);
+    }
+
+    [Fact]
+    public void Integrate_Guard_MalformedSettings_AreReportedNotRewritten()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+        Directory.CreateDirectory(ws.PathOf(".claude"));
+        const string damaged = "{ not really settings";
+        File.WriteAllText(ws.PathOf(".claude/settings.json"), damaged);
+
+        CliResult result = ws.Run("integrate", "--client", "claude-code", "--guard");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("left untouched", result.StdErr, StringComparison.Ordinal);
+        Assert.Equal(damaged, File.ReadAllText(ws.PathOf(".claude/settings.json")));
+    }
+
+    [Fact]
+    public void Integrate_Guard_SaysSoForClientsWithoutAVerifiedHookContract()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+
+        CliResult result = ws.Run("integrate", "--client", "cursor", "--guard");
+
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("no verified hook contract", result.StdOut, StringComparison.Ordinal);
+        Assert.False(File.Exists(ws.PathOf(".claude/settings.json")));
+    }
+
+    [Fact]
+    public void Integrate_Guard_InvalidMode_IsInvalidArguments()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+
+        CliResult result = ws.Run("integrate", "--client", "claude-code", "--guard-mode", "block");
+
+        Assert.Equal(3, result.ExitCode);
+        Assert.Contains("--guard-mode", result.StdErr, StringComparison.Ordinal);
+    }
 }
