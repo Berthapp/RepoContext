@@ -2,8 +2,11 @@
 
 > This file is the build plan referenced throughout the project. It is stored
 > for provenance. The binding product context lives in
-> `../repocontext-produktdoku.md` (repo root). See ADR 0003 for how the
-> "sources of truth" are resolved in this repository.
+> `../repocontext-product-documentation.md` (repo root; written in German as
+> `repocontext-produktdoku.md` and translated in 2026-09). The constraint below
+> that "the German docs stay unchanged" is superseded by that translation; see
+> the update note in ADR 0003 for how the "sources of truth" are resolved in
+> this repository.
 
 ## Usage
 

@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>RepoContext — explainable, offline context for AI coding agents</title>
-<meta name="description" content="repoctx is a local-first CLI that deterministically indexes a repository and serves compact, explainable context to AI coding agents. Install from npm or NuGet — no network, no telemetry, byte-identical output.">
+<meta name="description" content="repoctx is a local-first CLI that indexes a repository and serves AI coding agents exactly the evidence a task needs — cutting the file reads that dominate the token bill, under a hard, exactly measured budget. Deterministic, explainable, offline. Install from npm or NuGet.">
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='7' fill='%230e141b'/%3E%3Ctext x='16' y='23' font-family='monospace' font-size='20' font-weight='700' fill='%2322c3d6' text-anchor='middle'%3E%24%3C/text%3E%3C/svg%3E">
 </head>
 <body>
@@ -322,17 +322,80 @@
     outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 6px;
   }
 
+  /* ---- Economics: the cost/quality argument ------------------------------ */
+  .cost-lead { display: grid; grid-template-columns: 1.15fr 1fr; gap: 34px; align-items: start; }
+  .cost-lead p { color: var(--ink-soft); font-size: 16.5px; }
+  .cost-lead p + p { margin-top: 14px; }
+  .cost-lead .muted-note { color: var(--muted); font-size: 14px; }
+
+  /* Two stacked bars: the same task, two loops. Numbers are in the text, so
+     the chart is decoration over a readable figure, never the only carrier. */
+  .compare {
+    background: var(--paper); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px; box-shadow: var(--shadow);
+  }
+  .compare .cap { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+  .bar-row { margin-top: 18px; }
+  .bar-row .label { display: flex; justify-content: space-between; gap: 12px; font-size: 14px; }
+  .bar-row .label span { color: var(--ink-soft); }
+  .bar-row .label b { font-family: var(--mono); font-variant-numeric: tabular-nums; color: var(--ink); }
+  .bar { margin-top: 7px; height: 13px; border-radius: 7px; background: var(--accent-wash); overflow: hidden; }
+  .bar i { display: block; height: 100%; border-radius: 7px; background: var(--line-strong); }
+  .bar.is-win i { background: var(--accent); }
+  .compare .verdict {
+    margin-top: 18px; padding-top: 15px; border-top: 1px dashed var(--line-strong);
+    font-size: 14.5px; color: var(--muted);
+  }
+  .compare .verdict b { color: var(--ink); font-weight: 650; }
+
+  /* Lever cards: each saving with the measurement that backs it. */
+  .levers { display: grid; grid-template-columns: repeat(4, 1fr); gap: 16px; margin-top: 30px; }
+  .lever {
+    background: var(--paper); border: 1px solid var(--line); border-radius: 13px;
+    padding: 20px 18px; box-shadow: var(--shadow);
+  }
+  .lever .fig {
+    font-family: var(--mono); font-size: 21px; font-weight: 700; color: var(--accent-ink);
+    letter-spacing: -0.02em; display: block;
+  }
+  .lever h3 { margin-top: 10px; font-size: 15.5px; font-weight: 680; }
+  .lever p { margin-top: 7px; color: var(--muted); font-size: 14px; }
+  .lever code { font-family: var(--mono); font-size: 12.5px; color: var(--accent-ink); }
+
+  /* Quality half: rules, then the rejected-experiment proof. */
+  .quality { display: grid; grid-template-columns: repeat(2, 1fr); gap: 14px 26px; }
+  .q-item { border-left: 2px solid var(--accent); padding: 2px 0 2px 16px; }
+  .q-item h3 { font-size: 15.5px; font-weight: 680; }
+  .q-item p { margin-top: 6px; color: var(--muted); font-size: 14.5px; }
+  .q-item code { font-family: var(--mono); font-size: 12.5px; color: var(--accent-ink); }
+  .callout {
+    margin-top: 30px; background: var(--paper); border: 1px solid var(--line-strong);
+    border-radius: 14px; padding: 24px 22px; box-shadow: var(--shadow);
+  }
+  .callout .k { font-family: var(--mono); font-size: 12px; color: var(--accent); display: block; }
+  .callout h3 { margin-top: 12px; font-size: 19px; font-weight: 700; }
+  .callout p { margin-top: 10px; color: var(--ink-soft); font-size: 15.5px; max-width: 78ch; }
+  .callout p.small { margin-top: 12px; color: var(--muted); font-size: 14px; }
+  .callout b { font-weight: 650; color: var(--ink); }
+  .limits {
+    margin-top: 26px; color: var(--muted); font-size: 14.5px; max-width: 80ch;
+  }
+  .limits a { color: var(--accent-ink); }
+
   /* ---- Responsive -------------------------------------------------------- */
   @media (max-width: 900px) {
     .hero-grid { grid-template-columns: 1fr; gap: 34px; }
     .hero .lede { max-width: none; }
-    .cards, .install-grid, .steps, .mcp-grid { grid-template-columns: 1fr; }
+    .cards, .install-grid, .steps, .mcp-grid,
+    .cost-lead, .quality { grid-template-columns: 1fr; }
+    .levers { grid-template-columns: repeat(2, 1fr); }
     .hero { padding: 54px 0 24px; }
     section { padding: 52px 0; }
   }
   @media (max-width: 560px) {
     body { font-size: 16px; }
     .nav-link.hide-sm { display: none; }
+    .levers { grid-template-columns: 1fr; }
   }
 </style>
 
@@ -340,6 +403,7 @@
   <div class="wrap navbar">
     <div class="brand"><span class="dollar">$</span> <b>repoctx</b></div>
     <nav class="nav-actions">
+      <a class="nav-link hide-sm" href="#cost">Cost</a>
       <a class="nav-link hide-sm" href="#install">Install</a>
       <a class="nav-link hide-sm" href="#commands">Commands</a>
       <a class="nav-link" href="https://github.com/Berthapp/RepoContext">GitHub</a>
@@ -358,7 +422,7 @@
       <div>
         <span class="eyebrow">local-first context engine</span>
         <h1>Context your agent can explain.</h1>
-        <p class="lede"><b>repoctx</b> indexes your repository and hands an AI coding agent exactly the files that matter — with a machine-readable reason for every one, and a hard token budget per answer.</p>
+        <p class="lede"><b>repoctx</b> hands an AI coding agent exactly the evidence a task needs — with a machine-readable reason for every hit, and a hard token budget per answer. The file reads that dominate the bill stop happening. <a href="#cost" style="color:var(--accent-ink);">See the economics</a>.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="#install">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -370,6 +434,7 @@
           </a>
         </div>
         <div class="meta-line">
+          <span><i class="dot"></i> measured: ~1/3 of a read-the-files loop</span>
           <span><i class="dot"></i> No network calls</span>
           <span><i class="dot"></i> No telemetry</span>
           <span><i class="dot"></i> Byte-identical output</span>
@@ -443,6 +508,110 @@
           <p>The same index and the same query always produce the same bytes. Stable sort, no timestamps in results, no randomness. Diff-friendly and cache-friendly.</p>
         </div>
       </div>
+    </div>
+  </section>
+
+  <!-- ECONOMICS: how the bill drops -->
+  <section id="cost">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">economics</span>
+        <h2>The reads are the bill — not the answers.</h2>
+        <p>Every token an agent reads is billed. The way to spend less is not to write shorter answers; it is to stop the agent from opening half the repository to find three functions.</p>
+      </div>
+
+      <div class="cost-lead">
+        <div>
+          <p>Measured on this repository for the task <em>&ldquo;improve token budget packing in the context engine&rdquo;</em>: an agent that asks for file pointers and then opens the top three files pays <b>~886 tokens for the answer and ~5,336 for the reads</b>. The answer is 14&nbsp;% of the cost.</p>
+          <p>Ask for the evidence instead of a reading list, and the follow-up reads simply do not happen — the same task, answered in one call, at roughly a third of the tokens.</p>
+          <p class="muted-note">Exact <code>o200k_base</code> counts, measured at milestone M6 (ADR 0010). Your repository is not this one, which is why <code>repoctx stats</code> measures yours instead of asking you to believe these.</p>
+        </div>
+        <div class="compare">
+          <span class="cap">same task, two loops</span>
+          <div class="bar-row">
+            <div class="label"><span>pointers, then read the top 3 files</span><b>6,222</b></div>
+            <div class="bar"><i style="width:100%"></i></div>
+          </div>
+          <div class="bar-row">
+            <div class="label"><span><code>context --detail slices</code>, 3 slices embedded</span><b>2,110</b></div>
+            <div class="bar is-win"><i style="width:33.9%"></i></div>
+          </div>
+          <div class="bar-row">
+            <div class="label"><span><code>context --detail outline</code>, 7 files surveyed</span><b>2,151</b></div>
+            <div class="bar is-win"><i style="width:34.6%"></i></div>
+          </div>
+          <p class="verdict">And when a full read really is needed, the decision itself is cheap: an <b>outline of that repository's main file costs 1,111 tokens against the file's 3,256</b> — an agent decides <em>whether</em> to read for a third of the price.</p>
+        </div>
+      </div>
+
+      <div class="levers">
+        <div class="lever">
+          <span class="fig">hard</span>
+          <h3>A ceiling that is measured</h3>
+          <p><code>--response-budget-tokens</code> is enforced against the exact rendered response, with no first-item exception. If nothing useful fits, you get an error and a retry budget — never a partial answer billed anyway.</p>
+        </div>
+        <div class="lever">
+          <span class="fig">1,916&nbsp;→&nbsp;621</span>
+          <h3>Never pay twice</h3>
+          <p>Every span, symbol and pointer carries a receipt. Echo it — or use a <code>--session</code>, which costs zero output tokens — and that unit is acknowledged instead of resent. Freed slots buy new evidence, not markers.</p>
+        </div>
+        <div class="lever">
+          <span class="fig">11.5&nbsp;%</span>
+          <h3>Cheaper serialization</h3>
+          <p><code>--format md</code> avoids JSON's escape tax and <code>--compact</code> drops legacy duplicate fields: 217,869 against 246,297 tokens for identical evidence across 36 frozen tasks.</p>
+        </div>
+        <div class="lever">
+          <span class="fig">~100</span>
+          <h3>Cheap prompt overhead</h3>
+          <p>The block loaded into <em>every</em> prompt is a ~100-token pointer, capped by a test at 150. The full protocol arrives on demand, as a skill or via <code>repoctx guide</code>.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- QUALITY: the saving is not paid for with relevance -->
+  <section id="quality">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">the other half</span>
+        <h2>Cheaper, not thinner.</h2>
+        <p>Any tool can cut tokens by returning less. These are the rules that keep a smaller answer from becoming a worse one — properties of the code and its tests, not intentions.</p>
+      </div>
+      <div class="quality">
+        <div class="q-item">
+          <h3>Symbol-aligned, never truncated</h3>
+          <p>Up to three non-overlapping ranges per file, the matching symbol's range first, reconstructed so the line numbers match the delivered bytes exactly. Whole declarations — not a function cut in half.</p>
+        </div>
+        <div class="q-item">
+          <h3>The graph adds what search misses</h3>
+          <p>Bounded two-hop expansion brings in the test that covers a file and the module that imports it, while vendor, generated and unrequested fixture/test/doc paths are penalized. Fewer tokens, and different ones.</p>
+        </div>
+        <div class="q-item">
+          <h3>Nothing is dropped silently</h3>
+          <p>Every hit carries its <code>reasons</code>, and <code>--explain</code> names the omitted candidates with the constraint that excluded them. The opposite of a context window that quietly ran out.</p>
+        </div>
+        <div class="q-item">
+          <h3>Reuse never over-claims</h3>
+          <p>A receipt suppresses exactly one delivered unit; <code>--known</code> asserts a whole file. Conflating them would tell the model it holds lines it was never sent — the dangerous way to save tokens.</p>
+        </div>
+        <div class="q-item">
+          <h3>Staleness is visible</h3>
+          <p>Responses carry content and analysis state, <code>--ensure-fresh</code> re-indexes before querying, and memories whose files drifted come back flagged <code>stale</code>.</p>
+        </div>
+        <div class="q-item">
+          <h3>Regression-gated, not asserted</h3>
+          <p>36 frozen retrieval tasks over four repositories, labelled with exact line ranges before the corpus was ever run. The tests reject any change that drops a previously delivered required file or labelled line.</p>
+        </div>
+      </div>
+
+      <div class="callout">
+        <span class="k">the standard, applied to ourselves</span>
+        <h3>A 94.7&nbsp;% recall win — rejected.</h3>
+        <p>An experimental packer raised required-file recall from 29/38 to <b>36/38</b>, past the 90&nbsp;% target on the roadmap. It got there by delivering one fragment of more files: relevant lines fell from <b>204 to 115</b>, evidence-complete tasks from <b>9/30 to 3/30</b>, and the follow-up reads those tasks still needed rose from 26 to 32. The headline metric improved while the agent's real cost got worse, so the patch was <b>kept for reproduction and left out of the product</b>.</p>
+        <p class="small">A token saving that costs relevant evidence is not a saving.</p>
+      </div>
+
+      <p class="limits"><b>What is not claimed.</b> These corpora measure evidence retrieval and response cost — not a coding agent's task success or total session spend. &ldquo;Reads replaced&rdquo; credits a read that would probably have happened; it is an estimate, not a lower bound. Under a tight 2,000-token JSON ceiling the holdout still delivers only 29/38 required file occurrences (76.3&nbsp;%; Markdown 32/38; unbudgeted 38/38) — the 90&nbsp;% target is not met, and is recorded as open work. <a href="https://github.com/Berthapp/RepoContext/blob/main/docs/cost-and-quality.md">Full reasoning, evidence and limits</a> · <a href="https://github.com/Berthapp/RepoContext/blob/main/docs/token-savings.md">measurement methodology</a>.</p>
     </div>
   </section>
 
@@ -561,7 +730,7 @@ dotnet build
     <div class="wrap">
       <div class="section-head">
         <span class="eyebrow">commands</span>
-        <h2>Twelve commands, one contract.</h2>
+        <h2>Fifteen commands, one contract.</h2>
         <p>Every command speaks <code>--format text</code>, <code>json</code> or <code>md</code>. The JSON is stable, snake_case and always carries <code>schema_version</code>.</p>
       </div>
       <div class="table-wrap">
@@ -571,6 +740,8 @@ dotnet build
           </thead>
           <tbody>
             <tr><td><code>init</code></td><td class="desc">Create <code>.repoctx/</code> and config; optionally wire up agent instructions.</td><td><code>--agents</code></td></tr>
+            <tr><td><code>integrate</code></td><td class="desc">Wire RepoContext into the agents this repo already uses — instructions, skills, rules, MCP registration.</td><td><code>--client · --check</code></td></tr>
+            <tr><td><code>guide</code></td><td class="desc">Print the full usage protocol on demand, so it never sits in every prompt.</td><td>—</td></tr>
             <tr><td><code>index</code></td><td class="desc">Build or incrementally update the index (hash diff).</td><td><code>--full</code></td></tr>
             <tr><td><code>search</code></td><td class="desc">BM25 full-text search over content and symbols.</td><td><code>--symbols · --top · --path</code></td></tr>
             <tr><td><code>related</code></td><td class="desc">A file's imports, dependents, linked tests and the documents describing it.</td><td><code>--format</code></td></tr>

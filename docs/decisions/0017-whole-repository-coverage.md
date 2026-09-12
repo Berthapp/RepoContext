@@ -150,7 +150,7 @@ MCP stdio transport requires.
 
 ## Deviation from the product doc
 
-`repocontext-produktdoku.md` chapter 14 shows `"include": ["src", "app", "lib",
+`repocontext-product-documentation.md` chapter 14 shows `"include": ["src", "app", "lib",
 "docs"]` in its example configuration. That example is not reproduced by the new
 default. The product doc stays unedited (it is binding and not to be modified);
 this ADR records the deviation and its reason: the example configuration

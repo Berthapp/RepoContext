@@ -5,6 +5,11 @@ with less model-visible work and without losing relevant evidence. The Release
 1 baseline therefore measures deterministic simulated evidence-gathering
 workflows, not character counts or isolated snippets.
 
+This page is the accounting: what each layer counts and what it refuses to
+count. For the argument it supports — which mechanisms remove tokens, and which
+rules and gates stop a saving from costing relevant evidence — see
+[cost and quality](cost-and-quality.md).
+
 The current reviewable results are:
 
 - [evaluation baseline](eval/baseline.md) — aggregate relevance and cost metrics;

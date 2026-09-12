@@ -11,6 +11,10 @@ It runs entirely offline. **No source code leaves the machine, there is no
 telemetry, and no LLM or embedding calls are ever made.** The same query on the
 same index always produces byte-identical output.
 
+The point is the bill: an agent that is handed the right evidence does not read
+half the repository to find it. [Why it is cheaper — and why the answers do not
+get worse](#why-it-is-cheaper--and-why-the-answers-do-not-get-worse).
+
 **Parsed with a full grammar:** TypeScript, TSX, JavaScript, C#.
 
 **Outlined by line patterns** — declarations, with names, kinds and ranges:
@@ -27,15 +31,93 @@ references are extracted, so the whole repository is cross-linked. Binary files
 are the only category that cannot be described — and `index` reports how many
 there were. See [Working with artifacts](#working-with-artifacts-tickets-specs-requirements).
 
-## Why: tokens are the bill
+## Why it is cheaper — and why the answers do not get worse
 
-The default token profile uses real BPE counts, and
-`--response-budget-tokens 2000` is a hard ceiling measured against the exact
-text emitted. The [current evaluation](docs/eval/baseline.md#reuse-economics)
-records how receipts reduce repeated source delivery. Its frozen workflows
-measure evidence retrieval and response costs; they do not measure a coding
-agent's task success or total session savings. See the [methodology,
-limitations and raw artifacts](docs/token-savings.md).
+**The reads are the bill, not the answers.** Measured on this repository for the
+task *"improve token budget packing in the context engine"*: an agent that asks
+for file pointers and then opens the top three files pays ~886 tokens for the
+answer and **~5,336 for the reads** — ~6,222 in total. The answer is 14 % of the
+cost. Shortening responses is rounding error; removing reads is the saving.
+
+| Same task, same repository | Tokens |
+| --- | ---: |
+| Pointers, then read the top 3 files | **6,222** |
+| `context --detail slices --budget-tokens 2000` — 3 best slices embedded | **2,110** |
+| `context --detail outline --budget-tokens 2000` — 7 files surveyed | **2,151** |
+| `outline` of the single 3,256-token main file | **1,111** |
+
+Measured at M6 (ADR 0010), exact `o200k_base` counts. Your repository is not
+this one — which is why `repoctx stats` measures yours instead of asking you to
+believe these.
+
+### How the bill drops
+
+| Lever | What it removes | Measured |
+| --- | --- | --- |
+| **Evidence, not a reading list** — `--detail slices` embeds symbol-aligned source spans; `--detail outline` covers more files at less depth | the follow-up file read | ~a third of the pointer-plus-read loop (above) |
+| **Decide before reading** — `outline`, `architecture --depth 1`, `changed` | reads that turn out to be unnecessary | 1,111 vs 3,256 tokens for the same file; ~300; 154 |
+| **A ceiling that is measured, not estimated** — `--response-budget-tokens` is enforced against the exact rendered response | the occasional 9,000-token answer that blows the context window | hard, with no first-item exception (ADR 0016) |
+| **Never pay twice** — per-unit `receipt`s via `--seen`, whole-file `--known`, or a `--session` that costs zero output tokens | re-delivery of evidence the agent already holds | repeat call 1,916 → **621** core tokens, content 756 → **49** ([baseline](docs/eval/baseline.md#reuse-economics)) |
+| **Delta after edits** — `changed --patch` | re-reading a file you just changed | hunks, with `patch_tokens` vs `file_tokens` reported |
+| **Cheap prompt overhead** — ~100-token pointer in `CLAUDE.md`/`AGENTS.md`, full protocol on demand via skill or `repoctx guide` | a protocol tax on every prompt, including tasks that never touch the tool | pointer capped by test at 150 tokens and < ⅓ of the protocol; MCP session surface 1,698, gated at 1,700 |
+| **Cheaper serialization** — `--format md` avoids the JSON escape tax; `--compact` drops legacy duplicate fields | bytes that carry no extra evidence | 217,869 vs 246,297 tokens for identical evidence across 36 tasks — **11.5 %** |
+| **One round trip instead of two** — `--detail auto`, `trace`, `--intent`, `--path`, `memory search` | the wasted call that returned the wrong shape | a recalled memory answers for ~40–80 tokens what re-deriving costs an outline plus reads |
+
+Budgets are calibrated to your model: `tokens.profile` scales the stored
+`o200k_base` counts (`claude` ≈ 1.2) at query time, rounding up, so a ceiling is
+never measured in the wrong tokenizer.
+
+### Why the quality holds
+
+Cheap answers are easy; cheap answers that are still *right* are the work. What
+keeps the two together:
+
+- **Spans are symbol-aligned, never truncated.** Up to three non-overlapping
+  ranges per file, symbol range first, reconstructed so `start_line..end_line`
+  matches the delivered bytes exactly — whole declarations, not a function cut
+  in half. A file with no reconstructable source degrades to a pointer instead
+  of disappearing.
+- **The graph supplies what lexical search misses.** Bounded two-hop expansion
+  adds the test that covers a file and the module that imports it; vendor,
+  generated, fixture, unrequested-test and unrequested-doc paths are penalized,
+  and repeated directories demoted. Fewer tokens — and different ones.
+- **Nothing is dropped silently.** Every hit carries `reasons`; `--explain`
+  names up to eight *omitted* candidates with the constraint that excluded them,
+  and marks a truncated sample `unlisted`.
+- **An impossible budget is an error, not a thin answer** — exit `3` with a
+  `retry_budget_tokens` guaranteed to fit, and no partial result.
+- **Reuse never over-claims possession.** A receipt suppresses exactly one
+  delivered unit; `--known` asserts the whole file. Conflating them would tell
+  the model it holds lines it never received (ADR 0015).
+- **Lossy is opt-in and flagged** — `--strip-comments` keeps any line that mixes
+  code with a comment, and marks the item `stripped`.
+- **Staleness is visible** — `content_state`/`analysis_state`, `--ensure-fresh`,
+  and memories flagged `stale` with the files that drifted.
+- **Quality is regression-gated.** 30 source-inspected retrieval tasks across
+  four repositories (three external) plus six historical ones, labelled with
+  exact line ranges *before* the corpus was first run, pinned by SHA-256; the
+  tests reject any change that drops a previously delivered required file or
+  labelled line on any output surface.
+- **Determinism makes it auditable.** No embeddings, no model in the loop: a bad
+  answer is reproducible and fixable rather than a different roll of the dice.
+
+The standard is not rhetorical. An experimental packer that raised required-file
+recall to **36/38 (94.7 %)**, past the roadmap's 90 % target, was **rejected**:
+it delivered one fragment of more files, so relevant lines fell 204 → 115,
+evidence-complete tasks 9/30 → 3/30, and the follow-up reads those tasks still
+needed rose from 26 to 32. The patch is kept for reproduction and is not part of
+the product.
+
+### What is not claimed
+
+The frozen corpora measure evidence retrieval and response cost — **not** a
+coding agent's task success or total session spend. "Reads replaced" credits a
+read that would probably have happened; it is an estimate, not a lower bound.
+Under a tight 2,000-token JSON ceiling the holdout still delivers only 29/38
+required file occurrences (76.3 %; Markdown 32/38; unbudgeted 38/38) — the 90 %
+target is not met and is recorded as open. Full reasoning, evidence and limits:
+**[Cost and quality](docs/cost-and-quality.md)** ·
+[methodology and raw artifacts](docs/token-savings.md).
 
 The loop an agent runs, on this repository:
 
@@ -790,7 +872,7 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
   },
   "ranking": {
     "weights": { "fts": 0.4, "symbol": 0.3, "graph": 0.2, "path": 0.1 },
-    "synonyms": { "zahlung": ["payment", "billing"] }
+    "synonyms": { "checkout": ["payment", "billing"] }
   }
 }
 ```
@@ -808,7 +890,7 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 | `artifacts.linkSymbols` | Link a document to the file that uniquely defines a symbol it names. |
 | `artifacts.maxRefsPerFile` | Upper bound on stored *artifact* references per file and kind — the paths, keys, links and symbols a file names (default 400). The references the dependency graph is resolved from (module imports and C# type uses) are outside it: truncating those would drop real dependencies from the graph. |
 | `ranking.weights` | Signal weights used by `context` (fts, symbol, graph, path). |
-| `ranking.synonyms` | Query-term expansions used by `context`. |
+| `ranking.synonyms` | Query-term expansions used by `context` — map the vocabulary your team queries with onto the terms the code uses, including terms in another language than the code. |
 | `tokens.profile` | Calibrate reported counts/budgets to a tokenizer: `o200k`/`openai` (default) or `claude`. |
 | `tokens.factor` | Explicit calibration multiplier in `(0, 100]`; overrides `tokens.profile` (invalid values fall back to raw counts). |
 | `pricing.inputPerMtok` | Input price per million tokens; enables the money view in `stats`. |
@@ -880,7 +962,9 @@ See `CLAUDE.md` for build/test commands, repository structure and conventions,
 `docs/build-prompt.md` for the milestone plan, and `docs/decisions/` for the
 architecture decision records. `docs/benchmark.md` holds the performance
 benchmark protocol; [token accounting](docs/token-savings.md) documents the
-measured response costs and simulated evidence-gathering workflows.
+measured response costs and simulated evidence-gathering workflows, and
+[cost and quality](docs/cost-and-quality.md) explains every saving mechanism
+alongside the gates that stop a saving from costing relevant evidence.
 
 ### Releasing
 
