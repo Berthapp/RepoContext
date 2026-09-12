@@ -1,0 +1,19 @@
+{
+  "_comment": "Template for run_comparison.py --config. Copy, fill in, and keep out of version control if it ever holds a secret. Credentials belong in the environment, never in this file.",
+  "command": ["claude", "-p", "--output-format", "json"],
+  "required_env": ["ANTHROPIC_API_KEY"],
+  "env": {
+    "REPOCTX_NO_STATS": "0"
+  },
+  "repoctx": "repoctx",
+  "repoctx_version": "0.15.0",
+  "agent_client_version": "fill in the exact pinned client version",
+  "model_id": "fill in the exact model id",
+  "billing_mode": "api",
+  "timeout_seconds": 1800,
+  "pricing": {
+    "source": "provider public price sheet, exact URL or document id",
+    "date": "YYYY-MM-DD",
+    "currency": "USD"
+  }
+}

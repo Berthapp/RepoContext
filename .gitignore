@@ -460,3 +460,12 @@ FodyWeavers.xsd
 !tests/fixtures/**/.env
 !tests/fixtures/sample-ts/node_modules/
 !tests/fixtures/sample-ts/node_modules/**
+
+# Results of the opt-in real-agent comparison: they are produced per machine,
+# carry provider usage data and are never committed as if they were a shipped
+# measurement. The frozen manifest, rubric, harness and public fixtures are.
+/docs/eval/agent/harness/runs.jsonl
+/docs/eval/agent/harness/report.json
+/docs/eval/agent/harness/report.md
+/docs/eval/agent/harness/prices.json
+/docs/eval/agent/harness/__pycache__/

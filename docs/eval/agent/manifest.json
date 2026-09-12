@@ -1,0 +1,348 @@
+{
+  "schema_version": 1,
+  "id": "agent-cost-quality-2026-09-12",
+  "frozen_at": "2026-09-12",
+  "status": "frozen; not yet executed",
+  "objective": "Same task-result quality at lower total cost. Fewer returned tokens is a mechanism, never the acceptance criterion.",
+  "arms": [
+    {
+      "id": "bare",
+      "label": "Agent without RepoContext",
+      "description": "The agent reads the repository with its own native tools. No repoctx index, instructions, MCP server, hook or session state is present.",
+      "setup": ["remove-repoctx-integration"]
+    },
+    {
+      "id": "current",
+      "label": "RepoContext 0.14.x integration",
+      "description": "repoctx init + index + integrate as shipped before this change: instructions, on-demand skill and MCP registration. No read-cost guard, no lifecycle-bound sessions.",
+      "setup": ["repoctx-init", "repoctx-index", "repoctx-integrate"]
+    },
+    {
+      "id": "guarded",
+      "label": "RepoContext integration plus read-cost guard and lifecycle sessions",
+      "description": "Arm 'current' plus 'repoctx integrate --guard', i.e. the opt-in read-cost guard and the context-epoch session binding added in 0.15.0.",
+      "setup": ["repoctx-init", "repoctx-index", "repoctx-integrate", "repoctx-integrate-guard"],
+      "guard_modes": ["observe", "enforce"]
+    }
+  ],
+  "fixed_across_arms": [
+    "agent client and version",
+    "model id and sampling parameters",
+    "task prompt text",
+    "repository commit and working tree",
+    "tool set available to the agent, apart from the arm's own setup",
+    "acceptance tests and review rubric",
+    "wall-clock timeout per run"
+  ],
+  "protocol": {
+    "repetitions_per_task_and_arm": 5,
+    "isolation": "one fresh git worktree and one fresh agent context per run; no session, receipt or index state is carried between runs",
+    "order": "counterbalanced: run index r uses arm order rotated by r, so arm position cannot correlate with repository or cache state",
+    "cache_modes": [
+      {
+        "id": "cold",
+        "description": "Fresh agent context, no provider prompt cache warm for this prompt prefix. Every run of a task/arm pair starts cold at repetition 1."
+      },
+      {
+        "id": "warm",
+        "description": "Immediately repeated prompt prefix within the provider's cache window, so repeated instruction and context tokens bill as cache reads. Measured and reported separately; never averaged into cold numbers."
+      }
+    ],
+    "retention": "Failures, timeouts and retries stay in the denominator and in the cost total. Runs are never dropped for being unsuccessful or expensive.",
+    "holdout": "Tasks flagged holdout=true are not inspected or tuned against before the release decision.",
+    "freeze": "Tasks, acceptance checks and the rubric are frozen by the SHA-256 of this file. Changing any of them requires a new manifest id."
+  },
+  "measurements": {
+    "quality": [
+      "acceptance: every acceptance check of the task passes",
+      "regressions: the repository's own test command passes after the change",
+      "rubric_score: docs/eval/agent/rubric.md, 0-3 per dimension",
+      "defect_severity: none | minor | major | severe (rubric.md section 3)",
+      "human_repair_minutes: measured, not estimated"
+    ],
+    "spend": [
+      "uncached_input_tokens",
+      "cache_read_input_tokens",
+      "cache_write_input_tokens",
+      "output_tokens",
+      "reasoning_tokens (only when the provider bills them separately from output)",
+      "billed_amount and billed_currency when the provider exposes them",
+      "usage_complete: false whenever any of the above was unavailable"
+    ],
+    "workflow": [
+      "tool_calls",
+      "file_read_calls",
+      "follow_up_read_calls",
+      "retries",
+      "compactions",
+      "guard_redirects",
+      "guard_escalations",
+      "guard_unsupported",
+      "review_iterations"
+    ],
+    "time": [
+      "wall_clock_seconds",
+      "hook_latency_ms_p50",
+      "hook_latency_ms_p95",
+      "index_seconds",
+      "timed_out"
+    ],
+    "provenance": [
+      "repo_commit",
+      "repoctx_version",
+      "agent_client_version",
+      "model_id",
+      "config_hash",
+      "pricing_source",
+      "pricing_date",
+      "pricing_currency",
+      "task_id",
+      "arm_id",
+      "run_id",
+      "cache_mode"
+    ]
+  },
+  "accounting_rules": [
+    "Billing categories are disjoint. Reasoning tokens are counted once; they are added only when the provider bills them outside the output category.",
+    "Report total spend and cost per accepted completion, where the denominator counts accepted completions and the numerator includes spend on failed and retried runs.",
+    "If no run of an arm is accepted, cost per accepted completion is undefined, never zero.",
+    "For flat subscriptions, estimated API-equivalent cost and quota consumption are reported separately from money actually billed.",
+    "Provider-reported usage is primary. Local tokenizer estimates and hypothetically avoided reads are reported as estimates, under their own labels, and never summed with billed figures.",
+    "Missing billing data makes a comparison incomplete. It never proves a saving."
+  ],
+  "promotion_criteria": {
+    "no_evidence_loss": "Frozen retrieval gates (docs/eval/holdout) unchanged, no new security or correctness regression in required task tests.",
+    "no_quality_loss": "No lower observed acceptance or rubric quality, and no higher severe-defect or human-repair rate than arm 'current'.",
+    "cost": "Lower measured total spend and lower cost per accepted completion than arm 'current'. Initial product target: at least 15 % lower cost per accepted completion. A target, not an achieved result.",
+    "uncertainty": "Paired confidence intervals for quality and spend, including the largest quality regression still compatible with the data. Absence of a significant difference does not establish equal quality; inconclusive evidence keeps enforce mode experimental.",
+    "operations": "Latency, per-task cost regressions and failure modes are reported explicitly. A policy is not enabled broadly if retries or friction erase its benefit."
+  },
+  "repositories": [
+    {
+      "id": "repocontext",
+      "archive": "../holdout/sources/repocontext.zip",
+      "archive_sha256": "7fd0267d96ea2fc60c4dba60f231cd31d28ae075f254ceb33b295d43c1b70e54",
+      "upstream": "https://github.com/Berthapp/RepoContext",
+      "commit": "806ba51e24aed14904b799dd01430c9f78672b47",
+      "reference": "v0.10.0 audit source",
+      "language": "csharp",
+      "scale": "multi-project: src/RepoContext.Core, src/RepoContext.Cli, src/RepoContext.MSBuild, tests/",
+      "test_command": "dotnet test RepoContext.slnx -c Release",
+      "prerequisites": ["dotnet-sdk-10", "nuget restore (network or warm package cache)"]
+    },
+    {
+      "id": "p-queue",
+      "archive": "../holdout/sources/p-queue.zip",
+      "archive_sha256": "65d5cfd0ba561c902bed94c6911cdd8bffdbf81af4f41c8d2dd165d2d38ca7e4",
+      "upstream": "https://github.com/sindresorhus/p-queue",
+      "commit": "6b84d8a4079fdc3f77a6eb8f2a985629990c731e",
+      "reference": "v8.1.0",
+      "language": "typescript",
+      "scale": "single package, long source/test files",
+      "test_command": "npm test",
+      "prerequisites": ["node 20+", "npm install (network)"]
+    },
+    {
+      "id": "p-retry",
+      "archive": "../holdout/sources/p-retry.zip",
+      "archive_sha256": "113839de26e7524eb293aea9e304cddbbc0a83a7d61b65547d7c6d88e78ec881",
+      "upstream": "https://github.com/sindresorhus/p-retry",
+      "commit": "d067fea3c806351e4b1c3be90439bb0da638322c",
+      "reference": "v6.2.1",
+      "language": "javascript",
+      "scale": "single package, cross-file behaviour with p-limit style helpers",
+      "test_command": "npm test",
+      "prerequisites": ["node 20+", "npm install (network)"]
+    },
+    {
+      "id": "p-limit",
+      "archive": "../holdout/sources/p-limit.zip",
+      "archive_sha256": "31881edb434ff48c77c45a16a257d5356b8d06f873fd7895ffe23927e1d0d994",
+      "upstream": "https://github.com/sindresorhus/p-limit",
+      "commit": "923811344705a6604967540e19f7653752021438",
+      "reference": "v6.2.0",
+      "language": "javascript",
+      "scale": "single small package; the cheap-task control",
+      "test_command": "npm test",
+      "prerequisites": ["node 20+", "npm install (network)"]
+    }
+  ],
+  "tasks": [
+    {
+      "id": "fix-cs-session-epoch",
+      "repository": "repocontext",
+      "kind": "fix",
+      "language": "csharp",
+      "holdout": false,
+      "scenario": ["cross_file", "long_file"],
+      "cache_mode": "cold",
+      "prompt": "A session file keeps suppressing evidence after the agent context was replaced. Find where session state is loaded and make suppression impossible when the stored state does not belong to the current context. Keep manual --session behaviour working.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "dotnet test RepoContext.slnx -c Release"},
+        {"type": "assert_changed", "paths": ["src/RepoContext.Core/Context/SessionStore.cs"]},
+        {"type": "assert_test_added", "description": "A test fails without the change and passes with it."}
+      ],
+      "rubric_dimensions": ["correctness", "scope_discipline", "evidence_use", "explanation"]
+    },
+    {
+      "id": "feature-cs-outline-budget",
+      "repository": "repocontext",
+      "kind": "feature",
+      "language": "csharp",
+      "holdout": false,
+      "scenario": ["cross_file"],
+      "cache_mode": "cold",
+      "prompt": "Add an opt-in token ceiling to the outline command so a huge file returns a truncated skeleton with an explicit omission note instead of an unbounded one. Follow the existing budget conventions.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "dotnet test RepoContext.slnx -c Release"},
+        {"type": "assert_test_added", "description": "A new test covers the truncation boundary."}
+      ],
+      "rubric_dimensions": ["correctness", "scope_discipline", "convention_fit", "explanation"]
+    },
+    {
+      "id": "refactor-cs-usage-meter",
+      "repository": "repocontext",
+      "kind": "refactor",
+      "language": "csharp",
+      "holdout": false,
+      "scenario": ["cross_file", "stale_index"],
+      "cache_mode": "cold",
+      "prompt": "The replaced-token accounting is spread between the meter and its callers. Consolidate it without changing any recorded number, and prove the numbers are unchanged.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "dotnet test RepoContext.slnx -c Release"},
+        {"type": "assert_unchanged_behaviour", "description": "Existing usage-meter expectations are untouched."}
+      ],
+      "rubric_dimensions": ["correctness", "scope_discipline", "evidence_use"]
+    },
+    {
+      "id": "explain-cs-receipts",
+      "repository": "repocontext",
+      "kind": "explain",
+      "language": "csharp",
+      "holdout": false,
+      "scenario": ["cross_file", "long_file"],
+      "cache_mode": "cold",
+      "prompt": "Explain exactly what a receipt proves and what it deliberately does not prove, and which code path would wrongly suppress evidence if that distinction were dropped. Cite file and line ranges.",
+      "acceptance": [
+        {"type": "rubric_only", "description": "Adjudicated against rubric.md; citations must resolve to real line ranges."}
+      ],
+      "rubric_dimensions": ["accuracy", "citation_validity", "completeness", "brevity"]
+    },
+    {
+      "id": "review-cs-guard-diff",
+      "repository": "repocontext",
+      "kind": "review",
+      "language": "csharp",
+      "holdout": false,
+      "scenario": ["cross_file"],
+      "cache_mode": "cold",
+      "prompt": "Review the supplied patch for correctness, security and convention fit. Report only defects you can evidence, with file and line references, ordered by severity.",
+      "acceptance": [
+        {"type": "rubric_only", "description": "Scored against the seeded-defect list held outside the agent's reach."}
+      ],
+      "rubric_dimensions": ["defect_recall", "false_positive_rate", "citation_validity", "brevity"]
+    },
+    {
+      "id": "fix-ts-queue-concurrency",
+      "repository": "p-queue",
+      "kind": "fix",
+      "language": "typescript",
+      "holdout": false,
+      "scenario": ["long_file", "cross_file"],
+      "cache_mode": "cold",
+      "prompt": "A queue with concurrency 1 and an added timeout occasionally starts a second task before the first settles. Locate the responsible code path and fix it without changing the public API.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "npm test"},
+        {"type": "assert_test_added", "description": "A regression test reproduces the interleaving."}
+      ],
+      "rubric_dimensions": ["correctness", "scope_discipline", "evidence_use"]
+    },
+    {
+      "id": "feature-ts-queue-metrics",
+      "repository": "p-queue",
+      "kind": "feature",
+      "language": "typescript",
+      "holdout": false,
+      "scenario": ["long_file"],
+      "cache_mode": "warm",
+      "prompt": "Expose a read-only counter of tasks that have completed successfully, documented and typed like the existing size and pending accessors.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "npm test"},
+        {"type": "assert_changed", "paths": ["source/index.ts"]}
+      ],
+      "rubric_dimensions": ["correctness", "convention_fit", "scope_discipline"]
+    },
+    {
+      "id": "explain-ts-queue-priority",
+      "repository": "p-queue",
+      "kind": "explain",
+      "language": "typescript",
+      "holdout": false,
+      "scenario": ["long_file"],
+      "cache_mode": "warm",
+      "prompt": "Explain how priority interacts with concurrency and with the queue's internal ordering, and what happens to equal priorities. Cite file and line ranges.",
+      "acceptance": [
+        {"type": "rubric_only", "description": "Adjudicated against rubric.md; citations must resolve."}
+      ],
+      "rubric_dimensions": ["accuracy", "citation_validity", "completeness", "brevity"]
+    },
+    {
+      "id": "fix-js-retry-abort",
+      "repository": "p-retry",
+      "kind": "fix",
+      "language": "javascript",
+      "holdout": true,
+      "scenario": ["cross_file"],
+      "cache_mode": "cold",
+      "prompt": "Aborting during the backoff delay should reject immediately with the abort reason and must not schedule another attempt. Verify the current behaviour first, then fix it if it is wrong.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "npm test"},
+        {"type": "assert_no_unrequested_change", "description": "Public API and unrelated files unchanged."}
+      ],
+      "rubric_dimensions": ["correctness", "scope_discipline", "evidence_use"]
+    },
+    {
+      "id": "review-js-retry-diff",
+      "repository": "p-retry",
+      "kind": "review",
+      "language": "javascript",
+      "holdout": true,
+      "scenario": ["cross_file"],
+      "cache_mode": "cold",
+      "prompt": "Review the supplied patch. Report only evidenced defects with file and line references, ordered by severity.",
+      "acceptance": [
+        {"type": "rubric_only", "description": "Scored against the seeded-defect list held outside the agent's reach."}
+      ],
+      "rubric_dimensions": ["defect_recall", "false_positive_rate", "citation_validity", "brevity"]
+    },
+    {
+      "id": "refactor-js-limit-internals",
+      "repository": "p-limit",
+      "kind": "refactor",
+      "language": "javascript",
+      "holdout": false,
+      "scenario": [],
+      "cache_mode": "cold",
+      "prompt": "Extract the queue bookkeeping into a named internal helper without changing behaviour, exports or performance characteristics.",
+      "acceptance": [
+        {"type": "repo_tests", "command": "npm test"},
+        {"type": "assert_unchanged_behaviour", "description": "Exports and observable behaviour unchanged."}
+      ],
+      "rubric_dimensions": ["correctness", "scope_discipline", "convention_fit"]
+    },
+    {
+      "id": "explain-cs-compaction-safety",
+      "repository": "repocontext",
+      "kind": "explain",
+      "language": "csharp",
+      "holdout": true,
+      "scenario": ["compaction", "cross_file"],
+      "cache_mode": "warm",
+      "prompt": "The conversation was compacted mid-task. Re-establish what the change under discussion touches and explain which evidence you still hold and which you must fetch again. Cite file and line ranges.",
+      "acceptance": [
+        {"type": "rubric_only", "description": "Adjudicated against rubric.md. Claiming possession of evidence that was not re-delivered after compaction is a severe defect."}
+      ],
+      "rubric_dimensions": ["accuracy", "citation_validity", "evidence_use", "brevity"]
+    }
+  ]
+}
