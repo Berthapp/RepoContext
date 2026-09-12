@@ -12,13 +12,23 @@ namespace RepoContext.Cli.Commands;
 /// Aggregates the local usage log (<c>.repoctx/stats.jsonl</c>) into calls,
 /// response cost, replaced reads and net savings — overall, per command and
 /// per recent day. Renders as text/json/md, or as a self-contained HTML page
-/// (<c>--format html</c>, or <c>--open</c> to write <c>.repoctx/stats.html</c>
-/// and launch the browser — no server involved, in keeping with the
-/// no-network constraint). Reads only; a stats call is never recorded itself.
+/// (<c>--format html</c> on stdout; no server involved, in keeping with the
+/// no-network constraint).
+/// <para>
+/// Plain <c>repoctx stats</c> at an interactive terminal prints the summary
+/// <em>and</em> opens the visual dashboard, because that is what a human
+/// asking for it wants to see. Anything that signals a machine on the other
+/// end — a redirected stream, an explicit <c>--format</c>, <c>--no-open</c> —
+/// keeps it to stdout, so pipes, scripts and CI are unaffected.
+/// </para>
+/// Reads only; a stats call is never recorded itself.
 /// </summary>
 public static class StatsCommand
 {
-    /// <summary>Set (non-empty) to suppress the browser launch of <c>--open</c>.</summary>
+    /// <summary>
+    /// Set (non-empty) to suppress every browser launch; the page is still
+    /// written and its path still reported (headless runs, CI).
+    /// </summary>
     public const string NoLaunchVariable = "REPOCTX_NO_LAUNCH";
 
     public static Command Build()
@@ -31,8 +41,13 @@ public static class StatsCommand
         format.Aliases.Add("-f");
         var open = new Option<bool>("--open")
         {
-            Description = "Write the HTML dashboard to .repoctx/stats.html and open it in the "
-                        + "default browser (overrides --format).",
+            Description = "Always write the HTML dashboard to .repoctx/stats.html and open it in "
+                        + "the default browser, even when output is redirected.",
+        };
+        var noOpen = new Option<bool>("--no-open")
+        {
+            Description = "Never open the browser; print the dashboard to stdout. Wins over "
+                        + "--open if both are given.",
         };
 
         var command = new Command("stats",
@@ -40,15 +55,18 @@ public static class StatsCommand
         {
             format,
             open,
+            noOpen,
         };
 
         command.SetAction(parseResult =>
         {
-            bool openDashboard = parseResult.GetValue(open);
             string formatRaw = parseResult.GetValue(format) ?? "text";
+            // An explicitly chosen format means the caller wants the output
+            // itself, not a browser window.
+            bool formatGiven = parseResult.GetResult(format) is not (null or { Implicit: true });
             bool html = string.Equals(formatRaw, "html", StringComparison.OrdinalIgnoreCase);
             OutputFormat outputFormat = default;
-            if (!openDashboard && !html && !OutputFormatParser.TryParse(formatRaw, out outputFormat))
+            if (!html && !OutputFormatParser.TryParse(formatRaw, out outputFormat))
             {
                 Console.Error.WriteLine("Invalid --format. Use 'text', 'json', 'md' or 'html'.");
                 return ExitCode.InvalidArguments;
@@ -63,8 +81,15 @@ public static class StatsCommand
 
             UsageReport report = UsageReport.Build(UsageLog.Read(UsageLog.PathFor(layout)));
             TokenPricing pricing = TokenPricing.From(ConfigStore.Load(layout.ConfigPath));
-            if (openDashboard)
+            if (ShouldOpenDashboard(
+                    openRequested: parseResult.GetValue(open),
+                    noOpen: parseResult.GetValue(noOpen),
+                    formatGiven: formatGiven,
+                    interactive: !Console.IsInputRedirected && !Console.IsOutputRedirected,
+                    hasUsage: report.Totals.Calls > 0))
             {
+                // The terminal keeps the numbers, the browser gets the picture.
+                CommandSupport.WriteRendered(StatsOutput.Render(report, OutputFormat.Text, pricing));
                 string path = Path.Combine(layout.IndexDirectory, "stats.html");
                 Directory.CreateDirectory(layout.IndexDirectory);
                 File.WriteAllText(path, StatsHtmlOutput.Render(report, pricing));
@@ -85,6 +110,27 @@ public static class StatsCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Whether this invocation opens the visual dashboard. The default is the
+    /// human case — a plain <c>stats</c> typed at a terminal with something to
+    /// show — because the dashboard is the point of the command. Every signal
+    /// that a machine is reading the output (a redirected stream, an explicit
+    /// format) keeps it to stdout, so no pipeline ever grows a browser window
+    /// or a stray path line; <c>--open</c> forces it, <c>--no-open</c> forbids
+    /// it. An empty ledger opens nothing on its own: there is no page worth
+    /// looking at, and the stdout hint says what to do instead.
+    /// </summary>
+    public static bool ShouldOpenDashboard(
+        bool openRequested, bool noOpen, bool formatGiven, bool interactive, bool hasUsage)
+    {
+        if (noOpen)
+        {
+            return false;
+        }
+
+        return openRequested || (interactive && !formatGiven && hasUsage);
     }
 
     /// <summary>Opens the file with the OS default handler; failure is non-fatal.</summary>

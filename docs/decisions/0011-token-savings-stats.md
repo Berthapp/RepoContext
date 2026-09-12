@@ -59,13 +59,44 @@ aggregates them.
    external resources — CI asserts no `http(s)://` in the output), and
    `stats --open` writes it to `.repoctx/stats.html` and launches the default
    browser (`REPOCTX_NO_LAUNCH` suppresses the launch for headless runs; a
-   failed launch is non-fatal). A `--serve` localhost endpoint was rejected:
+   failed launch is non-fatal).
+
+   **The dashboard is the default for a human.** A bare `repoctx stats` at an
+   interactive terminal prints the text summary *and* opens the page: the
+   command exists to show the savings, and a table of four numbers is not what
+   the reader came for. It stays on stdout whenever something signals a machine
+   at the other end — a redirected stdin/stdout (pipes, scripts, CI, the
+   integration harness), an explicit `--format`, or `--no-open` (which also
+   wins over `--open`) — and an empty ledger opens nothing, since there is no
+   page worth looking at yet. `--open` forces it in every case. The decision is
+   one pure predicate (`StatsCommand.ShouldOpenDashboard`) so it is unit-tested
+   rather than inferred from behaviour. This does not touch the determinism
+   contract: it changes *whether a browser is launched*, never what a given
+   format renders, and every captured stream keeps the output it had before. A `--serve` localhost endpoint was rejected:
    the no-network constraint bans socket APIs at compile time, and a browser
    renders local files fine — a server adds attack surface for zero benefit.
    Charts follow the dataviz spec (validated two-slot palette, grouped bars
    per command and per day, tooltips + table view + aria-labels so no value
    is color- or hover-gated, light/dark via tokens). Like every renderer it
    is a pure projection of the log: identical log ⇒ byte-identical HTML.
+
+   **The lead chart is cumulative over calls.** Totals answer "how much";
+   they do not show *where* the saving came from — which is typically a few
+   many-file `context` calls, not a steady drip. The page therefore opens
+   with three figures (reads replaced, response cost, the difference) and one
+   chart that accumulates both figures over the recorded calls, in log order,
+   with the band between the two curves as the running net. The report gains
+   a `timeline` for it: at most `UsageReport.TimelinePointCount` (120) points,
+   each carrying the running totals after the call it is anchored on. A longer
+   log is bucketed — every call still lands in the sum, only the drawn curve
+   is thinned, and the last point is the report total by construction. Records
+   are ordered by timestamp with a stable sort, so the axis cannot run
+   backwards while the log order is otherwise preserved. While the ledger is
+   discovery-heavy the net is negative; the band is then drawn and labelled as
+   a cost, never as a saving. The crosshair carries pre-formatted figures in a
+   data attribute (no number formatting in JavaScript, which would be
+   locale-dependent), reads out both series at once and steps with the arrow
+   keys, and the tables below still carry every figure without hover.
 6. **The basic dashboard is free; reporting stays reusable.** The dashboard
    was evaluated as a paid "pro" feature and deliberately shipped free: this
    feature stays fully free and open, funded by sponsoring (GitHub Sponsors,
