@@ -115,7 +115,10 @@ coding agent's task success or total session spend. "Reads replaced" credits a
 read that would probably have happened; it is an estimate, not a lower bound.
 Under a tight 2,000-token JSON ceiling the holdout still delivers only 29/38
 required file occurrences (76.3 %; Markdown 32/38; unbudgeted 38/38) — the 90 %
-target is not met and is recorded as open. Full reasoning, evidence and limits:
+target is not met and is recorded as open. The opt-in read-cost guard has not
+been shown to save anything either: its coverage and latency are measured, its
+effect on quality and total spend is not, and the three-arm comparison that would
+decide it is frozen but not yet executed. Full reasoning, evidence and limits:
 **[Cost and quality](docs/cost-and-quality.md)** ·
 [methodology and raw artifacts](docs/token-savings.md).
 
@@ -363,7 +366,7 @@ via `repoctx related`).
 | Command | Purpose | Key options |
 | --- | --- | --- |
 | `init` | Create `.repoctx/` and `repoctx.config.json`; add `.repoctx/` to `.gitignore`. Optionally add usage instructions to `CLAUDE.md` / `AGENTS.md`. | `--force`, `--agents`, `--no-agents` |
-| `integrate` | Wire RepoContext into the coding agents this repository uses (instructions, skills, project rules, MCP registration). Never touches `repoctx.config.json`. | `--client`, `--check`, `--remove`, `--inline-playbook`, `--list` |
+| `integrate` | Wire RepoContext into the coding agents this repository uses (instructions, skills, project rules, MCP registration, and optionally the read-cost guard). Never touches `repoctx.config.json`. | `--client`, `--check`, `--remove`, `--inline-playbook`, `--list`, `--guard`, `--guard-mode` |
 | `guide` | Print the full usage protocol for an agent that needs it. Constant output, safe behind a cache breakpoint. | — |
 | `index` | Build or incrementally update the index (stores real BPE token counts per file). | `--full` |
 | `search <query>` | BM25 full-text search (content and symbols). | `--top`, `--symbols`, `--path`, `--format` |
@@ -378,6 +381,7 @@ via `repoctx related`).
 | `memory rm <id>` | Remove one memory entry (curation). | `--format` |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
 | `stats` | Token-savings dashboard aggregated from your local usage; opens in your browser when run in a terminal (see below). | `--format` (incl. `html`), `--open`, `--no-open` |
+| `guard` | The opt-in read-cost guard: `hook` answers one client hook event, `check` explains one read, `status` prints the local counters (see below). | `--mode`, `--max-read-tokens`, `--client`, `--timeout-ms` |
 | `mcp` | Run the MCP server over stdio for AI agents (see below). | — |
 
 Exit codes: `0` success · `1` error · `2` no index · `3` invalid arguments · `4` drift (`integrate --check` only).
@@ -711,6 +715,76 @@ repoctx integrate --remove   # take the managed blocks back out
 Pick explicitly with `--client claude-code --client cursor` if detection is not
 what you want.
 
+### The read-cost guard (opt-in, experimental)
+
+Everything above makes cheap evidence *available*. It cannot make an agent ask
+for it: a client's own file-read tool is one call away, and a 900-line file is
+paid for before RepoContext hears about the task. The guard closes that gap for
+Claude Code, and it is off until you install it:
+
+```bash
+repoctx integrate --client claude-code --guard                     # observe: count only
+repoctx integrate --client claude-code --guard-mode enforce        # deny an expensive read once
+repoctx integrate --client claude-code --remove                    # take it back out
+repoctx guard status                                               # what it has done locally
+repoctx guard check src/big.ts                                     # explain one read, write nothing
+```
+
+In **observe** mode nothing is blocked; the guard only records how often it
+*would* act, which is how you find out whether enforcing is worth it here. In
+**enforce** mode a read whose estimated cost exceeds `--max-read-tokens`
+(default 2,000, in your configured token profile) is denied once, with the
+cheaper call named:
+
+```
+reading src/big.ts costs about 10,800 estimated tokens. Exact evidence for the
+same file is cheaper. Repeat this read to get the whole file anyway.
+Cheaper exact evidence for the same file:
+  repoctx outline src/big.ts
+  repoctx context '<the task in your own words>' --path src/big.ts --detail slices
+```
+
+The rules it keeps, all covered by tests:
+
+- **It is a cost policy, not a permission boundary.** It can only ever deny. It
+  never emits an allow decision, so it cannot widen what an agent may read, and
+  it never overrides your permissions, approval rules or exclusions.
+- **Enforcement is bounded.** Ask for the same file again and the read goes
+  through. There is no loop and no way to be stuck.
+- **It never blocks the alternative.** A `repoctx` call is never treated as a
+  file read.
+- **It judges only what it can see.** A file the index does not carry — excluded,
+  sensitive, too large, or changed on disk since indexing — is never judged,
+  never named and never suggested.
+- **It never guesses at your shell.** Only plain readers (`cat`, `head`, `tail`,
+  `nl`, `bat`, `less`, `more`, `type`, `sed -n '12,40p'`) are modelled.
+  Pipelines, redirections, substitutions, globs and command lists are handled
+  normally by the client. No command is ever executed to find out what it reads.
+- **It fails open.** A malformed payload, a missing or stale index or any
+  internal error allows the read; the hook always exits 0.
+- **Your settings stay yours.** Only RepoContext's own entries in
+  `.claude/settings.json` are added, updated or removed; a file that cannot be
+  parsed is reported and left untouched. Installation and removal are idempotent.
+
+It also binds evidence reuse to the real context lifetime: the guard announces a
+session name at the start of a conversation, and a compaction, resume, clear or
+fork starts a new one, so a local session file can never keep claiming possession
+for a context that no longer holds the evidence.
+
+Other clients keep their existing behaviour — there is no verified contract for
+intercepting their native reads, and an MCP registration or `AGENTS.md` is not
+one. `integrate --guard` says so rather than silently skipping them.
+
+**Status:** enforce mode is experimental. Its coverage on one repository and its
+latency are measured in
+[`docs/eval/agent/local-measurements.md`](docs/eval/agent/local-measurements.md)
+— including the fact that the 100 ms latency target is *not* met on the machine
+measured. Whether it lowers total cost at equal quality is the open question the
+frozen comparison in [`docs/eval/agent/`](docs/eval/agent/) exists to answer, and
+that comparison has not been run. `repoctx stats` reports guard activity in its
+own section, outside the savings arithmetic, because a denied read is not a
+realized saving. See [ADR 0023](docs/decisions/0023-read-cost-guard-and-context-epochs.md).
+
 Two properties matter. **It never touches `repoctx.config.json`** — unlike
 `init --agents`, which needs `--force` on an initialized repository and would
 overwrite your configuration along the way. And **it never overwrites what it
@@ -758,6 +832,14 @@ delivered, so two agents sharing a name in one repository would let the second
 receive reuse markers for evidence it never saw. That is why the generated MCP
 configuration deliberately does not set the variable for you — only whoever
 launches the agent knows how many are running.
+
+A name you choose stays yours and behaves exactly as before. With the read-cost
+guard installed, Claude Code is additionally *told* a name at the start of each
+conversation, one that belongs to that context: after a compaction, a resume or a
+fork the name changes, and the retired one delivers evidence again rather than
+suppressing it. Keeping a receipt file is not proof that a model still remembers
+anything, so anything that might have dropped evidence costs one repeated read
+instead of producing a false possession claim.
 
 ## MCP server
 
@@ -966,10 +1048,14 @@ measured response costs and simulated evidence-gathering workflows, and
 [cost and quality](docs/cost-and-quality.md) explains every saving mechanism
 alongside the gates that stop a saving from costing relevant evidence.
 
-The next optimization work is specified in the
-[same-quality, lower-cost implementation plan](docs/plans/same-quality-lower-cost.md):
-opt-in read guards, context-lifetime-safe reuse and real-agent cost/quality gates.
-The feature target is 0.15.0; these capabilities are planned, not yet implemented.
+The [same-quality, lower-cost implementation plan](docs/plans/same-quality-lower-cost.md)
+specifies the current optimization work. Shipped in 0.15.0 and recorded in
+[ADR 0023](docs/decisions/0023-read-cost-guard-and-context-epochs.md): the opt-in
+read-cost guard, context-lifetime-safe evidence reuse, and the frozen three-arm
+agent cost/quality comparison in [`docs/eval/agent/`](docs/eval/agent/). The
+comparison itself has not been executed — it needs agent credentials this
+repository does not have — so enforce mode remains experimental and no saving is
+claimed. Local-model delegation stays deferred.
 
 ### Releasing
 

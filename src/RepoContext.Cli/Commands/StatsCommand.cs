@@ -3,6 +3,7 @@ using System.Diagnostics;
 using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Guard;
 using RepoContext.Core.Stats;
 
 namespace RepoContext.Cli.Commands;
@@ -81,6 +82,9 @@ public static class StatsCommand
 
             UsageReport report = UsageReport.Build(UsageLog.Read(UsageLog.PathFor(layout)));
             TokenPricing pricing = TokenPricing.From(ConfigStore.Load(layout.ConfigPath));
+            // Guard activity is reported beside the ledger, never inside its
+            // savings: a denied read is not money saved (ADR 0023).
+            GuardCounters guard = GuardState.ReadCounters(layout);
             if (ShouldOpenDashboard(
                     openRequested: parseResult.GetValue(open),
                     noOpen: parseResult.GetValue(noOpen),
@@ -89,7 +93,8 @@ public static class StatsCommand
                     hasUsage: report.Totals.Calls > 0))
             {
                 // The terminal keeps the numbers, the browser gets the picture.
-                CommandSupport.WriteRendered(StatsOutput.Render(report, OutputFormat.Text, pricing));
+                CommandSupport.WriteRendered(
+                    StatsOutput.Render(report, OutputFormat.Text, pricing, guard));
                 string path = Path.Combine(layout.IndexDirectory, "stats.html");
                 Directory.CreateDirectory(layout.IndexDirectory);
                 File.WriteAllText(path, StatsHtmlOutput.Render(report, pricing));
@@ -104,7 +109,7 @@ public static class StatsCommand
 
             string rendered = html
                 ? StatsHtmlOutput.Render(report, pricing)
-                : StatsOutput.Render(report, outputFormat, pricing);
+                : StatsOutput.Render(report, outputFormat, pricing, guard);
             CommandSupport.WriteRendered(rendered);
             return ExitCode.Success;
         });

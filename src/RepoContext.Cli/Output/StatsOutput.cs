@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Text;
 using System.Text.Json;
 using RepoContext.Core;
+using RepoContext.Core.Guard;
 using RepoContext.Core.Stats;
 
 namespace RepoContext.Cli.Output;
@@ -13,21 +14,41 @@ namespace RepoContext.Cli.Output;
 /// </summary>
 public static class StatsOutput
 {
-    public static string Render(UsageReport report, OutputFormat format, TokenPricing pricing = default) =>
+    public static string Render(
+        UsageReport report,
+        OutputFormat format,
+        TokenPricing pricing = default,
+        GuardCounters? guard = null) =>
         format switch
         {
-            OutputFormat.Json => RenderJson(report, pricing),
-            OutputFormat.Md => RenderMarkdown(report, pricing),
-            _ => RenderText(report, pricing),
+            OutputFormat.Json => RenderJson(report, pricing, guard),
+            OutputFormat.Md => RenderMarkdown(report, pricing, guard),
+            _ => RenderText(report, pricing, guard),
         };
 
-    private static string RenderText(UsageReport report, TokenPricing pricing)
+    /// <summary>
+    /// The guard's own activity, deliberately kept out of the savings figures.
+    /// </summary>
+    /// <remarks>
+    /// A redirected read is not money saved. The agent still makes a next call,
+    /// may read the file in full afterwards, and may need to recover — and all
+    /// of that is spend this ledger cannot see. Only the paired real-agent
+    /// comparison in <c>docs/eval/agent/</c> can turn these counts into a cost
+    /// claim, so they are reported as activity and nothing else.
+    /// </remarks>
+    private const string GuardCaveat =
+        "Guard counts are activity, not realized savings: the next call, a later "
+        + "full read and any recovery are not in this ledger.";
+
+    private static string RenderText(
+        UsageReport report, TokenPricing pricing, GuardCounters? guard)
     {
         if (report.Totals.Calls == 0)
         {
             return "Token savings: no usage recorded yet.\n"
                  + "Run queries (context, outline, search, ...) and check back; "
-                 + "recording is local-only (.repoctx/stats.jsonl).\n";
+                 + "recording is local-only (.repoctx/stats.jsonl).\n"
+                 + AppendGuardText(guard);
         }
 
         var sb = new StringBuilder();
@@ -57,6 +78,30 @@ public static class StatsOutput
             AppendRow(sb, day.Day, day.Bucket);
         }
 
+        sb.Append(AppendGuardText(guard));
+        return sb.ToString();
+    }
+
+    private static string AppendGuardText(GuardCounters? guard)
+    {
+        if (guard is not { Observed: > 0 })
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder("\n  Read-cost guard:\n");
+        sb.Append($"    {"observed",-12} {N(guard.Observed),6}\n");
+        sb.Append($"    {"allowed",-12} {N(guard.Allowed),6}\n");
+        sb.Append($"    {"redirected",-12} {N(guard.Redirected),6}   denied {N(guard.Denied)}\n");
+        sb.Append($"    {"escalated",-12} {N(guard.Escalated),6}\n");
+        sb.Append($"    {"unsupported",-12} {N(guard.Unsupported),6}\n");
+        sb.Append($"    {"error",-12} {N(guard.Error),6}\n");
+        if (guard.Latency.QuantileUpperBoundMs(0.95) is { } p95)
+        {
+            sb.Append($"    {"latency p95",-12} {"<= " + N(p95) + " ms",6}\n");
+        }
+
+        sb.Append("\n  ").Append(GuardCaveat).Append('\n');
         return sb.ToString();
     }
 
@@ -64,13 +109,15 @@ public static class StatsOutput
         sb.Append($"    {label,-12} {N(bucket.Calls),6} {N(bucket.ServedTokens),12} " +
                   $"{N(bucket.ReplacedTokens),12} {N(bucket.SavedTokens),12}\n");
 
-    private static string RenderMarkdown(UsageReport report, TokenPricing pricing)
+    private static string RenderMarkdown(
+        UsageReport report, TokenPricing pricing, GuardCounters? guard)
     {
         if (report.Totals.Calls == 0)
         {
             return "# Token savings\n\n_No usage recorded yet. Run queries (context, outline, "
                  + "search, ...) and check back; recording is local-only "
-                 + "(`.repoctx/stats.jsonl`)._\n";
+                 + "(`.repoctx/stats.jsonl`)._\n"
+                 + AppendGuardMarkdown(guard);
         }
 
         var sb = new StringBuilder();
@@ -94,6 +141,27 @@ public static class StatsOutput
         sb.Append($"\n## Recent days (up to {UsageReport.RecentDayCount})\n\n");
         AppendMdTable(sb, "day", report.Days.Select(d => (d.Day, d.Bucket)));
 
+        sb.Append(AppendGuardMarkdown(guard));
+        return sb.ToString();
+    }
+
+    private static string AppendGuardMarkdown(GuardCounters? guard)
+    {
+        if (guard is not { Observed: > 0 })
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder("\n## Read-cost guard\n\n");
+        sb.Append('_').Append(GuardCaveat).Append("_\n\n");
+        sb.Append("| outcome | calls |\n| --- | ---: |\n");
+        sb.Append("| observed | ").Append(N(guard.Observed)).Append(" |\n");
+        sb.Append("| allowed | ").Append(N(guard.Allowed)).Append(" |\n");
+        sb.Append("| redirected | ").Append(N(guard.Redirected)).Append(" |\n");
+        sb.Append("| denied | ").Append(N(guard.Denied)).Append(" |\n");
+        sb.Append("| escalated | ").Append(N(guard.Escalated)).Append(" |\n");
+        sb.Append("| unsupported | ").Append(N(guard.Unsupported)).Append(" |\n");
+        sb.Append("| error | ").Append(N(guard.Error)).Append(" |\n");
         return sb.ToString();
     }
 
@@ -113,7 +181,8 @@ public static class StatsOutput
         }
     }
 
-    private static string RenderJson(UsageReport report, TokenPricing pricing)
+    private static string RenderJson(
+        UsageReport report, TokenPricing pricing, GuardCounters? guard)
     {
         var doc = new StatsDocument
         {
@@ -144,6 +213,20 @@ public static class StatsOutput
                 ReplacedTokens = d.Bucket.ReplacedTokens,
                 SavedTokens = d.Bucket.SavedTokens,
             }).ToList(),
+            Guard = guard is { Observed: > 0 }
+                ? new StatsGuard
+                {
+                    Observed = guard.Observed,
+                    Allowed = guard.Allowed,
+                    Redirected = guard.Redirected,
+                    Denied = guard.Denied,
+                    Escalated = guard.Escalated,
+                    Unsupported = guard.Unsupported,
+                    Error = guard.Error,
+                    LatencyP95UpperBoundMs = guard.Latency.QuantileUpperBoundMs(0.95),
+                    Note = GuardCaveat,
+                }
+                : null,
         };
 
         return JsonSerializer.Serialize(doc, OutputJson.Options);
@@ -202,6 +285,35 @@ public static class StatsOutput
         public required IReadOnlyList<StatsRow> Commands { get; init; }
 
         public required IReadOnlyList<StatsRow> Days { get; init; }
+
+        /// <summary>Read-cost guard activity; absent when no guard has run here.</summary>
+        public StatsGuard? Guard { get; init; }
+    }
+
+    /// <summary>
+    /// The guard's counters in the machine-readable report, kept out of the
+    /// savings fields on purpose.
+    /// </summary>
+    private sealed record StatsGuard
+    {
+        public int Observed { get; init; }
+
+        public int Allowed { get; init; }
+
+        public int Redirected { get; init; }
+
+        public int Denied { get; init; }
+
+        public int Escalated { get; init; }
+
+        public int Unsupported { get; init; }
+
+        public int Error { get; init; }
+
+        /// <summary>Bucket upper bound, not an exact percentile; absent with no samples.</summary>
+        public int? LatencyP95UpperBoundMs { get; init; }
+
+        public required string Note { get; init; }
     }
 
     private sealed record StatsRow

@@ -1,6 +1,16 @@
 # Same-quality, lower-cost agent workflows
 
-Status: planned; no hook, session-lifecycle adapter or agent benchmark is implemented by this document.
+Status: implemented in 0.15.0, except the real-agent comparison itself.
+Milestones 1-5 are built and tested; the contracts are recorded in
+[ADR 0023](../decisions/0023-read-cost-guard-and-context-epochs.md). The frozen
+comparison harness lives in [`../eval/agent/`](../eval/agent/) and has **not**
+been run: this repository has no agent credentials and no provider price sheet
+(see its README). Enforce mode therefore stays experimental, no saving is
+claimed, and the deferred local-model work remains deferred. Measured guard
+coverage and latency, including a latency target that is not met:
+[`../eval/agent/local-measurements.md`](../eval/agent/local-measurements.md).
+This document is kept as written for the record; the checklist below is scored
+in the implementation PR rather than edited into a success report.
 Baseline: main at `f422371a9362f4b8ed19e032ff2e2ff3c4da41d3` (0.14.1).
 Planning update: 0.14.2. Target feature release: 0.15.0.
 Date: 2026-09-12.

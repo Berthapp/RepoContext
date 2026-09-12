@@ -215,7 +215,9 @@ public static class GuardCommand
         }
 
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
-        using IndexStore store = IndexStore.Open(layout.DatabasePath);
+        // Read-only, and without the schema pass Open() performs: the guard sits
+        // in front of a tool call somebody is waiting on.
+        using IndexStore store = IndexStore.OpenReadOnly(layout.DatabasePath);
         if (!store.IsSchemaCurrent || !store.IsProducerCurrent)
         {
             // A stale index has stale sizes. Judging a read on them would be

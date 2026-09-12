@@ -97,4 +97,25 @@ public sealed class AgentInstructionsTests : IDisposable
 
         return count;
     }
+
+    [Fact]
+    public void TheAlwaysLoadedPointerStaysSmall_AndCarriesNoGuardText()
+    {
+        // Every line of the pointer is paid for on every prompt in the
+        // repository. The read-cost guard is an on-demand concern, so it must
+        // not appear here (ADR 0018's 150-token gate, ADR 0023).
+        int tokens = RepoContext.Core.Indexing.Tokens.Count(AgentInstructions.PointerBlock);
+
+        Assert.True(tokens <= 150, $"the always-loaded pointer costs {tokens} tokens");
+        Assert.DoesNotContain("guard", AgentInstructions.PointerBlock, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void TheOnDemandPlaybookExplainsARedirectedRead()
+    {
+        Assert.Contains("redirected", AgentInstructions.Playbook, StringComparison.Ordinal);
+        Assert.Contains("issue the same read again", AgentInstructions.Playbook, StringComparison.Ordinal);
+        Assert.Contains(
+            "not a permission boundary", AgentInstructions.Playbook, StringComparison.Ordinal);
+    }
 }

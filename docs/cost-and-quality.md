@@ -11,7 +11,7 @@ Nothing here requires trusting a vendor benchmark. Every figure below comes from
 a file in this repository, produced by a deterministic harness that runs offline.
 
 - [Where the money actually goes](#where-the-money-actually-goes)
-- [Seven levers](#seven-levers)
+- [Eight levers](#eight-levers)
 - [Why quality holds](#why-quality-holds)
 - [The proof that we mean it](#the-proof-that-we-mean-it)
 - [What is *not* claimed](#what-is-not-claimed)
@@ -45,7 +45,7 @@ Source: ADR 0010, measured at M6 on this repository (75 files, exact
 `o200k_base` counts). Your repository is not this repository — which is why
 `repoctx stats` measures yours instead of asking you to believe these.
 
-## Seven levers
+## Eight levers
 
 ### 1. Deliver the evidence, not a reading list
 
@@ -155,6 +155,31 @@ query time (`claude` ≈ 1.2, because o200k undercounts Claude tokenization on
 typical source by roughly 15–25 %). Scaling rounds **up**, so budgets never
 undershoot, and switching model families never requires a re-index. A ceiling
 measured in the wrong tokenizer is not a ceiling.
+
+### 8. Make the expensive read ask for the cheap one (opt-in, experimental)
+
+Levers 1-7 make cheap evidence available. None of them can make an agent ask for
+it: the client's own file-read tool is one call away, and a 900-line file is paid
+for before RepoContext hears about the task.
+
+The opt-in read-cost guard closes that for Claude Code. A read whose estimated
+cost exceeds a threshold is denied **once**, with the cheaper call named
+(`repoctx outline`, `repoctx context --path ... --detail slices`); repeating the
+read gets the whole file anyway. Cost is measured in tokens, not lines, because
+400 lines of generated JSON and 400 lines of prose are not the same purchase.
+Install it with `repoctx integrate --client claude-code --guard`; it starts in
+observe mode, which counts without blocking.
+
+On this repository, 22.5 % of indexed files exceed the 2,000-token default and
+carry 81.2 % of the token mass — which is why a cost threshold is worth having.
+That is **coverage, not a saving**: a denied read is followed by another call,
+possibly by a full read anyway, and possibly by recovery work. `repoctx stats`
+therefore reports guard activity in its own section, outside the savings
+arithmetic. Whether the guard lowers total cost at equal quality is open, and the
+frozen three-arm comparison in [`eval/agent/`](eval/agent/) exists to answer it.
+Measured coverage and latency, including a latency target that is **not** met on
+the machine measured: [local measurements](eval/agent/local-measurements.md).
+See [ADR 0023](decisions/0023-read-cost-guard-and-context-epochs.md).
 
 ## Why quality holds
 
@@ -276,6 +301,16 @@ Being precise about the limits is what makes the rest worth reading.
 - **The M6 figures are from M6.** The 6,222 → 2,110 comparison was measured on
   this repository at that milestone. It illustrates the mechanism; it is not a
   promise about yours.
+- **The read-cost guard has not been shown to save anything.** Its coverage and
+  latency are measured; its effect on task quality and total agent spend is not.
+  The three-arm comparison that would decide it
+  ([`eval/agent/`](eval/agent/)) is frozen but **not executed** — this
+  environment has no agent credentials and no provider price sheet, and that is
+  recorded rather than worked around. Until it runs, enforce mode stays
+  experimental.
+- **The guard's latency target is missed.** Warm p95 is 225 ms against a 100 ms
+  target on the machine measured, most of it process startup. Reported in
+  [local measurements](eval/agent/local-measurements.md), not smoothed over.
 
 ## Measure it on your own repository
 

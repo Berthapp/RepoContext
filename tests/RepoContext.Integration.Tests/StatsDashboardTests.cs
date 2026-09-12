@@ -302,4 +302,52 @@ public class StatsDashboardTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public void GuardActivityIsReportedBesideTheLedger_NeverInsideItsSavings()
+    {
+        using var ws = new FixtureWorkspace("sample-ts");
+        Directory.CreateDirectory(ws.PathOf("src/generated"));
+        File.WriteAllLines(
+            ws.PathOf("src/generated/catalog.ts"),
+            Enumerable.Range(0, 900).Select(i =>
+                $"export function entry{i}(input: string): string {{ return input + \"{i}\"; }}"));
+        ws.Run("init");
+        ws.Run("index");
+        ws.Run("context", "login", "--detail", "slices");
+
+        string beforeGuard = ws.Run("stats", "--format", "text").StdOut;
+        Assert.DoesNotContain("Read-cost guard", beforeGuard, StringComparison.Ordinal);
+
+        string payload = System.Text.Json.JsonSerializer.Serialize(new Dictionary<string, object>
+        {
+            ["hook_event_name"] = "PreToolUse",
+            ["session_id"] = "s-stats",
+            ["cwd"] = ws.Root,
+            ["tool_name"] = "Read",
+            ["tool_input"] = new Dictionary<string, object>
+            {
+                ["file_path"] = ws.PathOf("src/generated/catalog.ts"),
+            },
+        });
+        ws.RunWithInput(payload, "guard", "hook", "--mode", "enforce");
+
+        CliResult text = ws.Run("stats", "--format", "text");
+        Assert.Contains("Read-cost guard", text.StdOut, StringComparison.Ordinal);
+        Assert.Contains("not realized savings", text.StdOut, StringComparison.Ordinal);
+
+        CliResult json = ws.Run("stats", "--format", "json");
+        using System.Text.Json.JsonDocument document = System.Text.Json.JsonDocument.Parse(json.StdOut);
+        System.Text.Json.JsonElement guard = document.RootElement.GetProperty("guard");
+        Assert.Equal(1, guard.GetProperty("denied").GetInt32());
+        Assert.Contains(
+            "not realized savings",
+            guard.GetProperty("note").GetString()!,
+            StringComparison.Ordinal);
+        // The guard never contributes to the savings arithmetic.
+        Assert.Equal(
+            document.RootElement.GetProperty("replaced_tokens").GetInt64()
+            - document.RootElement.GetProperty("served_tokens").GetInt64(),
+            document.RootElement.GetProperty("saved_tokens").GetInt64());
+    }
 }
