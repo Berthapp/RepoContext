@@ -966,6 +966,11 @@ measured response costs and simulated evidence-gathering workflows, and
 [cost and quality](docs/cost-and-quality.md) explains every saving mechanism
 alongside the gates that stop a saving from costing relevant evidence.
 
+The next optimization work is specified in the
+[same-quality, lower-cost implementation plan](docs/plans/same-quality-lower-cost.md):
+opt-in read guards, context-lifetime-safe reuse and real-agent cost/quality gates.
+The feature target is 0.15.0; these capabilities are planned, not yet implemented.
+
 ### Releasing
 
 Releases are cut by merging, not by hand:
