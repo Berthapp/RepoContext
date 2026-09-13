@@ -155,6 +155,68 @@ public class ContextEpochsTests : IDisposable
         Assert.Single(SessionStore.LoadState(Layout, "review").Known);
     }
 
+    [Theory]
+    [InlineData("retire")]
+    [InlineData("delete")]
+    [InlineData("corrupt")]
+    [InlineData("null")]
+    [InlineData("evict")]
+    public void LostEpochState_NeverResurrectsReceiptFiles(string loss)
+    {
+        string agent = ContextEpochs.AgentKey("claude-code", "persistent-conversation");
+        string before = ContextEpochs.Advance(Layout, agent, EpochReasons.Startup).SessionName;
+        SessionStore.Save(Layout, before, EmptyResult(),
+            new Dictionary<string, string> { ["a.ts"] = "hash-a" });
+        Assert.Single(SessionStore.LoadState(Layout, before).Known);
+
+        switch (loss)
+        {
+            case "retire": ContextEpochs.Retire(Layout, agent); break;
+            case "delete": File.Delete(ContextEpochs.PathFor(Layout)); break;
+            case "corrupt": File.WriteAllText(ContextEpochs.PathFor(Layout), "{"); break;
+            case "null": File.WriteAllText(ContextEpochs.PathFor(Layout), "{\"v\":2,\"sessions\":null}"); break;
+            case "evict":
+                for (int i = 0; i < 65; i++)
+                {
+                    ContextEpochs.Advance(Layout, ContextEpochs.AgentKey("claude-code", $"other-{i}"),
+                        EpochReasons.Startup);
+                }
+                break;
+        }
+
+        Assert.Empty(SessionStore.LoadState(Layout, before).Known);
+        string after = ContextEpochs.Advance(Layout, agent, EpochReasons.Resume).SessionName;
+        Assert.NotEqual(before, after);
+        Assert.Empty(SessionStore.LoadState(Layout, before).Known);
+        Assert.Empty(SessionStore.LoadState(Layout, after).Known);
+    }
+
+    [Fact]
+    public void FailedEpochWrite_DoesNotAnnounceAnOldUsableIdentity()
+    {
+        string agent = ContextEpochs.AgentKey("claude-code", "s");
+        string before = ContextEpochs.Advance(Layout, agent, EpochReasons.Startup).SessionName;
+        Directory.CreateDirectory(ContextEpochs.PathFor(Layout) + ".tmp");
+
+        string failed = ContextEpochs.Advance(Layout, agent, EpochReasons.Resume).SessionName;
+
+        Assert.NotEqual(before, failed);
+        Assert.True(ContextEpochs.IsSuperseded(Layout, failed));
+        Assert.True(ContextEpochs.IsSuperseded(Layout, before));
+        SessionStore.Save(Layout, failed, EmptyResult(),
+            new Dictionary<string, string> { ["a.ts"] = "hash-a" });
+        Assert.False(File.Exists(SessionStore.PathFor(Layout, failed)));
+    }
+
+    [Fact]
+    public void ManualNamesWithEpochLikeSuffixesRemainManual()
+    {
+        Assert.False(ContextEpochs.TryParseSessionName("review-e1", out _, out _));
+        SessionStore.Save(Layout, "review-e1", EmptyResult(),
+            new Dictionary<string, string> { ["a.ts"] = "hash-a" });
+        Assert.Single(SessionStore.LoadState(Layout, "review-e1").Known);
+    }
+
     private static ContextResult EmptyResult() => new()
     {
         Query = "q",

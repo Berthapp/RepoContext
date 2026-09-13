@@ -11,5 +11,5 @@ public sealed record GuardReadRequest(
     string Path, int? StartLine, int? LineLimit, string Origin)
 {
     /// <summary>Whether the caller asked for a bounded part of the file.</summary>
-    public bool IsPartial => LineLimit is > 0;
+    public bool IsPartial => LineLimit is > 0 || StartLine is > 1;
 }

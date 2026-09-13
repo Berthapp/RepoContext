@@ -202,7 +202,46 @@ public class GuardInstallationTests : IDisposable
         Assert.True(GuardInstallation.IsOwned(command));
     }
 
+    [Fact]
+    public void UpdatingSharedGroup_PreservesTheOtherHooksMatcher()
+    {
+        WriteSettings("""
+            {"hooks":{"PreToolUse":[{"matcher":"Bash","hooks":[
+              {"type":"command","command":"my-auditor"},
+              {"type":"command","command":"repoctx guard hook --mode observe"}
+            ]}]}}
+            """);
+        GuardInstallation.Apply(_root, GuardMode.Enforce, McpLaunch.PathCommand);
+        JsonElement groups = ReadSettings().GetProperty("hooks").GetProperty("PreToolUse");
+        JsonElement audit = groups.EnumerateArray().Single(group =>
+            group.GetProperty("hooks").EnumerateArray().Any(hook =>
+                hook.GetProperty("command").GetString() == "my-auditor"));
+        Assert.Equal("Bash", audit.GetProperty("matcher").GetString());
+        Assert.Single(audit.GetProperty("hooks").EnumerateArray());
+        Assert.Equal(AgentFileChange.Unchanged,
+            GuardInstallation.Apply(_root, GuardMode.Enforce, McpLaunch.PathCommand).Change);
+    }
+
+    [Fact]
+    public void Remove_PreservesUnownedEmptyGroupsAndCommandsThatMentionRepoctx()
+    {
+        const string settings = """
+            {"hooks":{"PostToolUse":[],"PreToolUse":[
+              {"matcher":"Read","hooks":[]},
+              {"matcher":"Bash","hooks":[
+                {"type":"command","command":"echo repoctx guard hook"}
+              ]}
+            ]}}
+            """;
+        WriteSettings(settings);
+        Assert.Equal(AgentFileChange.Absent, GuardInstallation.Remove(_root).Change);
+        Assert.Equal(settings, File.ReadAllText(SettingsFile));
+    }
+
     [Theory]
+    [InlineData("echo repoctx guard hook --mode observe", false)]
+    [InlineData("my-repoctx guard hook --mode observe", false)]
+    [InlineData("repoctx guard hook --mode observe && audit", false)]
     [InlineData("my-formatter", false)]
     [InlineData("repoctx index", false)]
     [InlineData("prettier --write", false)]

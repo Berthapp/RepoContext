@@ -21,6 +21,9 @@ public enum HookEventKind
 
     /// <summary>The context is about to be compacted.</summary>
     PreCompact,
+
+    /// <summary>A child context may inherit instructions but not possession.</summary>
+    SubagentStart,
 }
 
 /// <summary>One parsed hook payload.</summary>
@@ -113,6 +116,7 @@ public static class ClaudeCodeHook
                 "SessionStart" => HookEventKind.SessionStart,
                 "SessionEnd" => HookEventKind.SessionEnd,
                 "PreCompact" => HookEventKind.PreCompact,
+                "SubagentStart" => HookEventKind.SubagentStart,
                 _ => HookEventKind.Other,
             },
             EventName: eventName,
@@ -255,7 +259,8 @@ public static class ClaudeCodeHook
     public static string SessionAnnouncement(string sessionName, GuardMode mode) =>
         $"RepoContext session for this conversation: {sessionName}. Pass it as "
         + $"`repoctx context \"...\" --session {sessionName}` (or as the MCP context tool's "
-        + "`session` argument) so evidence you already received is not sent again. The name "
+        + "`session` argument) so evidence you already received is not sent again. "
+        + "Use this name only in this conversation; never pass it to subagents. The name "
         + "changes after a compaction, a resume or a fork, and the new one is announced then; "
         + "a name that is no longer current simply delivers the evidence again."
         + (mode == GuardMode.Enforce

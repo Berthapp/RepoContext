@@ -142,7 +142,7 @@ public sealed record GuardLatency
 /// </remarks>
 public static class GuardState
 {
-    private const int StoreLockTimeoutMilliseconds = 2_000;
+    private const int StoreLockTimeoutMilliseconds = 0;
     private const int MaxTrackedEpochs = 8;
     private const int MaxTrackedPathsPerEpoch = 256;
 
@@ -171,7 +171,7 @@ public static class GuardState
     /// Records one decision: the counters when statistics are enabled, the
     /// redirect bookkeeping whenever a denial was actually emitted.
     /// </summary>
-    public static void Record(
+    public static bool Record(
         RepoLayout layout,
         string epochKey,
         GuardDecision decision,
@@ -181,7 +181,7 @@ public static class GuardState
         bool redirectsWanted = decision.Deny;
         if (!countersWanted && !redirectsWanted)
         {
-            return;
+            return !decision.Deny;
         }
 
         string path = PathFor(layout);
@@ -192,7 +192,7 @@ public static class GuardState
                 "Guard", path, StoreLockTimeoutMilliseconds);
             if (lease is null)
             {
-                return;
+                return !decision.Deny;
             }
 
             StateFile file = Read(path);
@@ -216,18 +216,26 @@ public static class GuardState
                     paths[key] = paths.TryGetValue(key, out int count) ? count + 1 : 1;
                 }
 
-                Trim(paths, MaxTrackedPathsPerEpoch);
+                // Never deny unless every repeat marker will survive this write.
+                if (paths.Count > MaxTrackedPathsPerEpoch
+                    || (!file.Redirects.ContainsKey(epochKey)
+                        && file.Redirects.Count >= MaxTrackedEpochs))
+                {
+                    return false;
+                }
                 file.Redirects[epochKey] = paths;
                 TrimEpochs(file.Redirects);
             }
 
             Write(path, file);
+            return true;
         }
         catch (Exception e) when (
             e is IOException or UnauthorizedAccessException or JsonException
                 or WaitHandleCannotBeOpenedException)
         {
-            // Guard state is an optimization aid; losing it costs a repeated read.
+            // A denial without its repeat marker can cause an infinite loop.
+            return !decision.Deny;
         }
     }
 
@@ -244,6 +252,11 @@ public static class GuardState
 
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Guard", path, StoreLockTimeoutMilliseconds);
+            if (lease is null)
+            {
+                return;
+            }
+
             StateFile file = Read(path);
             if (file.Redirects.Remove(epochKey))
             {
@@ -302,7 +315,10 @@ public static class GuardState
         {
             StateFile? file = JsonSerializer.Deserialize<StateFile>(
                 File.ReadAllText(path), SerializerOptions);
-            return file is null || file.V != StateFile.CurrentVersion ? new StateFile() : file;
+            return file is null || file.V != StateFile.CurrentVersion || file.Counters is null
+                || file.Counters.Latency is null || file.Counters.Latency.Buckets is null
+                || file.Redirects is null || file.Redirects.Any(pair => pair.Value is null)
+                ? new StateFile() : file;
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
         {

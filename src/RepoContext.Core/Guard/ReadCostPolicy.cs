@@ -178,9 +178,11 @@ public sealed class ReadCostPolicy(
         }
 
         int lines = Math.Max(metrics.LineCount, 1);
+        long first = Math.Max(1L, request.StartLine ?? 1);
+        int remaining = (int)Math.Max(0, lines - first + 1);
         int requested = request.LineLimit is { } limit && limit > 0
-            ? Math.Min(limit, lines)
-            : lines;
+            ? Math.Min(limit, remaining)
+            : remaining;
         long prorated = requested >= lines
             ? metrics.TokenCount
             : (long)Math.Ceiling(metrics.TokenCount * (double)requested / lines);

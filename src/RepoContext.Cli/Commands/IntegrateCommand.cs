@@ -121,10 +121,16 @@ public static class IntegrateCommand
             WriteResults(layout.Root, clients, results, wantCheck);
 
             bool guardDrift = false;
+            bool guardFailed = false;
             if (wantGuard || wantRemove)
             {
                 guardDrift = ApplyGuard(
-                    layout.Root, clients, mode, wantCheck, wantRemove, wantGuard);
+                    layout.Root, clients, mode, wantCheck, wantRemove, wantGuard, out guardFailed);
+            }
+
+            if (guardFailed)
+            {
+                return ExitCode.Error;
             }
 
             if (wantCheck && (AgentIntegrations.HasDrift(results) || guardDrift))
@@ -163,8 +169,10 @@ public static class IntegrateCommand
         GuardMode mode,
         bool wantCheck,
         bool wantRemove,
-        bool wantGuard)
+        bool wantGuard,
+        out bool failed)
     {
+        failed = false;
         bool drift = false;
         bool supported = false;
         McpLaunch launch = AgentIntegrations.DetectMcpLaunch(root);
@@ -192,6 +200,7 @@ public static class IntegrateCommand
 
             if (result.Error is { } error)
             {
+                failed = true;
                 Console.Error.WriteLine($"  [{definition.Id}] {error}");
                 continue;
             }

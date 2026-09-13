@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using RepoContext.Core.Identity;
 
 namespace RepoContext.Core.Context;
@@ -31,10 +32,11 @@ public static class EpochReasons
 /// <param name="Epoch">Monotonic counter; a new epoch invalidates the previous one's claims.</param>
 /// <param name="Reason">One of <see cref="EpochReasons"/>.</param>
 /// <param name="UpdatedUtc">When the epoch started.</param>
-public sealed record ContextEpoch(string AgentKey, int Epoch, string Reason, DateTimeOffset UpdatedUtc)
+public sealed record ContextEpoch(
+    string AgentKey, int Epoch, string Reason, DateTimeOffset UpdatedUtc, string Generation = "0000000000000000")
 {
     /// <summary>The session name this epoch owns.</summary>
-    public string SessionName => ContextEpochs.SessionName(AgentKey, Epoch);
+    public string SessionName => ContextEpochs.SessionName(AgentKey, Epoch, Generation);
 }
 
 /// <summary>
@@ -67,7 +69,7 @@ public sealed record ContextEpoch(string AgentKey, int Epoch, string Reason, Dat
 /// </remarks>
 public static class ContextEpochs
 {
-    private const int StoreLockTimeoutMilliseconds = 3_000;
+    private const int StoreLockTimeoutMilliseconds = 0;
 
     /// <summary>How many agents are remembered before the oldest is forgotten.</summary>
     private const int MaxTrackedAgents = 64;
@@ -93,37 +95,25 @@ public static class ContextEpochs
     }
 
     /// <summary>The session name an epoch owns: the agent key plus the epoch number.</summary>
-    public static string SessionName(string agentKey, int epoch) =>
-        $"{agentKey}-e{epoch.ToString(CultureInfo.InvariantCulture)}";
+    public static string SessionName(
+        string agentKey, int epoch, string generation = "0000000000000000") =>
+        $"rcx-{agentKey}-g{generation}-e{epoch.ToString(CultureInfo.InvariantCulture)}";
 
-    /// <summary>
-    /// Splits an epoch-bound session name again. Manual names (<c>--session
-    /// review</c>) are not epoch-bound and return false, which is what keeps
-    /// their existing behaviour intact.
-    /// </summary>
+    /// <summary>Recognizes only the reserved generated namespace, never review-e1.</summary>
     public static bool TryParseSessionName(string? name, out string agentKey, out int epoch)
     {
         agentKey = string.Empty;
         epoch = 0;
-        if (name is null)
+        Match match = Regex.Match(name ?? string.Empty,
+            @"^rcx-(?<agent>[a-z0-9-]{1,16}-[a-f0-9]{12})-g[a-f0-9]{16}-e(?<epoch>[0-9]+)$",
+            RegexOptions.CultureInvariant);
+        if (!match.Success || !int.TryParse(match.Groups["epoch"].Value,
+                NumberStyles.None, CultureInfo.InvariantCulture, out epoch) || epoch <= 0)
         {
             return false;
         }
 
-        int marker = name.LastIndexOf("-e", StringComparison.Ordinal);
-        if (marker <= 0 || marker + 2 >= name.Length)
-        {
-            return false;
-        }
-
-        string suffix = name[(marker + 2)..];
-        if (!int.TryParse(suffix, NumberStyles.None, CultureInfo.InvariantCulture, out epoch)
-            || epoch <= 0)
-        {
-            return false;
-        }
-
-        agentKey = name[..marker];
+        agentKey = match.Groups["agent"].Value;
         return true;
     }
 
@@ -132,7 +122,7 @@ public static class ContextEpochs
     {
         EpochFile file = Read(PathFor(layout));
         return file.Sessions.TryGetValue(agentKey, out EpochEntry? entry)
-            ? new ContextEpoch(agentKey, entry.Epoch, entry.Reason, entry.Updated)
+            ? new ContextEpoch(agentKey, entry.Epoch, entry.Reason, entry.Updated, entry.Generation)
             : null;
     }
 
@@ -143,21 +133,29 @@ public static class ContextEpochs
     public static ContextEpoch Advance(RepoLayout layout, string agentKey, string reason)
     {
         string path = PathFor(layout);
-        var started = new ContextEpoch(agentKey, 1, reason, DateTimeOffset.UtcNow);
+        // A fresh identity is essential even when a ledger was retired, evicted,
+        // deleted or damaged. Its old receipt files can still exist.
+        string generation = Guid.NewGuid().ToString("N")[..16];
+        var started = new ContextEpoch(agentKey, 1, reason, DateTimeOffset.UtcNow, generation);
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(path)!);
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Epochs", path, StoreLockTimeoutMilliseconds);
+            if (lease is null)
+            {
+                return started;
+            }
 
             EpochFile file = Read(path);
             int next = file.Sessions.TryGetValue(agentKey, out EpochEntry? existing)
-                ? existing.Epoch + 1
+                ? (existing.Epoch < int.MaxValue ? existing.Epoch + 1 : 1)
                 : 1;
-            started = new ContextEpoch(agentKey, next, reason, DateTimeOffset.UtcNow);
+            started = new ContextEpoch(agentKey, next, reason, DateTimeOffset.UtcNow, generation);
             file.Sessions[agentKey] = new EpochEntry
             {
                 Epoch = next,
+                Generation = generation,
                 Reason = reason,
                 Updated = started.UpdatedUtc,
             };
@@ -169,7 +167,16 @@ public static class ContextEpochs
                 or WaitHandleCannotBeOpenedException)
         {
             // A lifecycle store that cannot be written must not break the agent.
-            // The caller then simply does not get reuse, which is the safe side.
+            // Discard the ledger if replacement failed (for example a damaged
+            // temporary path). No prior receipt may remain current on failure.
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception cleanup) when (cleanup is IOException or UnauthorizedAccessException)
+            {
+                // The adapter announces a fresh, non-current identity regardless.
+            }
         }
 
         return started;
@@ -188,6 +195,11 @@ public static class ContextEpochs
 
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Epochs", path, StoreLockTimeoutMilliseconds);
+            if (lease is null)
+            {
+                return;
+            }
+
             EpochFile file = Read(path);
             if (file.Sessions.Remove(agentKey))
             {
@@ -213,11 +225,16 @@ public static class ContextEpochs
     {
         if (!TryParseSessionName(sessionName, out string agentKey, out int epoch))
         {
-            return false;
+            // Old generated names have unsafe identities; invalidate them once.
+            // Ordinary manual names with an -e suffix remain manual.
+            return sessionName?.StartsWith("rcx-", StringComparison.Ordinal) == true
+                || Regex.IsMatch(sessionName ?? string.Empty,
+                    @"^[a-z0-9-]{1,16}-[a-f0-9]{12}-e[0-9]+$", RegexOptions.CultureInvariant);
         }
 
         ContextEpoch? current = Current(layout, agentKey);
-        return current is not null && current.Epoch != epoch;
+        return current is null || current.Epoch != epoch
+            || !string.Equals(current.SessionName, sessionName, StringComparison.Ordinal);
     }
 
     private static string Sanitize(string clientId)
@@ -245,7 +262,11 @@ public static class ContextEpochs
                 File.ReadAllText(path), SerializerOptions);
             // An unknown version is discarded, never migrated on a guess: a wrong
             // guess here would resurrect possession claims.
-            return file is null || file.V != EpochFile.CurrentVersion ? new EpochFile() : file;
+            return file is null || file.V != EpochFile.CurrentVersion || file.Sessions is null
+                || file.Sessions.Any(pair => pair.Value is null || pair.Value.Epoch <= 0
+                    || !Regex.IsMatch(pair.Value.Generation ?? string.Empty, @"^[a-f0-9]{16}$",
+                        RegexOptions.CultureInvariant))
+                ? new EpochFile() : file;
         }
         catch (Exception e) when (e is JsonException or IOException or UnauthorizedAccessException)
         {
@@ -277,7 +298,7 @@ public static class ContextEpochs
 
     private sealed record EpochFile
     {
-        public const int CurrentVersion = 1;
+        public const int CurrentVersion = 2;
 
         public int V { get; init; } = CurrentVersion;
 
@@ -288,6 +309,8 @@ public static class ContextEpochs
     private sealed record EpochEntry
     {
         public int Epoch { get; init; }
+
+        public string Generation { get; init; } = string.Empty;
 
         public string Reason { get; init; } = EpochReasons.Unknown;
 

@@ -81,6 +81,77 @@ public class GuardCommandTests
     }
 
     [Fact]
+    public void ChildStart_InvalidatesInheritedParentSession()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        Hook(ws, LifecycleEvent(ws.Root, "SessionStart", "startup", "parent"), "guard", "hook");
+        var layout = RepoContext.Core.RepoLayout.For(ws.Root);
+        string key = RepoContext.Core.Context.ContextEpochs.AgentKey("claude-code", "parent");
+        string before = RepoContext.Core.Context.ContextEpochs.Current(layout, key)!.SessionName;
+        Hook(ws, LifecycleEvent(ws.Root, "SubagentStart", "", "parent"), "guard", "hook");
+        Assert.True(RepoContext.Core.Context.ContextEpochs.IsSuperseded(layout, before));
+    }
+
+    [Fact]
+    public void UnwritableRedirectState_AllowsEveryRetry()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        Directory.CreateDirectory(ws.PathOf(".repoctx/guard.json.tmp"));
+        string payload = ReadEvent(ws.Root, ws.PathOf(BigFile));
+        for (int i = 0; i < 2; i++)
+        {
+            CliResult result = Hook(ws, payload, "guard", "hook", "--mode", "enforce");
+            Assert.Equal(0, result.ExitCode);
+            Assert.Empty(result.StdOut.Trim());
+        }
+    }
+
+    [Theory]
+    [InlineData("config")]
+    [InlineData("database")]
+    public void BrokenIndexOrConfig_FailsOpen(string broken)
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        File.WriteAllText(ws.PathOf(broken == "config" ? "repoctx.config.json" : ".repoctx/index.db"), "broken");
+        CliResult result = Hook(ws, ReadEvent(ws.Root, ws.PathOf(BigFile)),
+            "guard", "hook", "--mode", "enforce");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+    }
+
+    [Fact]
+    public void EqualLengthEdit_IsNotJudgedUsingOldMetrics()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        string path = ws.PathOf(BigFile);
+        File.WriteAllText(path, File.ReadAllText(path).Replace("export", "import", StringComparison.Ordinal));
+        File.SetLastWriteTimeUtc(path, DateTime.UtcNow.AddSeconds(2));
+        CliResult result = Hook(ws, ReadEvent(ws.Root, path), "guard", "hook", "--mode", "enforce");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Empty(result.StdOut.Trim());
+    }
+
+    [Fact]
+    public void ReadNearEnd_UsesOnlyRemainingLines()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        CliResult result = Cli(ws, "guard", "check", BigFile, "--mode", "enforce", "--offset", "895");
+        Assert.Equal(0, result.ExitCode);
+        Assert.Contains("deny: no", result.StdOut, StringComparison.Ordinal);
+    }
+
+    [Fact]
+    public void CheckGuard_ReportsMalformedSettingsAsFailure()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        Directory.CreateDirectory(ws.PathOf(".claude"));
+        File.WriteAllText(ws.PathOf(".claude/settings.json"), "{");
+        CliResult result = Cli(ws, "integrate", "--client", "claude-code", "--guard", "--check");
+        Assert.Equal(1, result.ExitCode);
+        Assert.Equal("{", File.ReadAllText(ws.PathOf(".claude/settings.json")));
+    }
+
+    [Fact]
     public void Enforce_DeniesAnExpensiveRead_AndNamesTheCheaperCall()
     {
         using FixtureWorkspace ws = IndexedWorkspace();

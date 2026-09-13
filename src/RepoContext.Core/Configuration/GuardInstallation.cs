@@ -56,6 +56,7 @@ public static class GuardInstallation
         ("SessionStart", null),
         ("PreCompact", null),
         ("SessionEnd", null),
+        ("SubagentStart", null),
     ];
 
     /// <summary>The command a guard hook entry runs.</summary>
@@ -75,10 +76,11 @@ public static class GuardInstallation
     /// would also be an unknown field in someone else's schema.
     /// </remarks>
     public static bool IsOwned(string? command) =>
-        command is not null
-        && command.Contains("guard hook", StringComparison.Ordinal)
-        && (command.Contains("repoctx", StringComparison.OrdinalIgnoreCase)
-            || command.Contains(NpmLauncherPath, StringComparison.Ordinal));
+        command is not null && Enum.GetValues<GuardMode>().Any(mode =>
+            Enum.GetValues<McpLaunch>().Any(launch =>
+                string.Equals(command, CommandFor(mode, launch), StringComparison.Ordinal))
+            || string.Equals(command, $"repoctx guard hook --mode {GuardModes.Name(mode)}",
+                StringComparison.Ordinal));
 
     /// <summary>Whether a repository has a guard hook installed, and in which mode.</summary>
     public static bool IsInstalled(string root, out string? mode)
@@ -92,7 +94,7 @@ public static class GuardInstallation
 
         foreach (JsonObject entry in OwnedEntries(settings))
         {
-            string command = entry["command"]?.GetValue<string>() ?? string.Empty;
+            string command = CommandText(entry) ?? string.Empty;
             mode = ModeIn(command);
             return true;
         }
@@ -201,6 +203,7 @@ public static class GuardInstallation
                 continue;
             }
 
+            bool removedFromEvent = false;
             for (int g = groups.Count - 1; g >= 0; g--)
             {
                 if (groups[g] is not JsonObject group || group["hooks"] is not JsonArray entries)
@@ -208,28 +211,31 @@ public static class GuardInstallation
                     continue;
                 }
 
+                bool removedFromGroup = false;
                 for (int h = entries.Count - 1; h >= 0; h--)
                 {
-                    if (IsOwned((entries[h] as JsonObject)?["command"]?.GetValue<string>()))
+                    if (IsOwned(CommandText(entries[h])))
                     {
                         entries.RemoveAt(h);
+                        removedFromGroup = true;
+                        removedFromEvent = true;
                     }
                 }
 
                 // A group we emptied was ours; one the user emptied is theirs.
-                if (entries.Count == 0 && group.Count <= 2)
+                if (removedFromGroup && entries.Count == 0 && group.Count <= 2)
                 {
                     groups.RemoveAt(g);
                 }
             }
 
-            if (groups.Count == 0)
+            if (removedFromEvent && groups.Count == 0)
             {
                 hooks.Remove(eventName);
             }
         }
 
-        if (hooks.Count == 0)
+        if (hooks.Count == 0 && !string.Equals(before, settings.ToJsonString(Writer), StringComparison.Ordinal))
         {
             settings.Remove("hooks");
         }
@@ -249,29 +255,48 @@ public static class GuardInstallation
 
     private static void Upsert(JsonArray groups, string? matcher, string command)
     {
-        foreach (JsonNode? node in groups)
+        // A matcher belongs to the entire group. Moving only our command out
+        // of a mismatching group must not widen a neighbouring user's hook.
+        bool updated = false;
+        for (int g = groups.Count - 1; g >= 0; g--)
         {
-            if (node is not JsonObject group || group["hooks"] is not JsonArray entries)
+            if (groups[g] is not JsonObject group || group["hooks"] is not JsonArray entries)
             {
                 continue;
             }
 
-            foreach (JsonNode? entry in entries)
+            bool removed = false;
+            for (int h = entries.Count - 1; h >= 0; h--)
             {
-                if (entry is JsonObject owned
-                    && IsOwned(owned["command"]?.GetValue<string>()))
+                if (entries[h] is not JsonObject owned || !IsOwned(CommandText(owned)))
+                {
+                    continue;
+                }
+
+                string? existingMatcher = StringValue(group["matcher"]);
+                if (!updated && existingMatcher == matcher)
                 {
                     owned["command"] = command;
                     owned["type"] = "command";
                     owned["timeout"] = HookTimeoutSeconds;
-                    if (matcher is not null)
-                    {
-                        group["matcher"] = matcher;
-                    }
-
-                    return;
+                    updated = true;
+                }
+                else
+                {
+                    entries.RemoveAt(h);
+                    removed = true;
                 }
             }
+
+            if (removed && entries.Count == 0 && group.Count <= 2)
+            {
+                groups.RemoveAt(g);
+            }
+        }
+
+        if (updated)
+        {
+            return;
         }
 
         // Written matcher-first so the generated block reads the way the
@@ -315,7 +340,7 @@ public static class GuardInstallation
                 foreach (JsonNode? entry in entries)
                 {
                     if (entry is JsonObject owned
-                        && IsOwned(owned["command"]?.GetValue<string>()))
+                        && IsOwned(CommandText(owned)))
                     {
                         yield return owned;
                     }
@@ -323,6 +348,12 @@ public static class GuardInstallation
             }
         }
     }
+
+    private static string? StringValue(JsonNode? value) =>
+        value is JsonValue scalar && scalar.TryGetValue<string>(out string? text) ? text : null;
+
+    private static string? CommandText(JsonNode? entry) =>
+        entry is JsonObject obj ? StringValue(obj["command"]) : null;
 
     private static string? ModeIn(string command)
     {

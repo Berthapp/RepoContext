@@ -1,6 +1,8 @@
 using System.CommandLine;
 using System.Diagnostics;
 using System.Globalization;
+using System.Text.Json;
+using Microsoft.Data.Sqlite;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Context;
@@ -100,7 +102,7 @@ public static class GuardCommand
                     stopwatch);
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException
-                or InvalidOperationException or ArgumentException)
+                or InvalidOperationException or ArgumentException or JsonException or SqliteException)
             {
                 // The guard failed; the client proceeds as if it were absent.
                 TryRecordError(payload, stopwatch);
@@ -130,6 +132,11 @@ public static class GuardCommand
             return;
         }
 
+        if (string.IsNullOrWhiteSpace(request.SessionId))
+        {
+            return;
+        }
+
         string agentKey = ContextEpochs.AgentKey(
             ClaudeCodeHook.ClientId, request.SessionId ?? "unknown");
 
@@ -143,12 +150,23 @@ public static class GuardCommand
                 // safe answer, and it costs at most a repeated read.
                 ContextEpoch epoch = ContextEpochs.Advance(
                     layout, agentKey, ClaudeCodeHook.EpochReason(request));
-                GuardState.ForgetEpoch(layout, epoch.SessionName);
+                // The new generation has no redirects. Old entries are bounded
+                // separately and must never be reused as possession claims.
                 if (request.Kind == HookEventKind.SessionStart)
                 {
                     Console.Out.Write(ClaudeCodeHook.RenderSessionStart(epoch.SessionName, mode));
                 }
 
+                return;
+            }
+
+            case HookEventKind.SubagentStart:
+            {
+                // A child can inherit the parent's announced --session argument.
+                // Retire it before that child can present the same receipt. The
+                // parent also re-reads until its next lifecycle announcement;
+                // this conservative fallback requires no shared MCP environment.
+                ContextEpochs.Retire(layout, agentKey);
                 return;
             }
 
@@ -190,8 +208,14 @@ public static class GuardCommand
             layout, reads, mode, maxTokens, epochKey, timeoutMilliseconds, stopwatch,
             request.Cwd ?? layout.Root);
 
-        GuardState.Record(layout, epochKey, decision, stopwatch.ElapsedMilliseconds);
-        if (ClaudeCodeHook.RenderPreToolUse(decision) is { } response)
+        if (stopwatch.ElapsedMilliseconds > timeoutMilliseconds)
+        {
+            decision = GuardDecision.Permit(GuardOutcome.Error, "guard budget exhausted");
+        }
+
+        bool recorded = GuardState.Record(layout, epochKey, decision, stopwatch.ElapsedMilliseconds);
+        if (recorded && stopwatch.ElapsedMilliseconds <= timeoutMilliseconds
+            && ClaudeCodeHook.RenderPreToolUse(decision) is { } response)
         {
             Console.Out.Write(response);
         }
@@ -218,7 +242,8 @@ public static class GuardCommand
         // Read-only, and without the schema pass Open() performs: the guard sits
         // in front of a tool call somebody is waiting on.
         using IndexStore store = IndexStore.OpenReadOnly(layout.DatabasePath);
-        if (!store.IsSchemaCurrent || !store.IsProducerCurrent)
+        if (!store.IsSchemaCurrent || !store.IsProducerCurrent
+            || store.GetMeta(MetaKeys.ConfigHash) != ConfigStore.ComputeIndexHash(config))
         {
             // A stale index has stale sizes. Judging a read on them would be
             // guessing, and a wrong guess here blocks real work.
@@ -230,8 +255,14 @@ public static class GuardCommand
             return GuardDecision.Permit(GuardOutcome.Error, "guard budget exhausted");
         }
 
+        if (!DateTimeOffset.TryParse(store.GetMeta(MetaKeys.IndexedAtUtc),
+                CultureInfo.InvariantCulture, DateTimeStyles.None, out DateTimeOffset indexedAt))
+        {
+            return GuardDecision.Permit(GuardOutcome.Unsupported, "index has no freshness metadata");
+        }
+
         var policy = new ReadCostPolicy(
-            new IndexedGuardMetrics(layout, store),
+            new IndexedGuardMetrics(layout, store, indexedAt),
             new ReadCostPolicyOptions { MaxReadTokens = maxTokens },
             TokenScale.From(config),
             path => layout.ToRelativePath(path, workingDirectory));
@@ -249,7 +280,8 @@ public static class GuardCommand
     /// <see cref="FileInfo"/> lookup is affordable inside a pre-tool hook; a
     /// re-index is not.
     /// </remarks>
-    private sealed class IndexedGuardMetrics(RepoLayout layout, IndexStore store) : IGuardIndex
+    private sealed class IndexedGuardMetrics(
+        RepoLayout layout, IndexStore store, DateTimeOffset indexedAt) : IGuardIndex
     {
         public bool TryGetMetrics(string relativePath, out GuardFileMetrics metrics)
         {
@@ -264,9 +296,33 @@ public static class GuardCommand
             {
                 var info = new FileInfo(Path.Combine(
                     layout.Root, relativePath.Replace('/', Path.DirectorySeparatorChar)));
-                if (!info.Exists || info.Length != file.SizeBytes)
+                if (!info.Exists || info.Length != file.SizeBytes
+                    || info.LastWriteTimeUtc > indexedAt.UtcDateTime
+                    || (info.Attributes & FileAttributes.ReparsePoint) != 0)
                 {
                     return false;
+                }
+
+                for (DirectoryInfo? dir = info.Directory; dir is not null; dir = dir.Parent)
+                {
+                    if ((dir.Attributes & FileAttributes.ReparsePoint) != 0)
+                    {
+                        return false;
+                    }
+
+                    foreach (string name in new[] { ".gitignore", ".repoctxignore" })
+                    {
+                        var ignore = new FileInfo(Path.Combine(dir.FullName, name));
+                        if (ignore.Exists && ignore.LastWriteTimeUtc > indexedAt.UtcDateTime)
+                        {
+                            return false;
+                        }
+                    }
+
+                    if (dir.FullName == layout.Root)
+                    {
+                        break;
+                    }
                 }
             }
             catch (Exception e) when (e is IOException or UnauthorizedAccessException
