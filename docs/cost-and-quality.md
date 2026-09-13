@@ -11,11 +11,44 @@ Nothing here requires trusting a vendor benchmark. Every figure below comes from
 a file in this repository, produced by a deterministic harness that runs offline.
 
 - [Where the money actually goes](#where-the-money-actually-goes)
+- [What 0.15.0 changes for users](#what-0150-changes-for-users)
 - [Eight levers](#eight-levers)
 - [Why quality holds](#why-quality-holds)
 - [The proof that we mean it](#the-proof-that-we-mean-it)
 - [What is *not* claimed](#what-is-not-claimed)
 - [Measure it on your own repository](#measure-it-on-your-own-repository)
+
+## What 0.15.0 changes for users
+
+Success means **a correctly completed task at a lower total cost**, including
+follow-up reads, failed attempts and repair work. A smaller response alone does
+not establish that.
+
+| Change | Why it helps |
+| --- | --- |
+| An optional guard suggests an outline or exact excerpts before an expensive read | Gives the agent a chance to obtain relevant evidence without loading the whole file |
+| Generated sessions expire when the conversation's evidence can no longer be trusted | Avoids withholding code just because an old local record says it was delivered |
+| Redirects require saved repeat bookkeeping; repeated reads can proceed | Prevents a cost-saving attempt from trapping the agent in repeated denials |
+| Installation recognizes only RepoContext-owned hooks | Preserves the user's other tools and settings |
+| Incomplete comparisons and unsupported billing values cannot support a savings claim | Keeps missing data from appearing to prove success |
+
+The guard is Claude Code-only and starts in **observe** mode: it counts without
+blocking. **Enforce** is an explicit, experimental option. Normal client
+permissions remain in effect. Lifecycle protection applies to generated
+sessions; callers still manage manually chosen session names. No extra model
+is used to summarize files or write code.
+
+The implementation and regression checks support these reliability improvements.
+They do **not** establish equal task quality at a lower price. The planned
+comparison has three arms: no RepoContext, the previous integration, and that
+integration with the guard. It must assess task acceptance, defects and human
+repair alongside all agent spend, with cold and warm cache results separated.
+
+That full comparison is not yet runnable: review fixtures, scenario controllers,
+verified cache controls and a real usage adapter are still needed, along with
+pinned clients, credentials and dated pricing. See the
+[comparison status](eval/agent/README.md), [review corrections](reviews/2026-09-13-cost-guard.md)
+and [guard setup](../README.md#the-read-cost-guard-opt-in-experimental).
 
 ## Where the money actually goes
 
@@ -305,8 +338,10 @@ Being precise about the limits is what makes the rest worth reading.
   latency are measured; its effect on task quality and total agent spend is not.
   The three-arm comparison that would decide it
   ([`eval/agent/`](eval/agent/)) is frozen but **not executed** — this
-  environment has no agent credentials and no provider price sheet, and that is
-  recorded rather than worked around. Until it runs, enforce mode stays
+  implementation still lacks executable scenario fixtures/controllers, verified
+  cache controls and a usage adapter, as well as the credentials and dated
+  pricing needed for real runs. Paid runs are blocked until those requirements
+  are met. Until the comparison establishes its effect, enforce mode stays
   experimental.
 - **The guard's latency target is missed.** Warm p95 is 225 ms against a 100 ms
   target on the machine measured, most of it process startup. Reported in

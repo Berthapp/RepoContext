@@ -24,6 +24,28 @@ Because this corpus was introduced with the Release 1 implementation, it is a
 baseline for later changes, not evidence of Release 1 versus pre-change quality
 parity; the manifest records that provenance limitation explicitly.
 
+## Read-cost guard: activity is not savings
+
+Version 0.15.0 adds an optional guard that can suggest smaller, exact evidence
+before a large file read. Its observed and denied read counters are reported
+separately in `repoctx stats`; they are **not** added to estimated tokens or
+money saved. A redirect can trigger another tool call, a full read anyway, or
+repair work, all of which belong in the total task cost.
+
+The [real-agent comparison](eval/agent/README.md) is a separate measurement layer
+from the deterministic retrieval baseline below. It is not yet runnable as a
+full comparison: scenario fixtures/controllers, verified cache controls and a
+usage adapter still need implementation, followed by real runs and quality review.
+
+Its scorer treats missing or invalid billing as unknown, rather than zero.
+Subscription usage cannot establish per-run monetary spend. Partial known spend
+is labelled as a subtotal; an incomplete matrix cannot support a comparative
+savings or equal-quality claim. Success must include accepted task outcomes,
+defect severity and measured human repair, as well as total agent spend.
+
+Until that evidence exists, enforce mode remains experimental. The existing
+retrieval measurements below do not prove the guard lowers total costs.
+
 ## What is counted
 
 The harness keeps each layer separate:

@@ -422,7 +422,7 @@
       <div>
         <span class="eyebrow">local-first context engine</span>
         <h1>Context your agent can explain.</h1>
-        <p class="lede"><b>repoctx</b> hands an AI coding agent exactly the evidence a task needs — with a machine-readable reason for every hit, and a hard token budget per answer. The file reads that dominate the bill stop happening. <a href="#cost" style="color:var(--accent-ink);">See the economics</a>.</p>
+        <p class="lede"><b>repoctx</b> gives an AI coding agent compact repository evidence — with a machine-readable reason for every hit, and a hard token budget per answer. The goal is fewer unnecessary file reads at the same task quality. <a href="#cost" style="color:var(--accent-ink);">See the economics</a>.</p>
         <div class="cta-row">
           <a class="btn btn-primary" href="#install">
             <svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>
@@ -612,6 +612,35 @@
       </div>
 
       <p class="limits"><b>What is not claimed.</b> These corpora measure evidence retrieval and response cost — not a coding agent's task success or total session spend. &ldquo;Reads replaced&rdquo; credits a read that would probably have happened; it is an estimate, not a lower bound. Under a tight 2,000-token JSON ceiling the holdout still delivers only 29/38 required file occurrences (76.3&nbsp;%; Markdown 32/38; unbudgeted 38/38) — the 90&nbsp;% target is not met, and is recorded as open work. <a href="https://github.com/Berthapp/RepoContext/blob/main/docs/cost-and-quality.md">Full reasoning, evidence and limits</a> · <a href="https://github.com/Berthapp/RepoContext/blob/main/docs/token-savings.md">measurement methodology</a>.</p>
+    </div>
+  </section>
+
+  <section id="read-cost-guard">
+    <div class="wrap">
+      <div class="section-head">
+        <span class="eyebrow">0.15.0 · optional read-cost guard</span>
+        <h2>Less to read. Enough to solve the task.</h2>
+        <p>The goal is the same quality at a lower total cost. These changes make context handling more reliable; their effect on completed-task cost still needs a real-agent comparison.</p>
+      </div>
+      <div class="quality">
+        <div class="q-item">
+          <h3>Try smaller evidence first</h3>
+          <p>Before a large file read, the Claude Code guard can suggest an outline or exact source excerpts. It starts in observe mode, which counts without blocking. Enforce mode is an explicit, experimental choice.</p>
+        </div>
+        <div class="q-item">
+          <h3>Know when to read again</h3>
+          <p>Generated sessions stop relying on old evidence after conversation changes such as compaction or restart. A child agent must not inherit its parent's claims. Manually named sessions remain the caller's responsibility.</p>
+        </div>
+        <div class="q-item">
+          <h3>Keep the agent moving</h3>
+          <p>A repeated read can proceed through normal client handling. If the guard cannot safely save a redirect, it does not block. Client permissions still apply, and installation preserves other tools' hooks and settings.</p>
+        </div>
+        <div class="q-item">
+          <h3>Measure the whole task</h3>
+          <p>A blocked read is not money saved. The comparison must include task quality, failed attempts, follow-up reads and repair work. Incomplete measurements cannot establish lower costs or equal quality.</p>
+        </div>
+      </div>
+      <p class="limits"><b>Current limits.</b> No total-cost or equal-quality improvement has been demonstrated for the guard. The full comparison still needs executable scenarios, cache controls and a usage adapter. The measured hook latency also misses its 100 ms target. RepoContext does not call another model to summarize files or write code. <a href="https://github.com/Berthapp/RepoContext#the-read-cost-guard-opt-in-experimental">Setup and modes</a> · <a href="https://github.com/Berthapp/RepoContext/tree/main/docs/eval/agent">Comparison status</a>.</p>
     </div>
   </section>
 

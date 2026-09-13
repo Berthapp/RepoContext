@@ -31,6 +31,35 @@ references are extracted, so the whole repository is cross-linked. Binary files
 are the only category that cannot be described — and `index` reports how many
 there were. See [Working with artifacts](#working-with-artifacts-tickets-specs-requirements).
 
+## What changes in 0.15.0, in plain language
+
+The goal is **the same quality at a lower total cost per completed task**.
+Version 0.15.0 adds an optional read-cost guard for Claude Code and makes
+context reuse safer:
+
+- **Read only what helps.** Before a large file read, the guard can suggest an
+  outline or exact source excerpts. It starts in observe mode; blocking requires
+  explicitly enabling experimental enforce mode.
+- **Do not mistake old notes for current knowledge.** When the conversation is
+  compacted or restarted, generated sessions stop treating previously delivered
+  evidence as still available. A child agent must not inherit its parent's
+  possession claims. Manually named sessions still need lifecycle management
+  by their caller.
+- **Keep work moving.** A repeated read can proceed through the client's normal
+  handling. If the guard cannot safely record a redirect, it does not block the
+  read. Existing client permissions still apply.
+- **Preserve your setup.** Installation changes only RepoContext's own hooks;
+  unrelated hooks and settings remain intact.
+- **Count completed work, not just shorter responses.** Guard activity is shown
+  separately from estimated savings. An incomplete benchmark cannot establish
+  lower costs or equal quality.
+
+These changes improve reliability; **their effect on total agent cost and task
+quality has not yet been measured**. RepoContext still works locally without
+calling a second model to summarize or write code. See the
+[setup and limits](#the-read-cost-guard-opt-in-experimental) and
+[how success will be measured](docs/cost-and-quality.md#what-0150-changes-for-users).
+
 ## Why it is cheaper — and why the answers do not get worse
 
 **The reads are the bill, not the answers.** Measured on this repository for the
@@ -1049,13 +1078,15 @@ measured response costs and simulated evidence-gathering workflows, and
 alongside the gates that stop a saving from costing relevant evidence.
 
 The [same-quality, lower-cost implementation plan](docs/plans/same-quality-lower-cost.md)
-specifies the current optimization work. Shipped in 0.15.0 and recorded in
+specifies the current optimization work. Included in the 0.15.0 changes and recorded in
 [ADR 0023](docs/decisions/0023-read-cost-guard-and-context-epochs.md): the opt-in
 read-cost guard, context-lifetime-safe evidence reuse, and the frozen three-arm
 agent cost/quality comparison in [`docs/eval/agent/`](docs/eval/agent/). The
-comparison itself has not been executed — it needs agent credentials this
-repository does not have — so enforce mode remains experimental and no saving is
-claimed. Local-model delegation stays deferred.
+comparison itself has not been executed. Executable scenario fixtures, scenario
+and cache controllers, and a real usage adapter are still missing, in addition
+to pinned clients, credentials and dated pricing. The full paid comparison is
+blocked until those requirements are met. Enforce mode remains experimental and
+no saving is claimed. Local-model delegation stays deferred.
 
 ### Releasing
 

@@ -92,6 +92,39 @@ repoctx integrate            # detect the environment and write managed blocks
 repoctx integrate --check    # CI-friendly drift check, changes nothing
 ```
 
+## Optional read-cost guard in 0.15.0
+
+The goal is the same task quality at a lower total cost. For Claude Code, the
+guard can suggest an outline or exact source excerpts before a large file read:
+
+```bash
+repoctx integrate --client claude-code --guard  # observe only; does not block reads
+repoctx guard status                          # local activity, not money saved
+```
+
+Experimental enforcement is an explicit choice:
+
+```bash
+repoctx integrate --client claude-code --guard --guard-mode enforce
+```
+
+A repeated read can proceed through the client's normal handling. If the guard
+cannot safely save its redirect state, it does not block. Client permissions
+still apply, and installation preserves other tools' hooks and settings.
+
+Generated sessions also stop reusing old evidence after conversation lifecycle
+changes such as compaction or restart; child agents must not inherit a parent's
+claims. Manually named sessions remain the caller's responsibility. RepoContext
+does not call another model to summarize files or write code.
+
+**No equal-quality or total-cost improvement has been demonstrated yet.** The
+real-agent comparison still needs executable scenarios, cache controls and a
+usage adapter before it can run. See the [guard setup and limits][guarddoc] and
+the [comparison status][agentdoc].
+
+[guarddoc]: https://github.com/Berthapp/RepoContext#the-read-cost-guard-opt-in-experimental
+[agentdoc]: https://github.com/Berthapp/RepoContext/tree/main/docs/eval/agent
+
 ## Supported platforms
 
 | Platform | Package |
