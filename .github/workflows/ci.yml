@@ -14,6 +14,16 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
+  agent-harness-self-check:
+    name: Agent comparison harness (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check accounting and runner regressions without an agent
+        run: |
+          python3 docs/eval/agent/harness/selftest.py
+          python3 -m unittest discover -s docs/eval/agent/harness -p 'test_*.py'
+
   build-and-test:
     name: Build & test
     runs-on: ubuntu-latest
@@ -123,6 +133,16 @@ jobs:
           dotnet test tests/RepoContext.Integration.Tests/RepoContext.Integration.Tests.csproj
           -c Release --no-build
           --filter "FullyQualifiedName~BaselineSnapshotTests"
+          --logger "console;verbosity=normal"
+
+      # The read-cost guard resolves client-supplied paths and installs hook
+      # entries into a client settings file, both of which are where path
+      # separators and launcher shims differ per operating system (ADR 0023).
+      - name: Verify the read-cost guard cross-platform
+        run: >-
+          dotnet test tests/RepoContext.Integration.Tests/RepoContext.Integration.Tests.csproj
+          -c Release --no-build
+          --filter "FullyQualifiedName~GuardCommandTests|FullyQualifiedName~IntegrateCommandTests"
           --logger "console;verbosity=normal"
 
   no-network-integration:

@@ -54,6 +54,15 @@ public static class SessionStore
     {
         try
         {
+            // Evidence delivered to a context that no longer exists proves
+            // nothing. An epoch-bound name whose agent has moved on (compaction,
+            // resume, fork, a cleared conversation) is empty, not reusable; a
+            // manual name is never epoch-bound and is unaffected.
+            if (ContextEpochs.IsSuperseded(layout, name))
+            {
+                return SessionState.Empty;
+            }
+
             string path = PathFor(layout, name);
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Session", path, StoreLockTimeoutMilliseconds);
@@ -98,6 +107,14 @@ public static class SessionStore
     {
         try
         {
+            // Nothing is persisted into a retired epoch: it would never be read
+            // back, and a file that outlives its context is exactly what must
+            // not accumulate possession claims.
+            if (ContextEpochs.IsSuperseded(layout, name))
+            {
+                return;
+            }
+
             string sessionPath = PathFor(layout, name);
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Session", sessionPath, StoreLockTimeoutMilliseconds);

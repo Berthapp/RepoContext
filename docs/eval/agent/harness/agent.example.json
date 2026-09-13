@@ -1,0 +1,27 @@
+{
+  "_comment": "Template only. The full frozen comparison is blocked by missing scenario fixtures (see README). A custom usage adapter must write REPOCTX_EVAL_USAGE; raw claude --output-format json does not do this. Credentials belong in the environment.",
+  "command": [
+    "python3",
+    "/absolute/path/to/your/usage_adapter.py"
+  ],
+  "required_env": [
+    "ANTHROPIC_API_KEY"
+  ],
+  "env": {
+    "REPOCTX_NO_STATS": "0"
+  },
+  "repoctx": "/absolute/path/to/candidate/repoctx",
+  "repoctx_version": "0.15.0",
+  "agent_client_version": "fill in the exact pinned client version",
+  "model_id": "fill in the exact model id",
+  "billing_mode": "api",
+  "timeout_seconds": 1800,
+  "pricing": {
+    "source": "provider public price sheet, exact URL or document id",
+    "date": "YYYY-MM-DD",
+    "currency": "USD"
+  },
+  "usage_adapter_contract": 1,
+  "baseline_repoctx": "/absolute/path/to/baseline/repoctx",
+  "baseline_repoctx_version": "0.14.1"
+}

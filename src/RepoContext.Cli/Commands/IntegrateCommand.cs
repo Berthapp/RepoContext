@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Guard;
 
 namespace RepoContext.Cli.Commands;
 
@@ -43,6 +44,17 @@ public static class IntegrateCommand
         {
             Description = "List the supported clients and the files each one maintains.",
         };
+        var guard = new Option<bool>("--guard")
+        {
+            Description = "Also install the opt-in read-cost guard hooks (Claude Code only). "
+                          + "Observe mode unless --guard-mode says otherwise. Only RepoContext's "
+                          + "own entries in " + GuardInstallation.SettingsPath + " are touched.",
+        };
+        var guardMode = new Option<string?>("--guard-mode")
+        {
+            Description = "Mode for --guard: observe (count only, the default) or enforce "
+                          + "(deny an expensive read once and name the cheaper call).",
+        };
 
         var command = new Command("integrate",
             "Wire RepoContext into the coding agents this repository uses. Never touches "
@@ -53,6 +65,8 @@ public static class IntegrateCommand
             remove,
             inline,
             list,
+            guard,
+            guardMode,
         };
 
         command.SetAction(parseResult =>
@@ -75,6 +89,16 @@ public static class IntegrateCommand
                 return ExitCode.InvalidArguments;
             }
 
+            string? requestedMode = parseResult.GetValue(guardMode);
+            if (!GuardModes.TryParse(requestedMode, out GuardMode mode))
+            {
+                Console.Error.WriteLine("Invalid --guard-mode. Use 'off', 'observe' or 'enforce'.");
+                return ExitCode.InvalidArguments;
+            }
+
+            // Naming a mode is asking for the guard; --guard alone means observe.
+            bool wantGuard = parseResult.GetValue(guard) || requestedMode is not null;
+
             string current = Directory.GetCurrentDirectory();
             RepoLayout layout = RepoLayout.Discover(current) ?? RepoLayout.For(current);
 
@@ -96,7 +120,20 @@ public static class IntegrateCommand
 
             WriteResults(layout.Root, clients, results, wantCheck);
 
-            if (wantCheck && AgentIntegrations.HasDrift(results))
+            bool guardDrift = false;
+            bool guardFailed = false;
+            if (wantGuard || wantRemove)
+            {
+                guardDrift = ApplyGuard(
+                    layout.Root, clients, mode, wantCheck, wantRemove, wantGuard, out guardFailed);
+            }
+
+            if (guardFailed)
+            {
+                return ExitCode.Error;
+            }
+
+            if (wantCheck && (AgentIntegrations.HasDrift(results) || guardDrift))
             {
                 Console.Error.WriteLine(
                     "Integration is out of date. Run 'repoctx integrate' to update it.");
@@ -114,6 +151,84 @@ public static class IntegrateCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Installs, checks or removes the read-cost guard for the clients that have
+    /// a verified hook contract.
+    /// </summary>
+    /// <remarks>
+    /// Separate from the managed instruction files on purpose: those are files
+    /// RepoContext owns, while a client settings file is the user's and is only
+    /// ever edited entry by entry. A client without a verified hook contract
+    /// keeps its existing behaviour and is told so rather than silently skipped.
+    /// </remarks>
+    private static bool ApplyGuard(
+        string root,
+        IReadOnlyList<AgentClientDefinition> clients,
+        GuardMode mode,
+        bool wantCheck,
+        bool wantRemove,
+        bool wantGuard,
+        out bool failed)
+    {
+        failed = false;
+        bool drift = false;
+        bool supported = false;
+        McpLaunch launch = AgentIntegrations.DetectMcpLaunch(root);
+
+        foreach (AgentClientDefinition definition in clients)
+        {
+            if (definition.Id != ClaudeCodeHook.ClientId)
+            {
+                if (wantGuard)
+                {
+                    Console.WriteLine(
+                        $"  [{definition.Id}] no verified hook contract; the read-cost guard is "
+                        + "not installed and this client keeps its existing behaviour.");
+                }
+
+                continue;
+            }
+
+            supported = true;
+            GuardInstallResult result = wantRemove
+                ? GuardInstallation.Remove(root)
+                : wantCheck
+                    ? GuardInstallation.Check(root, mode, launch)
+                    : GuardInstallation.Apply(root, mode, launch);
+
+            if (result.Error is { } error)
+            {
+                failed = true;
+                Console.Error.WriteLine($"  [{definition.Id}] {error}");
+                continue;
+            }
+
+            drift |= wantCheck && result.Change is AgentFileChange.Created or AgentFileChange.Updated;
+            string verb = result.Change switch
+            {
+                AgentFileChange.Created => wantCheck ? "would be created" : "created",
+                AgentFileChange.Updated => wantCheck ? "would be updated" : "updated",
+                AgentFileChange.Unchanged => "unchanged",
+                AgentFileChange.Removed => "guard hooks removed from",
+                AgentFileChange.Absent => "no guard hooks in",
+                _ => "left untouched",
+            };
+
+            string suffix = wantRemove || result.Change is AgentFileChange.Unchanged
+                ? string.Empty
+                : $" (mode {GuardModes.Name(mode)})";
+            Console.WriteLine($"  [{definition.Id}] {verb} {result.RelativePath}{suffix}");
+        }
+
+        if (wantGuard && !supported)
+        {
+            Console.WriteLine(
+                "  no client with a verified hook contract was selected; nothing to guard.");
+        }
+
+        return drift;
     }
 
     /// <summary>

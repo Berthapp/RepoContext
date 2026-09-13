@@ -72,6 +72,32 @@ public sealed class IndexStore : IDisposable
         return store;
     }
 
+    /// <summary>
+    /// Opens an existing index for reading only, without applying the schema.
+    /// </summary>
+    /// <remarks>
+    /// For the read-cost guard, which runs in front of a tool call somebody is
+    /// waiting on and must never interfere with the index it consults.
+    /// <c>Open</c> creates the database if it is missing and applies the DDL on
+    /// every call, which takes a write lock; a hook doing that while an indexer
+    /// runs would contend with real work for no reason. A reader that only looks
+    /// up stored rows needs neither: the schema it would create is exactly the
+    /// one it requires to already exist, and callers check
+    /// <see cref="IsSchemaCurrent"/> before trusting a row. Throws when the file
+    /// is absent, so callers check <see cref="RepoLayout.HasIndex"/> first.
+    /// </remarks>
+    public static IndexStore OpenReadOnly(string databasePath)
+    {
+        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
+        {
+            DataSource = databasePath,
+            Mode = SqliteOpenMode.ReadOnly,
+            Pooling = false,
+        }.ToString());
+        connection.Open();
+        return new IndexStore(connection);
+    }
+
     public string? GetMeta(string key)
     {
         using SqliteCommand cmd = _connection.CreateCommand();

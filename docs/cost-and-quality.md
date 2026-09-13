@@ -11,11 +11,44 @@ Nothing here requires trusting a vendor benchmark. Every figure below comes from
 a file in this repository, produced by a deterministic harness that runs offline.
 
 - [Where the money actually goes](#where-the-money-actually-goes)
-- [Seven levers](#seven-levers)
+- [What 0.15.0 changes for users](#what-0150-changes-for-users)
+- [Eight levers](#eight-levers)
 - [Why quality holds](#why-quality-holds)
 - [The proof that we mean it](#the-proof-that-we-mean-it)
 - [What is *not* claimed](#what-is-not-claimed)
 - [Measure it on your own repository](#measure-it-on-your-own-repository)
+
+## What 0.15.0 changes for users
+
+Success means **a correctly completed task at a lower total cost**, including
+follow-up reads, failed attempts and repair work. A smaller response alone does
+not establish that.
+
+| Change | Why it helps |
+| --- | --- |
+| An optional guard suggests an outline or exact excerpts before an expensive read | Gives the agent a chance to obtain relevant evidence without loading the whole file |
+| Generated sessions expire when the conversation's evidence can no longer be trusted | Avoids withholding code just because an old local record says it was delivered |
+| Redirects require saved repeat bookkeeping; repeated reads can proceed | Prevents a cost-saving attempt from trapping the agent in repeated denials |
+| Installation recognizes only RepoContext-owned hooks | Preserves the user's other tools and settings |
+| Incomplete comparisons and unsupported billing values cannot support a savings claim | Keeps missing data from appearing to prove success |
+
+The guard is Claude Code-only and starts in **observe** mode: it counts without
+blocking. **Enforce** is an explicit, experimental option. Normal client
+permissions remain in effect. Lifecycle protection applies to generated
+sessions; callers still manage manually chosen session names. No extra model
+is used to summarize files or write code.
+
+The implementation and regression checks support these reliability improvements.
+They do **not** establish equal task quality at a lower price. The planned
+comparison has three arms: no RepoContext, the previous integration, and that
+integration with the guard. It must assess task acceptance, defects and human
+repair alongside all agent spend, with cold and warm cache results separated.
+
+That full comparison is not yet runnable: review fixtures, scenario controllers,
+verified cache controls and a real usage adapter are still needed, along with
+pinned clients, credentials and dated pricing. See the
+[comparison status](eval/agent/README.md), [review corrections](reviews/2026-09-13-cost-guard.md)
+and [guard setup](../README.md#the-read-cost-guard-opt-in-experimental).
 
 ## Where the money actually goes
 
@@ -45,7 +78,7 @@ Source: ADR 0010, measured at M6 on this repository (75 files, exact
 `o200k_base` counts). Your repository is not this repository — which is why
 `repoctx stats` measures yours instead of asking you to believe these.
 
-## Seven levers
+## Eight levers
 
 ### 1. Deliver the evidence, not a reading list
 
@@ -155,6 +188,31 @@ query time (`claude` ≈ 1.2, because o200k undercounts Claude tokenization on
 typical source by roughly 15–25 %). Scaling rounds **up**, so budgets never
 undershoot, and switching model families never requires a re-index. A ceiling
 measured in the wrong tokenizer is not a ceiling.
+
+### 8. Make the expensive read ask for the cheap one (opt-in, experimental)
+
+Levers 1-7 make cheap evidence available. None of them can make an agent ask for
+it: the client's own file-read tool is one call away, and a 900-line file is paid
+for before RepoContext hears about the task.
+
+The opt-in read-cost guard closes that for Claude Code. A read whose estimated
+cost exceeds a threshold is denied **once**, with the cheaper call named
+(`repoctx outline`, `repoctx context --path ... --detail slices`); repeating the
+read gets the whole file anyway. Cost is measured in tokens, not lines, because
+400 lines of generated JSON and 400 lines of prose are not the same purchase.
+Install it with `repoctx integrate --client claude-code --guard`; it starts in
+observe mode, which counts without blocking.
+
+On this repository, 22.5 % of indexed files exceed the 2,000-token default and
+carry 81.2 % of the token mass — which is why a cost threshold is worth having.
+That is **coverage, not a saving**: a denied read is followed by another call,
+possibly by a full read anyway, and possibly by recovery work. `repoctx stats`
+therefore reports guard activity in its own section, outside the savings
+arithmetic. Whether the guard lowers total cost at equal quality is open, and the
+frozen three-arm comparison in [`eval/agent/`](eval/agent/) exists to answer it.
+Measured coverage and latency, including a latency target that is **not** met on
+the machine measured: [local measurements](eval/agent/local-measurements.md).
+See [ADR 0023](decisions/0023-read-cost-guard-and-context-epochs.md).
 
 ## Why quality holds
 
@@ -276,6 +334,18 @@ Being precise about the limits is what makes the rest worth reading.
 - **The M6 figures are from M6.** The 6,222 → 2,110 comparison was measured on
   this repository at that milestone. It illustrates the mechanism; it is not a
   promise about yours.
+- **The read-cost guard has not been shown to save anything.** Its coverage and
+  latency are measured; its effect on task quality and total agent spend is not.
+  The three-arm comparison that would decide it
+  ([`eval/agent/`](eval/agent/)) is frozen but **not executed** — this
+  implementation still lacks executable scenario fixtures/controllers, verified
+  cache controls and a usage adapter, as well as the credentials and dated
+  pricing needed for real runs. Paid runs are blocked until those requirements
+  are met. Until the comparison establishes its effect, enforce mode stays
+  experimental.
+- **The guard's latency target is missed.** Warm p95 is 225 ms against a 100 ms
+  target on the machine measured, most of it process startup. Reported in
+  [local measurements](eval/agent/local-measurements.md), not smoothed over.
 
 ## Measure it on your own repository
 

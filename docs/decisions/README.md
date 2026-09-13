@@ -52,3 +52,9 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   compatibility copies; shared exact budgets and reuse receipts across formats.
 - `0022-context-selection-intent.md` — bounded per-file omission diagnostics and
   opt-in task companions for an explicitly identified source target.
+- `0023-read-cost-guard-and-context-epochs.md` — the opt-in read-cost guard
+  (observe/enforce, token-cost threshold, bounded redirects, a small documented
+  shell subset), context epochs that bind session reuse to the real agent
+  context lifetime, `integrate --guard` installation that touches only
+  RepoContext-owned settings entries, and guard counters reported as activity
+  rather than as savings.

@@ -33,12 +33,28 @@ public static class CliHarness
         RunIn(workingDirectory, environment: null, args);
 
     public static CliResult RunIn(
-        string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args)
+        string workingDirectory, IReadOnlyDictionary<string, string>? environment, params string[] args) =>
+        RunIn(workingDirectory, environment, standardInput: null, args);
+
+    /// <summary>
+    /// Runs the CLI with text on standard input. Hook adapters are invoked this
+    /// way by their client, so the contract is only really tested this way.
+    /// </summary>
+    public static CliResult RunWithInput(
+        string workingDirectory, string standardInput, params string[] args) =>
+        RunIn(workingDirectory, environment: null, standardInput, args);
+
+    public static CliResult RunIn(
+        string workingDirectory,
+        IReadOnlyDictionary<string, string>? environment,
+        string? standardInput,
+        params string[] args)
     {
         var startInfo = new ProcessStartInfo("dotnet")
         {
             RedirectStandardOutput = true,
             RedirectStandardError = true,
+            RedirectStandardInput = standardInput is not null,
             UseShellExecute = false,
             WorkingDirectory = workingDirectory,
         };
@@ -54,6 +70,12 @@ public static class CliHarness
 
         using var process = new Process { StartInfo = startInfo };
         process.Start();
+        if (standardInput is not null)
+        {
+            process.StandardInput.Write(standardInput);
+            process.StandardInput.Close();
+        }
+
         // Preserve the exact emitted newlines for response-budget assertions.
         // Line events + AppendLine silently converted LF into CRLF on Windows.
         Task<string> stdout = process.StandardOutput.ReadToEndAsync();
