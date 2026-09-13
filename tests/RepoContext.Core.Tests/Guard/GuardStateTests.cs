@@ -162,16 +162,32 @@ public class GuardStateTests : IDisposable
     }
 
     [Fact]
-    public void ConcurrentRecords_DoNotLoseTheLoopBound()
+    public void ConcurrentRecords_NeverDenyWithoutPersistingTheLoopBound()
     {
         // Several hooks can run at once (parallel tool calls, two agents). The
-        // bound that stops an enforcing guard from denying forever must survive
-        // that, and no writer may corrupt the file for the others.
-        Parallel.For(0, 16, _ => GuardState.Record(Layout, "e1", Denial("src/big.ts"), 3));
+        // state lock does not block, so a writer that meets contention skips its
+        // write rather than make someone wait inside a pre-tool hook — which is
+        // why "all sixteen land" is not the invariant and would only hold on an
+        // idle machine.
+        //
+        // The invariant the deny decision actually rests on is this one: a record
+        // that reports success was persisted, exactly once. A lost counter is a
+        // slightly low statistic; a denial whose repeat marker was lost is an
+        // agent denied forever.
+        int persisted = 0;
+        Parallel.For(0, 16, _ =>
+        {
+            if (GuardState.Record(Layout, "e1", Denial("src/big.ts"), 3))
+            {
+                Interlocked.Increment(ref persisted);
+            }
+        });
 
         GuardCounters counters = GuardState.ReadCounters(Layout);
-        Assert.Equal(16, counters.Observed);
-        Assert.Equal(16, counters.Denied);
-        Assert.Equal(16, GuardState.Redirects(Layout, "e1", "src/big.ts"));
+        Assert.True(persisted > 0, "no concurrent writer made progress at all");
+        // No lost update, no double count, and nothing counted that was not written.
+        Assert.Equal(persisted, counters.Observed);
+        Assert.Equal(persisted, counters.Denied);
+        Assert.Equal(persisted, GuardState.Redirects(Layout, "e1", "src/big.ts"));
     }
 }

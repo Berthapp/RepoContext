@@ -116,7 +116,8 @@ automatic reuse — the safe direction.
 are owned. Commands merely mentioning repoctx are preserved. A foreign hook
 sharing a group retains its matcher when our entry moves. Every other hook, permission, environment
 variable and MCP server is written back unchanged. A settings file that cannot be
-parsed is reported and left untouched. Both operations are idempotent, and
+parsed is reported, left untouched, and fails the command, so an uninstalled
+guard is never mistaken for an installed one. Both operations are idempotent, and
 `integrate` without `--guard` still never touches client settings.
 
 Entries are written in shell form, which Claude Code runs through `sh` on Unix
