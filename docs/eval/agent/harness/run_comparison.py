@@ -64,7 +64,7 @@ class PrerequisiteError(RuntimeError):
 
 def load_manifest(path: pathlib.Path = MANIFEST) -> dict:
     data = json.loads(path.read_text(encoding="utf-8"))
-    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    digest = hashlib.sha256(path.read_text(encoding="utf-8").encode()).hexdigest()
     data["_manifest_sha256"] = digest
     return data
 
@@ -93,6 +93,23 @@ def check_prerequisites(manifest: dict, config: dict | None) -> list[str]:
             "(see agent.example.json)"
         )
     else:
+        if config.get("usage_adapter_contract") != 1:
+            missing.append("a usage adapter implementing REPOCTX_EVAL_USAGE is required; "
+                           "the raw claude CLI does not write that file")
+        for field in ("agent_client_version", "model_id", "baseline_repoctx_version", "repoctx_version"):
+            value = config.get(field)
+            if not isinstance(value, str) or not value or "fill in" in value:
+                missing.append(f"config.{field}: exact pinned value required")
+        for field in ("repoctx", "baseline_repoctx"):
+            binary = config.get(field)
+            if not binary or not pathlib.Path(binary).is_absolute() or not pathlib.Path(binary).is_file():
+                missing.append(f"config.{field}: absolute path to a separate pinned repoctx executable")
+        for field in ("date", "currency"):
+            value = config.get("pricing", {}).get(field)
+            if not value or "YYYY" in value:
+                missing.append(f"config.pricing.{field}: real value required")
+        if config.get("command") and shutil.which(config["command"][0]) is None:
+            missing.append("config.command: agent usage adapter executable is unavailable")
         if not config.get("command"):
             missing.append("config.command: argv template that starts the agent")
         for name in config.get("required_env", []):
@@ -103,6 +120,17 @@ def check_prerequisites(manifest: dict, config: dict | None) -> list[str]:
                 "config.pricing.source: provider pricing sheet identifier and date; "
                 "without it spend cannot be expressed as money"
             )
+
+    # The frozen manifest names these scenarios but does not supply their
+    # patches, controllers or adjudication assets. Credentials cannot fill that
+    # implementation gap. Block paid runs until a new, executable manifest exists.
+    for task in manifest["tasks"]:
+        if task["kind"] == "review":
+            missing.append(f"{task['id']}: review patch and seeded-defect fixture are not implemented")
+        for scenario in ("compaction", "stale_index"):
+            if scenario in task.get("scenario", []):
+                missing.append(f"{task['id']}: {scenario} scenario controller is not implemented")
+    missing.append("cold/warm cache scenario control is not implemented; repetition number is not cache evidence")
 
     for repo in manifest["repositories"]:
         archive = (MANIFEST.parent / repo["archive"]).resolve()
@@ -117,8 +145,8 @@ def check_prerequisites(manifest: dict, config: dict | None) -> list[str]:
             )
         for tool in repo.get("prerequisites", []):
             root = tool.split()[0].split("-")[0]
-            if root in ("node", "npm") and shutil.which("node") is None:
-                missing.append(f"{repo['id']}: node is not installed ({tool})")
+            if root in ("node", "npm") and shutil.which(root) is None:
+                missing.append(f"{repo['id']}: {root} is not installed ({tool})")
             if root == "dotnet" and shutil.which("dotnet") is None:
                 missing.append(f"{repo['id']}: the .NET SDK is not installed ({tool})")
 
@@ -140,7 +168,9 @@ def plan_runs(manifest: dict, repetitions: int | None = None) -> list[dict]:
     fixed position relative to warm caches or machine state.
     """
     arms = [arm["id"] for arm in manifest["arms"]]
-    total = repetitions or manifest["protocol"]["repetitions_per_task_and_arm"]
+    total = repetitions if repetitions is not None else manifest["protocol"]["repetitions_per_task_and_arm"]
+    if total <= 0:
+        raise ValueError("repetitions must be positive")
     runs: list[dict] = []
     for task in manifest["tasks"]:
         for repetition in range(1, total + 1):
@@ -179,12 +209,14 @@ def arm_setup_commands(arm: dict, repoctx: str) -> list[list[str]]:
         "repoctx-index": [[repoctx, "index"]],
         "repoctx-integrate": [[repoctx, "integrate", "--client", "claude-code"]],
         "repoctx-integrate-guard": [
-            [repoctx, "integrate", "--client", "claude-code", "--guard"]
+            [repoctx, "integrate", "--client", "claude-code", "--guard", "--guard-mode", "enforce"]
         ],
     }
     commands: list[list[str]] = []
     for step in arm.get("setup", []):
-        commands.extend(steps.get(step, []))
+        if step not in steps:
+            raise ValueError(f"unimplemented setup step: {step}")
+        commands.extend(steps[step])
     return commands
 
 
@@ -208,23 +240,32 @@ def run_one(
     report stays absent: this harness never invents a usage number.
     """
     materialize(repo, workspace)
-    repoctx = config.get("repoctx", "repoctx")
+    repoctx = config.get("baseline_repoctx" if arm["id"] == "current" else "repoctx", "repoctx")
+    env = dict(os.environ)
+    env.update(config.get("env", {}))
+    env.pop("REPOCTX_SESSION", None)
+    if pathlib.Path(repoctx).is_absolute():
+        env["PATH"] = str(pathlib.Path(repoctx).parent) + os.pathsep + env.get("PATH", "")
     setup_failures: list[str] = []
+    setup_started = _dt.datetime.now(_dt.timezone.utc)
     for command in arm_setup_commands(arm, repoctx):
+        if command == [repoctx, "init"] and (workspace / "repoctx.config.json").is_file():
+            continue
         try:
             completed_setup = subprocess.run(
-                command, cwd=workspace, check=False, capture_output=True
+                command, cwd=workspace, check=False, capture_output=True, env=env,
+                timeout=config.get("setup_timeout_seconds", 120)
             )
             if completed_setup.returncode != 0:
                 setup_failures.append(f"{' '.join(command)}: exit {completed_setup.returncode}")
+        except subprocess.TimeoutExpired:
+            setup_failures.append("setup command timed out")
         except OSError as error:
             # A missing launcher is a recorded fact about the run, not a reason
             # to lose the rest of the batch.
             setup_failures.append(f"{' '.join(command)}: {error.strerror}")
 
     usage_path = workspace / ".eval-usage.json"
-    env = dict(os.environ)
-    env.update(config.get("env", {}))
     env["REPOCTX_EVAL_USAGE"] = str(usage_path)
     env["REPOCTX_EVAL_ARM"] = run["arm_id"]
     env["REPOCTX_EVAL_TASK"] = run["task_id"]
@@ -232,7 +273,11 @@ def run_one(
     started = _dt.datetime.now(_dt.timezone.utc)
     timeout = config.get("timeout_seconds", 1800)
     timed_out = False
+    agent_error = None
+    stderr = ""
     try:
+        if setup_failures and config.get("billing_mode") != "stub":
+            raise OSError("setup failed; paid agent was not started")
         completed = subprocess.run(
             config["command"],
             cwd=workspace,
@@ -244,16 +289,29 @@ def run_one(
         )
         exit_code = completed.returncode
         transcript = completed.stdout
-    except subprocess.TimeoutExpired:
-        timed_out = True
+        stderr = completed.stderr
+    except OSError as error:
+        agent_error = str(error)
         exit_code = None
         transcript = ""
+    except subprocess.TimeoutExpired as error:
+        timed_out = True
+        exit_code = None
+        transcript = error.stdout or ""
+        stderr = error.stderr or ""
+    if isinstance(transcript, bytes):
+        transcript = transcript.decode("utf-8", errors="replace")
+    if isinstance(stderr, bytes):
+        stderr = stderr.decode("utf-8", errors="replace")
+    (workspace / ".eval-transcript.txt").write_text(transcript, encoding="utf-8")
+    (workspace / ".eval-stderr.txt").write_text(stderr, encoding="utf-8")
     finished = _dt.datetime.now(_dt.timezone.utc)
 
     usage: dict = {}
     if usage_path.is_file():
         try:
-            usage = json.loads(usage_path.read_text(encoding="utf-8"))
+            parsed_usage = json.loads(usage_path.read_text(encoding="utf-8"))
+            usage = parsed_usage if isinstance(parsed_usage, dict) else {}
         except json.JSONDecodeError:
             usage = {}
 
@@ -265,12 +323,19 @@ def run_one(
         "repetition": run["repetition"],
         "arm_position": run["arm_position"],
         "cache_mode": run["cache_mode"],
+        "cache_mode_verified": False,
+        "config_hash": hashlib.sha256(json.dumps(config, sort_keys=True).encode()).hexdigest(),
+        "guard_mode": "enforce" if arm["id"] == "guarded" else "off",
+        "artifact_directory": str(workspace.resolve()),
+        "setup_seconds": round((started - setup_started).total_seconds(), 3),
+        "agent_error": agent_error,
         "started_utc": started.isoformat(),
         "wall_clock_seconds": round((finished - started).total_seconds(), 3),
         "timed_out": timed_out,
         "agent_exit_code": exit_code,
         "repo_commit": repo["commit"],
-        "repoctx_version": config.get("repoctx_version"),
+        "repoctx_version": config.get(
+            "baseline_repoctx_version" if arm["id"] == "current" else "repoctx_version"),
         "agent_client_version": config.get("agent_client_version"),
         "model_id": config.get("model_id"),
         "pricing_source": config.get("pricing", {}).get("source"),
@@ -294,6 +359,8 @@ def run_one(
     record["quality"] = evaluate_acceptance(
         task, workspace, timed_out, run_checks=not config.get("skip_acceptance_commands", False)
     )
+    if setup_failures or agent_error or exit_code not in (0,):
+        record["quality"]["accepted"] = False
     return record
 
 
@@ -310,16 +377,16 @@ def evaluate_acceptance(
     accepted: bool | None = False if timed_out else None
     for check in task["acceptance"]:
         if check["type"] == "repo_tests" and not timed_out and run_checks:
-            result = subprocess.run(
-                check["command"],
-                cwd=workspace,
-                shell=True,
-                capture_output=True,
-                text=True,
-            )
-            checks.append(
-                {"type": "repo_tests", "passed": result.returncode == 0}
-            )
+            try:
+                result = subprocess.run(
+                    check["command"], cwd=workspace, shell=True, capture_output=True,
+                    text=True, timeout=1800,
+                )
+                checks.append({"type": "repo_tests", "passed": result.returncode == 0})
+                (workspace / f".eval-check-{len(checks)}.txt").write_text(
+                    result.stdout + result.stderr, encoding="utf-8")
+            except (OSError, subprocess.TimeoutExpired):
+                checks.append({"type": "repo_tests", "passed": False, "error": "check failed or timed out"})
         elif check["type"] == "rubric_only":
             checks.append({"type": "rubric_only", "passed": None})
         else:
@@ -444,17 +511,21 @@ def main(argv: list[str] | None = None) -> int:
             runs = [run for run in runs if run["task_id"] in set(args.task)]
 
         args.out.parent.mkdir(parents=True, exist_ok=True)
-        with args.out.open("w", encoding="utf-8") as handle:
+        artifacts = args.out.with_suffix(".artifacts").resolve()
+        if args.out.exists() or artifacts.exists():
+            raise PrerequisiteError("output or artifacts already exist; choose a new --out")
+        artifacts.mkdir()
+        with args.out.open("x", encoding="utf-8") as handle:
             for index, run in enumerate(runs):
                 task = tasks[run["task_id"]]
-                workspace = scratch_path / f"run-{index:04d}"
+                workspace = artifacts / f"run-{index:04d}"
                 record = run_one(
                     run, task, arms[run["arm_id"]], repositories[task["repository"]],
                     config, workspace,
                 )
                 record["manifest_sha256"] = manifest["_manifest_sha256"]
                 handle.write(json.dumps(record, sort_keys=True) + "\n")
-                shutil.rmtree(workspace, ignore_errors=True)
+                handle.flush()  # Preserve all evidence for rubric review and interruption recovery.
 
     print(f"wrote {args.out}")
     return 0

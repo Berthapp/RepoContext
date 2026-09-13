@@ -14,6 +14,16 @@ env:
   DOTNET_SKIP_FIRST_TIME_EXPERIENCE: "1"
 
 jobs:
+  agent-harness-self-check:
+    name: Agent comparison harness (offline)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - name: Check accounting and runner regressions without an agent
+        run: |
+          python3 docs/eval/agent/harness/selftest.py
+          python3 -m unittest discover -s docs/eval/agent/harness -p 'test_*.py'
+
   build-and-test:
     name: Build & test
     runs-on: ubuntu-latest

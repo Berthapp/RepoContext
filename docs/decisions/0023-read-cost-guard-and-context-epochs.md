@@ -92,7 +92,11 @@ matcher values to reasons is recorded for humans, not relied on for correctness:
 an unrecognized or renamed field still starts an epoch, so it can cost a repeated
 read and never a false possession claim.
 
-The session name carries the epoch (`claude-code-<digest>-e<n>`). `SessionStore`
+The v2 session name carries an epoch and a fresh generation token
+(`rcx-claude-code-<digest>-g<generation>-e<n>`). Generations prevent receipt
+resurrection after a retirement, eviction, deleted ledger or damaged ledger.
+Unknown or missing epoch state invalidates generated names. Legacy generated
+names are invalidated; ordinary manual names such as `review-e1` remain manual. `SessionStore`
 loads and saves **nothing** for an epoch-bound name whose epoch has moved on, so
 a local file cannot keep asserting possession on behalf of a replaced context.
 Manual `--session` and `REPOCTX_SESSION` names are not epoch-bound and keep their
@@ -107,9 +111,10 @@ automatic reuse — the safe direction.
 ### 6. Installation touches only what RepoContext owns
 
 `repoctx integrate --guard [--guard-mode enforce]` adds `PreToolUse`,
-`SessionStart`, `PreCompact` and `SessionEnd` entries to `.claude/settings.json`;
-`integrate --remove` takes them out. Only entries whose command is recognizably
-ours are added, updated or removed. Every other hook, permission, environment
+`SessionStart`, `PreCompact`, `SessionEnd` and `SubagentStart` entries to `.claude/settings.json`;
+`integrate --remove` takes them out. Only exact generated command forms (and the explicitly recognized legacy form)
+are owned. Commands merely mentioning repoctx are preserved. A foreign hook
+sharing a group retains its matcher when our entry moves. Every other hook, permission, environment
 variable and MCP server is written back unchanged. A settings file that cannot be
 parsed is reported and left untouched. Both operations are idempotent, and
 `integrate` without `--guard` still never touches client settings.
@@ -185,3 +190,30 @@ as one.
 - **Local-model bulk reading**: deferred by the plan; it needs its own ADR,
   evaluation and cost accounting, and a cheaper model can lower price while
   raising total tokens.
+
+## Review corrections — 2026-09-13
+
+- Persist a repeat marker successfully before emitting a denial; lock contention,
+  write failure or state capacity limits permit normal client handling. Local
+  state locks are non-blocking, and the deadline is checked again after evaluation.
+- Missing session identity, damaged JSON/configuration and SQLite errors fail open.
+  Offset-only reads and windows beyond EOF count only the remaining lines.
+- Reject metrics after a configuration change or a newer file/ancestor ignore
+  file timestamp, and reject symlink paths. This remains a metadata freshness
+  heuristic: deliberately restored timestamps are not content-hash verification.
+- Outline suggestions use absolute file paths so they also work from a subdirectory.
+- SubagentStart retires the parent's announced session before a child can inherit
+  its possession claims. Both re-read until a new lifecycle announcement. This
+  conservative fallback avoids sharing evidence with children without pretending
+  the adapter can change a running MCP server's environment.
+- A malformed settings file makes integrate/check exit 1 while preserving the file.
+- Context epochs include a random lifecycle generation; determinism still means
+  identical query plus identical index and supplied session state. Runtime state
+  identity is not a retrieval result or a benchmark measurement.
+- The initial benchmark harness was incomplete beyond absent credentials. See
+  [its corrected status](../eval/agent/README.md#status-in-this-repository).
+
+Hook lifecycle reference checked during review:
+https://code.claude.com/docs/en/hooks#subagentstart
+A live pinned Claude client was unavailable here; CLI payload fixtures and CI
+are the validation boundary, not an end-to-end client compatibility claim.

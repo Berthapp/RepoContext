@@ -78,7 +78,8 @@ public sealed class ReadCostPolicy(
     IGuardIndex index,
     ReadCostPolicyOptions options,
     TokenScale scale,
-    Func<string, string?> resolvePath)
+    Func<string, string?> resolvePath,
+    Func<string, string>? outlinePath = null)
 {
     /// <summary>
     /// The response ceiling the suggested <c>context</c> call carries. The same
@@ -211,7 +212,8 @@ public sealed class ReadCostPolicy(
         foreach (GuardTarget target in expensive.Take(Options.MaxSuggestions))
         {
             string quoted = GuardSuggestion.Quote(target.Path);
-            suggestions.Add($"repoctx outline {quoted}");
+            string quotedOutline = GuardSuggestion.Quote(outlinePath?.Invoke(target.Path) ?? target.Path);
+            suggestions.Add($"repoctx outline {quotedOutline}");
             suggestions.Add(
                 $"repoctx context '<the task in your own words>' --path {quoted} "
                 + $"--detail slices --response-budget-tokens {SuggestedResponseBudgetTokens}");

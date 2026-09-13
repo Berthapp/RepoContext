@@ -132,6 +132,21 @@ public class GuardCommandTests
     }
 
     [Fact]
+    public void SuggestedOutline_ResolvesFromTheToolsSubdirectory()
+    {
+        using FixtureWorkspace ws = IndexedWorkspace();
+        string subdirectory = ws.PathOf("src");
+        CliResult result = Hook(ws, ReadEvent(subdirectory, ws.PathOf(BigFile)),
+            "guard", "hook", "--mode", "enforce");
+        string suggestion = DenialReason(result.StdOut).Split('\n')
+            .Select(line => line.Trim()).First(line => line.StartsWith("repoctx outline", StringComparison.Ordinal));
+        Assert.True(RepoContext.Core.Guard.ShellReadParser.TrySplit(suggestion, out var words));
+        CliResult outline = CliHarness.RunIn(subdirectory, StatsOn, standardInput: null, [.. words.Skip(1)]);
+        Assert.Equal(0, outline.ExitCode);
+        Assert.Contains("entry0", outline.StdOut, StringComparison.Ordinal);
+    }
+
+    [Fact]
     public void ReadNearEnd_UsesOnlyRemainingLines()
     {
         using FixtureWorkspace ws = IndexedWorkspace();
@@ -318,7 +333,7 @@ public class GuardCommandTests
         string second = Announced(resumed.StdOut);
 
         Assert.NotEqual(first, second);
-        Assert.StartsWith("claude-code-", first, StringComparison.Ordinal);
+        Assert.StartsWith("rcx-claude-code-", first, StringComparison.Ordinal);
     }
 
     [Fact]
@@ -405,10 +420,12 @@ public class GuardCommandTests
         using JsonDocument document = JsonDocument.Parse(stdout);
         string context = document.RootElement.GetProperty("hookSpecificOutput")
             .GetProperty("additionalContext").GetString()!;
-        int start = context.IndexOf("claude-code-", StringComparison.Ordinal);
+        int start = context.IndexOf("rcx-claude-code-", StringComparison.Ordinal);
         Assert.True(start >= 0, context);
         int end = context.IndexOf('.', start);
-        return context[start..end];
+        string name = context[start..end];
+        Assert.True(RepoContext.Core.Context.ContextEpochs.TryParseSessionName(name, out _, out _));
+        return name;
     }
 
     private static int Reused(string json)

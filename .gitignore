@@ -469,3 +469,6 @@ FodyWeavers.xsd
 /docs/eval/agent/harness/report.md
 /docs/eval/agent/harness/prices.json
 /docs/eval/agent/harness/__pycache__/
+
+# Retained comparison transcripts and workspaces, never shipped as measurements.
+/docs/eval/agent/**/*.artifacts/

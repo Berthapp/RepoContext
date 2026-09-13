@@ -5,8 +5,9 @@ Fewer returned tokens is a mechanism, not the acceptance criterion, so this
 harness measures whole workflows: discovery, instructions, tool calls, repeated
 context, retries, compaction, editing, review and verification.
 
-It is deliberately **not** part of the offline test suite and not part of CI. It
-starts a real coding agent, so it needs credentials and spends real money.
+The real comparison is deliberately **not** part of offline CI. Its runner
+would start a real coding agent and spend money. The offline harness self-check
+and accounting regression tests do run in CI.
 Nothing in normal RepoContext operation calls it, and the product stays offline,
 deterministic and free of model calls.
 
@@ -41,7 +42,7 @@ python3 harness/run_comparison.py --plan
 # 3. The offline self-check: proves the harness itself, costs nothing.
 python3 harness/selftest.py
 
-# 4. The real comparison (needs credentials and a price sheet).
+# 4. Future real comparison (currently blocked: see status below).
 python3 harness/run_comparison.py --config my-agent.json --out runs.jsonl
 python3 harness/score_comparison.py runs.jsonl --prices prices.json \
     -o report.json --markdown report.md
@@ -72,19 +73,31 @@ belongs in the report, not a reason to publish an unmeasured number.
 
 ## Status in this repository
 
-**No arm has been executed.** This environment has no agent credentials, no
-provider price sheet and no billing access, and the plan forbids inventing them:
+**The full real-agent comparison is not executable yet.** Review on 2026-09-13
+found implementation gaps in addition to missing credentials and prices:
 
-* `ANTHROPIC_API_KEY` (or the equivalent for another agent client) is unset,
-* no pinned agent client binary is installed,
-* no provider pricing sheet with a date and currency is available,
-* `npm install` for the three JavaScript/TypeScript repositories needs network
-  access that the offline product constraint deliberately excludes from CI.
+- Review tasks refer to supplied patches and hidden defect lists that are absent.
+- The compaction/stale-index scenarios have labels but no scenario controllers.
+- Repetition order cannot establish cold/warm provider cache state.
+- A raw Claude CLI invocation does not write the custom REPOCTX_EVAL_USAGE file.
+  It needs an explicit usage adapter; the example configuration now says so.
 
-What *is* finished and verified here is the executable setup: the frozen
-manifest and rubric, the counterbalanced plan, the run-record contract, the
-prerequisite reporter, the scorer and its offline self-check, which
-[`AgentEvaluationManifestTests`](../../../tests/RepoContext.Integration.Tests/Evaluation/AgentEvaluationManifestTests.cs)
-keeps frozen in CI. Whoever has credentials can execute the arms without
-changing a line of this harness, and the report they produce will state its own
-completeness.
+The preflight now reports these gaps and prevents a paid run from being mistaken
+for the frozen comparison. Completing the fixtures/controllers needs a new
+versioned manifest; the original tasks and frozen hashes have not been changed.
+The 0.15.0 enforcement mode therefore remains experimental.
+
+The runner explicitly requests enforce mode for the guarded arm. It supports a
+separate pinned baseline executable, records setup failures, catches agent launch
+failures, and retains stdout, stderr and complete workspaces next to the output
+in a .artifacts directory for human adjudication. It refuses to overwrite an
+existing run set. Repository dependency setup, isolated agent configuration and
+verified model/version/cache control still require the real-run adapter work.
+
+The scorer requires the complete frozen run matrix, provenance, billing and
+adjudication before allowing comparative claims. Missing or duplicate runs,
+failed setup, unverified cache modes, missing repair/severity scores and mixed
+currencies cannot pass as a complete comparison. Subscription/API-equivalent
+figures are excluded from actual-money totals; incomplete totals are null with
+known subtotals labelled separately. Empirical zero-width intervals do not prove
+quality parity. No real saving or equal-quality result is established here.

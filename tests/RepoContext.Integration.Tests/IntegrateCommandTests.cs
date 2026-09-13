@@ -232,7 +232,7 @@ public class IntegrateCommandTests
 
         CliResult result = ws.Run("integrate", "--client", "claude-code", "--guard");
 
-        Assert.Equal(0, result.ExitCode);
+        Assert.Equal(1, result.ExitCode); // Installation failed; CI must not report success.
         Assert.Contains("left untouched", result.StdErr, StringComparison.Ordinal);
         Assert.Equal(damaged, File.ReadAllText(ws.PathOf(".claude/settings.json")));
     }

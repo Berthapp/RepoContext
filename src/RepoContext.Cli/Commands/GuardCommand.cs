@@ -265,7 +265,8 @@ public static class GuardCommand
             new IndexedGuardMetrics(layout, store, indexedAt),
             new ReadCostPolicyOptions { MaxReadTokens = maxTokens },
             TokenScale.From(config),
-            path => layout.ToRelativePath(path, workingDirectory));
+            path => layout.ToRelativePath(path, workingDirectory),
+            path => Path.Combine(layout.Root, path.Replace('/', Path.DirectorySeparatorChar)));
 
         return policy.Evaluate(reads, mode, path => GuardState.Redirects(layout, epochKey, path));
     }

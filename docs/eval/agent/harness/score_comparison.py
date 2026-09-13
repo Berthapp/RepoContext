@@ -21,6 +21,8 @@ that a release decision can actually rest on:
 from __future__ import annotations
 
 import argparse
+import hashlib
+from collections import Counter
 import json
 import math
 import pathlib
@@ -61,8 +63,11 @@ def run_cost(record: dict, prices: dict | None) -> float | None:
     category, so they are never counted twice. Any missing input returns None:
     an unknown cost stays unknown.
     """
+    if record.get("billing_mode") in ("subscription", "stub"):
+        return None
     if record.get("billed_amount") is not None:
-        return float(record["billed_amount"])
+        amount = record["billed_amount"]
+        return float(amount) if valid_number(amount) else None
     if not prices:
         return None
     spend = record.get("spend") or {}
@@ -74,10 +79,15 @@ def run_cost(record: dict, prices: dict | None) -> float | None:
                 continue
             return None
         rate = prices.get(field)
-        if rate is None:
+        if not valid_number(value) or not valid_number(rate):
             return None
         total += (value / 1_000_000.0) * rate
     return total
+
+
+def valid_number(value) -> bool:
+    return (isinstance(value, (int, float)) and not isinstance(value, bool)
+            and math.isfinite(value) and value >= 0)
 
 
 def bootstrap_ci(paired: list[float], confidence: float = 0.95) -> dict:
@@ -143,8 +153,8 @@ def summarize_arm(runs: list[dict], prices: dict | None) -> dict:
         1 for record in runs if (record.get("quality") or {}).get("accepted") is None
     )
 
-    total_cost = sum(known) if known else None
     complete_cost = len(known) == len(costs) and bool(costs)
+    total_cost = sum(known) if complete_cost else None
     return {
         "runs": len(runs),
         "accepted": len(accepted),
@@ -155,6 +165,7 @@ def summarize_arm(runs: list[dict], prices: dict | None) -> dict:
         "severity_unscored": sum(1 for s in severities if s is None),
         "human_repair_minutes_total": sum(repair) if repair else None,
         "total_spend": total_cost,
+        "known_spend_subtotal": sum(known) if known else None,
         "total_spend_complete": complete_cost,
         "cost_per_accepted_completion": (
             None
@@ -211,13 +222,54 @@ def completeness(runs: list[dict], prices: dict | None) -> dict:
     subscription = sorted(
         {record["run_id"] for record in runs if record.get("billing_mode") == "subscription"}
     )
+    manifest = json.loads(MANIFEST.read_text(encoding="utf-8"))
+    manifest_hash = hashlib.sha256(MANIFEST.read_text(encoding="utf-8").encode()).hexdigest()
+    from run_comparison import plan_runs
+    expected = {r["run_id"]: r for r in plan_runs(manifest)}
+    tasks = {t["id"]: t for t in manifest["tasks"]}
+    counts = Counter(r["run_id"] for r in runs)
+    missing_runs = sorted(set(expected) - set(counts))
+    invalid_runs = []
+    for record in runs:
+        run_id = record["run_id"]
+        planned = expected.get(run_id)
+        quality = record.get("quality") or {}
+        dimensions = tasks.get(record.get("task_id"), {}).get("rubric_dimensions", [])
+        rubric = quality.get("rubric_scores") or {}
+        invalid = (planned is None or counts[run_id] != 1
+            or record.get("manifest_sha256") != manifest_hash
+            or not isinstance(quality.get("accepted"), bool)
+            or not dimensions or any(not valid_number(rubric.get(d)) or rubric[d] > 3 for d in dimensions)
+            or quality.get("defect_severity") not in ("none", "minor", "major", "severe")
+            or not valid_number(quality.get("human_repair_minutes"))
+            or record.get("setup_failures") or not record.get("config_hash")
+            or record.get("billing_mode") != "api"
+            or not record.get("pricing_currency") or not record.get("pricing_date")
+            or not record.get("pricing_source") or not record.get("agent_client_version")
+            or not record.get("model_id") or not record.get("repo_commit")
+            or record.get("cache_mode_verified") is not True)
+        if planned:
+            invalid = invalid or any(record.get(key) != planned[key]
+                for key in ("task_id", "arm_id", "repetition", "cache_mode"))
+        if invalid:
+            invalid_runs.append(run_id)
+    currencies = {r.get("pricing_currency") for r in runs}
+    models = {r.get("model_id") for r in runs}
+    clients = {r.get("agent_client_version") for r in runs}
+    complete_money = bool(runs) and all(run_cost(r, prices) is not None for r in runs)
+    complete = (bool(runs) and not missing_usage and not missing_rubric
+        and not missing_severity and not subscription and not missing_runs and not invalid_runs
+        and complete_money and len(currencies) == len(models) == len(clients) == 1)
     return {
-        "priced": bool(prices) or all(r.get("billed_amount") is not None for r in runs),
+        "priced": complete_money,
+        "missing_planned_runs": missing_runs,
+        "invalid_or_unverified_runs": sorted(set(invalid_runs)),
+        "currencies": sorted(str(c) for c in currencies),
         "missing_usage_fields": missing_usage,
         "unscored_rubric_runs": missing_rubric,
         "unscored_severity_runs": missing_severity,
         "subscription_runs_excluded_from_money": subscription,
-        "comparison_complete": not missing_usage and not missing_rubric,
+        "comparison_complete": complete,
     }
 
 
@@ -237,6 +289,8 @@ def score(runs: list[dict], prices: dict | None) -> dict:
         "cache_modes": {},
         "completeness": completeness(runs, prices),
         "claims": [],
+        "quality_interval_note": "Quality regression bounds include a conservative bounded-mean "
+            "interval (assuming independent paired runs); a constant sample cannot establish parity.",
     }
 
     for arm in arms:
@@ -280,13 +334,27 @@ def score(runs: list[dict], prices: dict | None) -> dict:
             "rubric_delta": rubric,
             "cost_delta": cost,
             "largest_acceptance_regression_compatible_with_data": (
-                None if acceptance["low"] is None else -min(0.0, acceptance["low"])
+                None if acceptance["low"] is None else max(
+                    -min(0.0, acceptance["low"]),
+                    min(1.0, math.sqrt(2.0 * math.log(40.0) / acceptance["n"]) - acceptance["mean"]))
             ),
             "largest_rubric_regression_compatible_with_data": (
-                None if rubric["low"] is None else -min(0.0, rubric["low"])
+                None if rubric["low"] is None else max(
+                    -min(0.0, rubric["low"]),
+                    min(3.0, 3.0 * math.sqrt(2.0 * math.log(40.0) / rubric["n"]) - rubric["mean"]))
             ),
         }
 
+    report["paired_by_cache_mode"] = {
+        mode: {arm: {
+            "cost_delta": bootstrap_ci(pair_by_run(
+                [r for r in runs if r["cache_mode"] == mode], arm, BASELINE_ARM,
+                lambda r: run_cost(r, prices))),
+            "acceptance_delta": bootstrap_ci(pair_by_run(
+                [r for r in runs if r["cache_mode"] == mode], arm, BASELINE_ARM, acceptance_value)),
+        } for arm in arms if arm != BASELINE_ARM}
+        for mode in ("cold", "warm")
+    }
     report["claims"] = supported_claims(report)
     return report
 
@@ -296,10 +364,11 @@ def supported_claims(report: dict) -> list[str]:
     claims: list[str] = []
     complete = report["completeness"]["comparison_complete"]
     if not complete:
-        claims.append(
-            "INCOMPLETE: usage or rubric data is missing; no saving and no equal-quality "
-            "claim is supported by this run set."
-        )
+        return [
+            "INCOMPLETE: planned runs, provenance, setup, cache state, billing or quality "
+            "data are missing or invalid; no saving and no equal-quality claim is supported. "
+            "Partial numerical summaries are diagnostics only."
+        ]
     for arm, paired in report["paired_vs_current"].items():
         cost = paired["cost_delta"]
         acceptance = paired["acceptance_delta"]
