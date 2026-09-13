@@ -37,13 +37,71 @@ public sealed class RepoLayout
     /// <paramref name="currentDirectory"/>) into a repo-relative path with
     /// <c>/</c> separators. Returns null if it falls outside the repository.
     /// </summary>
+    /// <remarks>
+    /// Two spellings can name the same location. macOS reaches <c>/var</c> and
+    /// <c>/tmp</c> through links to <c>/private/…</c>, and a repository checked
+    /// out under a symlinked directory is reached both ways routinely — so a
+    /// path a caller supplies and the root a command discovered can point at the
+    /// same file and still differ as strings. Comparing them literally reports
+    /// "outside the repository" for a file plainly inside it.
+    /// <para>
+    /// The link-resolving comparison is only a fallback for when the literal one
+    /// says no, so it can turn a wrong rejection into an answer and can never
+    /// change a path that already resolved. A symlink that genuinely leaves the
+    /// repository still resolves to somewhere outside the resolved root and is
+    /// still rejected.
+    /// </para>
+    /// </remarks>
     public string? ToRelativePath(string input, string currentDirectory)
     {
         string full = Path.GetFullPath(Path.Combine(currentDirectory, input));
-        string relative = Path.GetRelativePath(Root, full).Replace('\\', '/');
+        return Relative(Root, full) ?? Relative(ResolveLinks(Root), ResolveLinks(full));
+    }
+
+    private static string? Relative(string root, string full)
+    {
+        string relative = Path.GetRelativePath(root, full).Replace('\\', '/');
         return relative.StartsWith("../", StringComparison.Ordinal) || relative == ".."
             ? null
             : relative;
+    }
+
+    /// <summary>
+    /// Resolves symlinked components of <paramref name="path"/>, walking down
+    /// from the filesystem root so a linked <i>ancestor</i> is resolved too.
+    /// </summary>
+    /// <remarks>
+    /// Best-effort by design: a component that cannot be inspected is kept
+    /// verbatim, because this only ever feeds a second comparison attempt that
+    /// would otherwise have been a rejection.
+    /// </remarks>
+    private static string ResolveLinks(string path)
+    {
+        string full = Path.GetFullPath(path);
+        string root = Path.GetPathRoot(full) ?? string.Empty;
+        string current = root;
+        foreach (string part in full[root.Length..].Split(
+            [Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar],
+            StringSplitOptions.RemoveEmptyEntries))
+        {
+            current = Path.Combine(current, part);
+            try
+            {
+                FileSystemInfo? entry = Directory.Exists(current)
+                    ? new DirectoryInfo(current)
+                    : File.Exists(current) ? new FileInfo(current) : null;
+                if (entry?.ResolveLinkTarget(returnFinalTarget: true) is { } target)
+                {
+                    current = target.FullName;
+                }
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException
+                or ArgumentException or NotSupportedException)
+            {
+            }
+        }
+
+        return current;
     }
 
     /// <summary>
