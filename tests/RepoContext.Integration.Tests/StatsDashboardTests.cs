@@ -330,7 +330,10 @@ public class StatsDashboardTests
                 ["file_path"] = ws.PathOf("src/generated/catalog.ts"),
             },
         });
-        ws.RunWithInput(payload, "guard", "hook", "--mode", "enforce");
+        // A generous budget: this test is about where a denial is reported,
+        // not about the guard's wall-clock safeguard, which stands aside on a
+        // loaded machine and would leave nothing to report.
+        ws.RunWithInput(payload, "guard", "hook", "--mode", "enforce", "--timeout-ms", "60000");
 
         CliResult text = ws.Run("stats", "--format", "text");
         Assert.Contains("Read-cost guard", text.StdOut, StringComparison.Ordinal);

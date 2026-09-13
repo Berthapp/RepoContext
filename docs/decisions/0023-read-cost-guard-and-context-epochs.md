@@ -213,6 +213,13 @@ as one.
   identity is not a retrieval result or a benchmark measurement.
 - The initial benchmark harness was incomplete beyond absent credentials. See
   [its corrected status](../eval/agent/README.md#status-in-this-repository).
+- The hook's wall-clock budget (400 ms by default, measured from the moment the
+  process begins reading the payload) means a loaded machine gets no enforcement
+  at all: the guard stands aside and prints nothing. That is the intended
+  production direction — nobody waits on a cost optimization — but it also makes
+  any assertion about a *decision* a race with the machine the suite runs on, so
+  the tests that pin policy behaviour set a generous budget explicitly. The
+  fail-open itself keeps its own test at a zero budget.
 
 Hook lifecycle reference checked during review:
 https://code.claude.com/docs/en/hooks#subagentstart

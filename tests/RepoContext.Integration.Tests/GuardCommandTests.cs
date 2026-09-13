@@ -22,8 +22,27 @@ public class GuardCommandTests
         ["REPOCTX_NO_STATS"] = string.Empty,
     };
 
+    /// <summary>
+    /// Runs one hook event against the fixture workspace.
+    /// </summary>
+    /// <remarks>
+    /// The guard's wall-clock budget is a production safeguard: it stands aside
+    /// rather than keep a user waiting. That makes every assertion about a
+    /// <em>decision</em> a race against the machine the suite happens to run on,
+    /// and a loaded CI runner loses it — the read is allowed, the hook prints
+    /// nothing, and a policy test fails for a reason that has nothing to do with
+    /// the policy. These tests are about the decision, so the budget is pinned
+    /// out of their way; that the guard really does fail open once the budget is
+    /// gone is pinned separately by
+    /// <see cref="AnExhaustedBudget_AllowsTheReadInsteadOfMakingAnyoneWait"/>,
+    /// which sets its own timeout and keeps it.
+    /// </remarks>
     private static CliResult Hook(FixtureWorkspace ws, string payload, params string[] args) =>
-        CliHarness.RunIn(ws.Root, StatsOn, payload, args);
+        CliHarness.RunIn(ws.Root, StatsOn, payload, WithoutABudgetRace(args));
+
+    /// <summary>Adds a generous hook budget unless the test sets its own.</summary>
+    private static string[] WithoutABudgetRace(string[] args) =>
+        Array.IndexOf(args, "--timeout-ms") >= 0 ? args : [.. args, "--timeout-ms", "60000"];
 
     private static CliResult Cli(FixtureWorkspace ws, params string[] args) =>
         CliHarness.RunIn(ws.Root, StatsOn, standardInput: null, args);
