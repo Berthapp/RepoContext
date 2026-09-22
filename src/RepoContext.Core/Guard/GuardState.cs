@@ -187,7 +187,7 @@ public static class GuardState
         string path = PathFor(layout);
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            layout.PrepareIndexFile(path);
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Guard", path, StoreLockTimeoutMilliseconds);
             if (lease is null)
@@ -227,7 +227,7 @@ public static class GuardState
                 TrimEpochs(file.Redirects);
             }
 
-            Write(path, file);
+            Write(layout, path, file);
             return true;
         }
         catch (Exception e) when (
@@ -260,7 +260,7 @@ public static class GuardState
             StateFile file = Read(path);
             if (file.Redirects.Remove(epochKey))
             {
-                Write(path, file);
+                Write(layout, path, file);
             }
         }
         catch (Exception e) when (
@@ -326,11 +326,10 @@ public static class GuardState
         }
     }
 
-    private static void Write(string path, StateFile file)
+    private static void Write(RepoLayout layout, string path, StateFile file)
     {
-        string temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(file, SerializerOptions));
-        File.Move(temporary, path, overwrite: true);
+        layout.PrepareIndexFile(path);
+        SafePaths.WriteAllTextAtomic(path, JsonSerializer.Serialize(file, SerializerOptions));
     }
 
     /// <summary>A human-readable one-line summary of the counters.</summary>

@@ -183,6 +183,46 @@ public class ReferenceExtractorTests
     }
 
     /// <summary>
+    /// The configuration is repository content. A pattern the linear engine can
+    /// run costs time proportional to the text, however hostile it is - a file
+    /// of near-matching lines no longer multiplies a per-line timeout.
+    /// </summary>
+    [Fact]
+    public void AHostilePattern_CostsLinearTime_OverAWholeFile()
+    {
+        var options = new ArtifactOptions { KeyPatterns = ["(a+)+$"] };
+        string content = string.Concat(Enumerable.Repeat(new string('a', 60) + "b\n", 500));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        Extract(File("docs/policy.md", FileKind.Doc, SourceLanguage.Markdown), content, options);
+
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(10), $"took {watch.Elapsed}");
+    }
+
+    /// <summary>
+    /// Lookarounds need the backtracking engine and keep working; a pathological
+    /// one pays its timeout once per run, not once per line.
+    /// </summary>
+    [Fact]
+    public void BacktrackingOnlyPatterns_StillMatch_AndATimeoutDisablesThemForTheRun()
+    {
+        IReadOnlyList<FileReference> refs = Extract(
+            File("docs/policy.md", FileKind.Doc, SourceLanguage.Markdown),
+            "Covered by SPEC_042.\n",
+            new ArtifactOptions { KeyPatterns = ["(?<=by )SPEC_[0-9]{3}"] });
+        Assert.Contains("SPEC_042", Values(refs, RefKind.Key));
+
+        var hostile = new ArtifactOptions { KeyPatterns = ["(?=a)(a+)+$"] };
+        string content = string.Concat(Enumerable.Repeat(new string('a', 40) + "b\n", 20));
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        Extract(File("docs/policy.md", FileKind.Doc, SourceLanguage.Markdown), content, hostile);
+
+        // One two-second timeout, not twenty.
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(15), $"took {watch.Elapsed}");
+    }
+
+    /// <summary>
     /// The references the graph is resolved from are the sole input to a file's
     /// import edges, so the artifact bound must not truncate them: doing so
     /// drops real dependencies from the graph, alphabetically and silently.

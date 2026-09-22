@@ -102,10 +102,14 @@ public sealed partial class ReferenceExtractor
     private readonly ArtifactOptions _options;
     private readonly IReadOnlyList<Regex> _keyPatterns;
 
+    /// <summary>Patterns that timed out once and are skipped for the rest of this run.</summary>
+    private readonly bool[] _keyPatternDisabled;
+
     public ReferenceExtractor(ArtifactOptions options)
     {
         _options = options;
         _keyPatterns = CompileKeyPatterns(options.KeyPatterns);
+        _keyPatternDisabled = new bool[_keyPatterns.Count];
     }
 
     /// <summary>
@@ -241,8 +245,13 @@ public sealed partial class ReferenceExtractor
             }
         }
 
-        foreach (Regex pattern in _keyPatterns)
+        for (int i = 0; i < _keyPatterns.Count; i++)
         {
+            if (_keyPatternDisabled[i])
+            {
+                continue;
+            }
+
             // Materialized inside the try: Matches() is lazy, so a timeout on a
             // pathological pattern fires during enumeration, and enumerating
             // outside the try would abort the whole index run rather than
@@ -250,7 +259,7 @@ public sealed partial class ReferenceExtractor
             List<string> matches = [];
             try
             {
-                foreach (Match match in pattern.Matches(line))
+                foreach (Match match in _keyPatterns[i].Matches(line))
                 {
                     if (match.Length > 0)
                     {
@@ -260,6 +269,10 @@ public sealed partial class ReferenceExtractor
             }
             catch (RegexMatchTimeoutException)
             {
+                // One timeout proves the pattern pathological. Paying it again on
+                // every remaining line would turn a degraded file into an index
+                // run that never ends - the configuration is repository content.
+                _keyPatternDisabled[i] = true;
                 continue;
             }
 
@@ -287,7 +300,22 @@ public sealed partial class ReferenceExtractor
 
             try
             {
-                compiled.Add(new Regex(pattern, RegexOptions.CultureInvariant, PatternTimeout));
+                // Linear-time matching whenever the pattern allows it, so a
+                // pathological pattern cannot cost more than the text it scans.
+                compiled.Add(new Regex(
+                    pattern, RegexOptions.CultureInvariant | RegexOptions.NonBacktracking, PatternTimeout));
+            }
+            catch (NotSupportedException)
+            {
+                // Lookarounds and backreferences need the backtracking engine;
+                // the timeout (and disabling after it fires) bounds those.
+                try
+                {
+                    compiled.Add(new Regex(pattern, RegexOptions.CultureInvariant, PatternTimeout));
+                }
+                catch (ArgumentException)
+                {
+                }
             }
             catch (ArgumentException)
             {

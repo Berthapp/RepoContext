@@ -89,7 +89,7 @@ public static class MemoryStore
                 $"Memory is full ({MaxEntries} entries). Remove entries with 'repoctx memory rm <id>' first.");
         }
 
-        Append(path, JsonSerializer.Serialize(new StoredLine
+        Append(layout, path, JsonSerializer.Serialize(new StoredLine
         {
             Id = entry.Id,
             Kind = entry.Kind,
@@ -115,7 +115,7 @@ public static class MemoryStore
             return false;
         }
 
-        Append(path, JsonSerializer.Serialize(
+        Append(layout, path, JsonSerializer.Serialize(
             new StoredLine { Id = id, Deleted = true }, SerializerOptions));
         return true;
     }
@@ -134,9 +134,9 @@ public static class MemoryStore
         return Fold(File.ReadAllLines(path));
     }
 
-    private static void Append(string path, string line)
+    private static void Append(RepoLayout layout, string path, string line)
     {
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        layout.PrepareIndexFile(path);
         byte[] bytes = Encoding.UTF8.GetBytes(line + "\n");
         using (var stream = new FileStream(
             path, FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.Read))
@@ -190,9 +190,7 @@ public static class MemoryStore
                 compacted += "\n";
             }
 
-            string temporaryPath = path + ".compact.tmp";
-            File.WriteAllText(temporaryPath, compacted);
-            File.Move(temporaryPath, path, overwrite: true);
+            SafePaths.WriteAllTextAtomic(path, compacted);
         }
         catch (Exception e) when (e is IOException or UnauthorizedAccessException)
         {

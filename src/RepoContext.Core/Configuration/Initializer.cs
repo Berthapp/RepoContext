@@ -54,7 +54,11 @@ public static class Initializer
                 $"Already initialized ({RepoContextInfo.ConfigFileName} exists). Use --force to overwrite.");
         }
 
-        Directory.CreateDirectory(layout.IndexDirectory);
+        // Everything init writes is checked before anything is written, so a
+        // hostile link refuses the whole run instead of leaving half of it.
+        SafePaths.EnsureContained(layout.Root, layout.ConfigPath);
+        SafePaths.EnsureContained(layout.Root, Path.Combine(layout.Root, ".gitignore"));
+        layout.PrepareIndexFile(layout.DatabasePath);
         RepoctxConfig config = RepoctxConfig.CreateDefault();
         ConfigStore.Save(layout.ConfigPath, config);
 

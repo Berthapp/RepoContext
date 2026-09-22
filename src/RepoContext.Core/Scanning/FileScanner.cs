@@ -32,11 +32,48 @@ public sealed class FileScanner
     private readonly HashSet<string> _unreadableIgnoreFiles = new(StringComparer.Ordinal);
     private readonly HashSet<string> _reportable = new(StringComparer.Ordinal);
 
+    /// <summary>
+    /// Private keys and credential stores that are never indexed - neither
+    /// content nor path - whatever <c>sensitiveFiles</c> says.
+    /// </summary>
+    /// <remarks>
+    /// <c>sensitiveFiles</c> is configuration, and configuration travels with
+    /// the repository, so it cannot be the only thing standing between a
+    /// committed deploy key and the model provider an agent forwards excerpts
+    /// to. The list is deliberately narrow: names that hold a secret in
+    /// practically every repository they appear in, so nothing an agent needs
+    /// to read goes missing. Applied after the configured patterns, so a
+    /// <c>!</c> rule there cannot re-include them.
+    /// </remarks>
+    public static IReadOnlyList<string> BuiltInSensitiveFiles { get; } =
+    [
+        "*.pem",
+        "*.key",
+        "*.p12",
+        "*.pfx",
+        "*.jks",
+        "*.keystore",
+        "id_rsa",
+        "id_dsa",
+        "id_ecdsa",
+        "id_ed25519",
+        "id_ecdsa_sk",
+        "id_ed25519_sk",
+        ".npmrc",
+        ".pypirc",
+        ".netrc",
+        "_netrc",
+        ".git-credentials",
+        ".pgpass",
+        "*.tfstate",
+        "*.tfstate.backup",
+    ];
+
     public FileScanner(string repoRoot, RepoctxConfig config)
     {
         _repoRoot = Path.GetFullPath(repoRoot);
         _config = config;
-        _sensitive = GitignoreMatcher.FromGlobs(config.SensitiveFiles);
+        _sensitive = GitignoreMatcher.FromGlobs([.. config.SensitiveFiles, .. BuiltInSensitiveFiles]);
         _exclude = new IgnoreScope(string.Empty, GitignoreMatcher.FromGlobs(config.Exclude));
     }
 
@@ -172,6 +209,14 @@ public sealed class FileScanner
         foreach (string root in roots)
         {
             string abs = Path.GetFullPath(Path.Combine(_repoRoot, root));
+            if (!IsInsideRepository(abs))
+            {
+                // A root that escapes - by its spelling or through a link - is
+                // not part of this repository, however the configuration names
+                // it. Links below a root are never followed either (see Walk).
+                continue;
+            }
+
             if (Directory.Exists(abs))
             {
                 Walk(abs, ScopesDownTo(abs), results, visited);
@@ -445,6 +490,19 @@ public sealed class FileScanner
                 _unreadableIgnoreFiles.Add(ToRelative(path));
             }
         }
+    }
+
+    /// <summary>
+    /// Whether an include root lies inside the repository, both as spelled and
+    /// with every link on the way resolved.
+    /// </summary>
+    private bool IsInsideRepository(string absolutePath)
+    {
+        string relative = Path.GetRelativePath(_repoRoot, absolutePath).Replace('\\', '/');
+        return relative != ".."
+            && !relative.StartsWith("../", StringComparison.Ordinal)
+            && !Path.IsPathRooted(relative)
+            && SafePaths.IsContained(_repoRoot, absolutePath);
     }
 
     private bool HasIgnoreFile(string directory) =>

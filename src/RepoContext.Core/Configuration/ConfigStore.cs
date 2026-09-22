@@ -28,6 +28,16 @@ public static class ConfigStore
                 throw new JsonException($"{name} must be an array of non-empty strings (an empty array is allowed).");
         }
         Strings(config.Include, "include");
+        foreach (string include in config.Include)
+        {
+            // The configuration travels with the repository, so it is untrusted:
+            // an include of `../..` or `/home` would index - and serve to an
+            // agent - files that are not part of the checkout at all.
+            if (!IsInsideRepository(include))
+                throw new JsonException(
+                    $"include entries must be relative paths inside the repository (no absolute "
+                    + $"path, no '..'): '{include}'.");
+        }
         Strings(config.Exclude, "exclude");
         Strings(config.SensitiveFiles, "sensitiveFiles");
         if (config.Indexing is null || config.Artifacts is null || config.Ranking?.Weights is null
@@ -41,6 +51,16 @@ public static class ConfigStore
         foreach ((string key, IReadOnlyList<string> values) in config.Ranking.Synonyms)
             Strings(values, $"ranking.synonyms.{key}");
     }
+
+    /// <summary>
+    /// Whether an <c>include</c> entry stays inside the repository by its
+    /// spelling alone: relative, without a <c>..</c> segment. Links are the
+    /// scanner's business, because only the disk can answer for those.
+    /// </summary>
+    public static bool IsInsideRepository(string include) =>
+        !Path.IsPathRooted(include)
+        && !include.StartsWith('/') && !include.StartsWith('\\')
+        && !include.Split('/', '\\').Contains("..");
 
     /// <summary>Loads the config from <paramref name="path"/>.</summary>
     public static RepoctxConfig Load(string path) => Deserialize(File.ReadAllText(path));

@@ -53,6 +53,7 @@ public sealed class IndexStore : IDisposable
     /// <summary>Opens (creating if needed) the index database and ensures the schema.</summary>
     public static IndexStore Open(string databasePath)
     {
+        RejectLinkedDatabase(databasePath);
         string? dir = Path.GetDirectoryName(databasePath);
         if (!string.IsNullOrEmpty(dir))
         {
@@ -88,6 +89,8 @@ public sealed class IndexStore : IDisposable
     /// </remarks>
     public static IndexStore OpenReadOnly(string databasePath)
     {
+        // Even a read-only WAL reader writes the shared-memory side file.
+        RejectLinkedDatabase(databasePath);
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
@@ -96,6 +99,28 @@ public sealed class IndexStore : IDisposable
         }.ToString());
         connection.Open();
         return new IndexStore(connection);
+    }
+
+    /// <summary>
+    /// Refuses a database, a side file or an index directory that is a
+    /// symbolic link.
+    /// </summary>
+    /// <remarks>
+    /// SQLite follows links for the database and creates or rewrites its
+    /// <c>-wal</c>, <c>-shm</c> and <c>-journal</c> files beside it. A hostile
+    /// checkout that commits <c>.repoctx/index.db-wal -&gt; ~/somewhere</c>
+    /// would otherwise have page data written into an arbitrary file, and one
+    /// linking <c>index.db</c> to another application's database would have the
+    /// schema applied to it.
+    /// </remarks>
+    private static void RejectLinkedDatabase(string databasePath)
+    {
+        string full = Path.GetFullPath(databasePath);
+        string directory = Path.GetDirectoryName(full) ?? full;
+        foreach (string suffix in (string[])["", "-wal", "-shm", "-journal"])
+        {
+            SafePaths.EnsureNoLinks(directory, full + suffix);
+        }
     }
 
     public string? GetMeta(string key)

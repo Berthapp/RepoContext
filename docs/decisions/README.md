@@ -58,3 +58,7 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   context lifetime, `integrate --guard` installation that touches only
   RepoContext-owned settings entries, and guard counters reported as activity
   rather than as savings.
+- `0024-untrusted-checkouts.md` — the checkout is untrusted input: include roots
+  stay inside the repository, nothing is read or written through a link that
+  leaves it, `.repoctx/` holds no links, credentials are never indexed, ignore
+  and key patterns match in linear time, and terminal output is neutralized.

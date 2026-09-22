@@ -168,4 +168,101 @@ public class FileScannerTests
 
         Assert.DoesNotContain(files, f => f.RelativePath == ".env");
     }
+
+    [Fact]
+    public void Scan_NeverWalksAnIncludeRootOutsideTheRepository()
+    {
+        // Configs are normally validated on load; the scanner holds the line on
+        // its own for configurations built in code.
+        using var repo = new FixtureRepo("sample-ts");
+        string outside = Directory.CreateTempSubdirectory("repoctx-outside-").FullName;
+        try
+        {
+            File.WriteAllText(System.IO.Path.Combine(outside, "credentials.txt"), "hunter2\n");
+            string escape = System.IO.Path.GetRelativePath(repo.Root, outside);
+            RepoctxConfig config = RepoctxConfig.CreateDefault() with { Include = [".", escape, outside] };
+
+            IReadOnlyList<ScannedFile> files = new FileScanner(repo.Root, config).Scan();
+
+            Assert.DoesNotContain(files, f => f.RelativePath.Contains("credentials", StringComparison.Ordinal));
+            Assert.Contains(files, f => f.RelativePath == "src/auth/login.ts");
+        }
+        finally
+        {
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Scan_NeverFollowsAnIncludeRootThatIsALinkOutOfTheRepository()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        string outside = Directory.CreateTempSubdirectory("repoctx-outside-").FullName;
+        try
+        {
+            File.WriteAllText(System.IO.Path.Combine(outside, "credentials.txt"), "hunter2\n");
+            try
+            {
+                Directory.CreateSymbolicLink(repo.PathOf("linked"), outside);
+            }
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
+            {
+                return; // Windows without developer mode: not exercisable here.
+            }
+
+            RepoctxConfig config = RepoctxConfig.CreateDefault() with { Include = ["linked", "."] };
+
+            IReadOnlyList<ScannedFile> files = new FileScanner(repo.Root, config).Scan();
+
+            Assert.DoesNotContain(files, f => f.RelativePath.StartsWith("linked/", StringComparison.Ordinal));
+            Assert.Contains(files, f => f.RelativePath == "src/auth/login.ts");
+        }
+        finally
+        {
+            if (new DirectoryInfo(repo.PathOf("linked")).LinkTarget is not null)
+            {
+                Directory.Delete(repo.PathOf("linked"));
+            }
+
+            Directory.Delete(outside, recursive: true);
+        }
+    }
+
+    [Theory]
+    [InlineData("deploy/server.pem")]
+    [InlineData("certs/client.key")]
+    [InlineData("ops/id_ed25519")]
+    [InlineData(".npmrc")]
+    [InlineData("infra/terraform.tfstate")]
+    [InlineData("infra/terraform.tfstate.backup")]
+    public void Scan_NeverIndexesCredentialFiles_EvenWithoutConfiguredPatterns(string path)
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        repo.Write(path, "-----BEGIN PRIVATE KEY-----\nMIIE\n-----END PRIVATE KEY-----\n");
+        // A hostile configuration may empty the list and try to re-include.
+        RepoctxConfig config = RepoctxConfig.CreateDefault() with
+        {
+            SensitiveFiles = ["!" + System.IO.Path.GetFileName(path)],
+        };
+
+        var scanner = new FileScanner(repo.Root, config);
+        IReadOnlyList<ScannedFile> files = scanner.Scan();
+
+        Assert.DoesNotContain(files, f => f.RelativePath == path);
+        Assert.True(scanner.IsSensitive(path));
+        Assert.Contains(files, f => f.RelativePath == "src/auth/login.ts");
+    }
+
+    [Fact]
+    public void Scan_KeepsPublicKeysAndLookalikeSourceFiles()
+    {
+        using var repo = new FixtureRepo("sample-ts");
+        repo.Write("ops/id_ed25519.pub", "ssh-ed25519 AAAA user@host\n");
+        repo.Write("src/keys/key.ts", "export const key = 1;\n");
+
+        IReadOnlyList<ScannedFile> files = new FileScanner(repo.Root, RepoctxConfig.CreateDefault()).Scan();
+
+        Assert.Contains(files, f => f.RelativePath == "ops/id_ed25519.pub");
+        Assert.Contains(files, f => f.RelativePath == "src/keys/key.ts");
+    }
 }

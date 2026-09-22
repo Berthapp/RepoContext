@@ -149,7 +149,7 @@ public static class SessionStore
                 AddWellFormed(seen, UnitReceipts(item));
             }
 
-            Directory.CreateDirectory(Path.GetDirectoryName(sessionPath)!);
+            layout.PrepareIndexFile(sessionPath);
             string serialized = JsonSerializer.Serialize(
                 new SessionFile
                 {
@@ -157,7 +157,7 @@ public static class SessionStore
                     Known = known,
                     Seen = seen.ToList(),
                 }, SerializerOptions);
-            ReplaceAtomically(sessionPath, serialized);
+            SafePaths.WriteAllTextAtomic(sessionPath, serialized);
         }
         catch (Exception e) when (
             e is IOException or UnauthorizedAccessException
@@ -204,13 +204,6 @@ public static class SessionStore
                 .Order(StringComparer.Ordinal)
                 .ToList(),
         };
-    }
-
-    private static void ReplaceAtomically(string path, string content)
-    {
-        string temporaryPath = path + ".tmp";
-        File.WriteAllText(temporaryPath, content);
-        File.Move(temporaryPath, path, overwrite: true);
     }
 
     private static void AddWellFormed(ISet<string> target, IEnumerable<string>? receipts)

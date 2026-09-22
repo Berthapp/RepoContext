@@ -96,8 +96,8 @@ public static class StatsCommand
                 CommandSupport.WriteRendered(
                     StatsOutput.Render(report, OutputFormat.Text, pricing, guard));
                 string path = Path.Combine(layout.IndexDirectory, "stats.html");
-                Directory.CreateDirectory(layout.IndexDirectory);
-                File.WriteAllText(path, StatsHtmlOutput.Render(report, pricing));
+                layout.PrepareIndexFile(path);
+                SafePaths.WriteAllTextAtomic(path, StatsHtmlOutput.Render(report, pricing));
                 Console.Out.WriteLine($"Dashboard written to {path}");
                 if (!TryOpenInBrowser(path))
                 {

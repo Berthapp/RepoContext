@@ -158,8 +158,9 @@ jobs:
       contents: read
       # Required for npm publish --provenance.
       id-token: write
-    env:
-      NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
+    # NPM_TOKEN is deliberately not job-level env: every step before the
+    # publish (npm self-update, the package builder) would inherit it, and any
+    # compromised dependency those steps run could read it.
     steps:
       - uses: actions/checkout@v7
 
@@ -232,6 +233,8 @@ jobs:
       # NuGet.
       - name: Publish to npm
         if: startsWith(github.ref, 'refs/tags/v')
+        env:
+          NPM_TOKEN: ${{ secrets.NPM_TOKEN }}
         run: |
           set -euo pipefail
           if [ -n "${NPM_TOKEN:-}" ]; then

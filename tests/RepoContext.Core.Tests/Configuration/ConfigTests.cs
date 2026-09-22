@@ -35,6 +35,34 @@ public class ConfigTests
         Assert.Equal("USD", loaded.Pricing.Currency);
     }
 
+    [Theory]
+    [InlineData("../outside")]
+    [InlineData("src/../../outside")]
+    [InlineData("/etc")]
+    [InlineData("..")]
+    public void Include_OutsideTheRepository_IsRejected(string include)
+    {
+        // The configuration is committed with the repository, so a hostile
+        // checkout controls it: an escaping include would index, and serve to an
+        // agent, files that are not part of the checkout.
+        string json = "{\"include\":[" + System.Text.Json.JsonSerializer.Serialize(include) + "]}";
+
+        var error = Assert.Throws<System.Text.Json.JsonException>(() => ConfigStore.Deserialize(json));
+        Assert.Contains("inside the repository", error.Message, StringComparison.Ordinal);
+    }
+
+    [Theory]
+    [InlineData("src")]
+    [InlineData("./apps/web")]
+    [InlineData("services/api/")]
+    [InlineData("docs..old")]
+    public void Include_InsideTheRepository_IsAccepted(string include)
+    {
+        string json = "{\"include\":[" + System.Text.Json.JsonSerializer.Serialize(include) + "]}";
+
+        Assert.Equal([include], ConfigStore.Deserialize(json).Include);
+    }
+
     [Fact]
     public void TokensAndPricing_RoundTrip()
     {
