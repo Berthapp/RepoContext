@@ -38,11 +38,11 @@ public class FreshContextTests
             ["task"] = "createSession", ["detail"] = "slices", ["ensureFresh"] = true,
             ["path"] = new[] { "src/auth/session.ts" }, ["responseBudgetTokens"] = 2000,
         };
-        CallToolResult first = await client.CallToolAsync("repoctx.get_context", args);
+        CallToolResult first = await client.CallToolAsync("repoctx_get_context", args);
         Assert.True(first.IsError is not true);
         Assert.Contains("MCP_OLD", Text(first));
         File.WriteAllText(file, "export function createSession() { return 'MCP_NEW'; }");
-        CallToolResult next = await client.CallToolAsync("repoctx.get_context", args);
+        CallToolResult next = await client.CallToolAsync("repoctx_get_context", args);
         Assert.True(next.IsError is not true);
         Assert.Contains("MCP_NEW", Text(next));
         Assert.DoesNotContain("MCP_OLD", Text(next));

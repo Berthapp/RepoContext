@@ -44,16 +44,19 @@ public class McpServerTests
         var names = tools.Select(t => t.Name).ToHashSet(StringComparer.Ordinal);
 
         Assert.Equal(8, tools.Count);
-        Assert.Contains("repoctx.search", names);
-        Assert.Contains("repoctx.trace", names);
-        Assert.Contains("repoctx.get_context", names);
-        Assert.Contains("repoctx.get_related_files", names);
-        Assert.Contains("repoctx.get_outline", names);
-        Assert.Contains("repoctx.get_changes", names);
-        Assert.Contains("repoctx.memory_add", names);
-        Assert.Contains("repoctx.memory_search", names);
+        Assert.Contains("repoctx_search", names);
+        Assert.Contains("repoctx_trace", names);
+        Assert.Contains("repoctx_get_context", names);
+        Assert.Contains("repoctx_get_related_files", names);
+        Assert.Contains("repoctx_get_outline", names);
+        Assert.Contains("repoctx_get_changes", names);
+        Assert.Contains("repoctx_memory_add", names);
+        Assert.Contains("repoctx_memory_search", names);
         Assert.All(tools, tool =>
         {
+            // Clients that forward MCP tools to the Anthropic Messages API (e.g. Copilot in
+            // Visual Studio) reject names outside this pattern with HTTP 400.
+            Assert.Matches("^[a-zA-Z0-9_-]{1,64}$", tool.Name);
             ToolAnnotations annotations = Assert.IsType<ToolAnnotations>(tool.ProtocolTool.Annotations);
             Assert.Equal(false, annotations.ReadOnlyHint);
             Assert.Equal(false, annotations.IdempotentHint);
@@ -68,7 +71,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_outline",
+            "repoctx_get_outline",
             new Dictionary<string, object?> { ["file"] = "src/auth/login.ts" });
 
         Assert.True(result.IsError is not true);
@@ -85,7 +88,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_outline",
+            "repoctx_get_outline",
             // A re-export barrel declares nothing, so its outline is empty even
             // though documents and data files now carry structure symbols (ADR 0019).
             new Dictionary<string, object?> { ["file"] = "src/lib/index.ts" });
@@ -107,7 +110,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.trace",
+            "repoctx_trace",
             new Dictionary<string, object?> { ["reference"] = "loginUser" });
 
         Assert.True(result.IsError is not true);
@@ -127,7 +130,7 @@ public class McpServerTests
 
         await using McpClient client = await ConnectAsync(ws);
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_changes", new Dictionary<string, object?>());
+            "repoctx_get_changes", new Dictionary<string, object?>());
 
         Assert.True(result.IsError is not true);
         using JsonDocument doc = JsonDocument.Parse(TextOf(result));
@@ -143,7 +146,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult first = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?> { ["task"] = "change the login logic" });
         using JsonDocument firstDoc = JsonDocument.Parse(TextOf(first));
         JsonElement login = firstDoc.RootElement.GetProperty("results").EnumerateArray()
@@ -152,7 +155,7 @@ public class McpServerTests
         Assert.NotEmpty(File.ReadAllText(ws.PathOf("src/auth/login.ts")));
 
         CallToolResult second = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?>
             {
                 ["task"] = "change the login logic",
@@ -185,7 +188,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult first = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?>
             {
                 ["task"] = "change the login logic",
@@ -196,7 +199,7 @@ public class McpServerTests
         string receipt = span.GetProperty("receipt").GetString()!;
 
         CallToolResult second = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?>
             {
                 ["task"] = "change the login logic",
@@ -223,7 +226,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?>
             {
                 ["task"] = "change the login logic",
@@ -243,7 +246,7 @@ public class McpServerTests
         const int budget = 900;
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?>
             {
                 ["task"] = "change the login logic",
@@ -265,7 +268,7 @@ public class McpServerTests
     {
         using FixtureWorkspace ws = Indexed();
         await using McpClient client = await ConnectAsync(ws);
-        CallToolResult result = await client.CallToolAsync("repoctx.get_context",
+        CallToolResult result = await client.CallToolAsync("repoctx_get_context",
             new Dictionary<string, object?>
             {
                 ["task"] = "change login",
@@ -299,7 +302,7 @@ public class McpServerTests
             ["task"] = "fix src/auth/login.ts.", ["detail"] = "slices", ["compact"] = compact,
             ["intent"] = "fix", ["explain"] = true, ["responseBudgetTokens"] = 900,
         };
-        CallToolResult result = await client.CallToolAsync("repoctx.get_context", args);
+        CallToolResult result = await client.CallToolAsync("repoctx_get_context", args);
         Assert.True(result.IsError is not true, TextOf(result));
         string text = TextOf(result);
         Assert.InRange(Tokens.Count(text), 1, 900);
@@ -311,17 +314,17 @@ public class McpServerTests
         Assert.True(doc.RootElement.TryGetProperty("selection", out _));
         Assert.NotEmpty(doc.RootElement.GetProperty("results").EnumerateArray());
         args["responseBudgetTokens"] = 40;
-        CallToolResult failed = await client.CallToolAsync("repoctx.get_context", args);
+        CallToolResult failed = await client.CallToolAsync("repoctx_get_context", args);
         Assert.True(failed.IsError);
         var match = System.Text.RegularExpressions.Regex.Match(TextOf(failed), @"retry_budget_tokens[=:]\s*(\d+)");
         Assert.True(match.Success, TextOf(failed));
         int retryBudget = int.Parse(match.Groups[1].Value, System.Globalization.CultureInfo.InvariantCulture);
         args["responseBudgetTokens"] = retryBudget;
-        CallToolResult retry = await client.CallToolAsync("repoctx.get_context", args);
+        CallToolResult retry = await client.CallToolAsync("repoctx_get_context", args);
         Assert.True(retry.IsError is not true, TextOf(retry));
         Assert.InRange(Tokens.Count(TextOf(retry)), 1, retryBudget);
         args["intent"] = "repair";
-        CallToolResult invalid = await client.CallToolAsync("repoctx.get_context", args);
+        CallToolResult invalid = await client.CallToolAsync("repoctx_get_context", args);
         Assert.True(invalid.IsError);
         Assert.Contains("Invalid intent", TextOf(invalid), StringComparison.Ordinal);
     }
@@ -333,7 +336,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.search",
+            "repoctx_search",
             new Dictionary<string, object?> { ["query"] = "login", ["top"] = 3 });
 
         Assert.True(result.IsError is not true);
@@ -362,7 +365,7 @@ public class McpServerTests
 
         await using McpClient client = await ConnectAsync(ws);
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.search",
+            "repoctx_search",
             new Dictionary<string, object?> { ["query"] = "login" });
 
         Assert.True(result.IsError);
@@ -376,7 +379,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_context",
+            "repoctx_get_context",
             new Dictionary<string, object?> { ["task"] = "change the login logic", ["top"] = 20 });
 
         Assert.True(result.IsError is not true);
@@ -393,7 +396,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_related_files",
+            "repoctx_get_related_files",
             new Dictionary<string, object?> { ["file"] = "src/auth/login.ts" });
 
         Assert.True(result.IsError is not true);
@@ -413,7 +416,7 @@ public class McpServerTests
 
         await using McpClient client = await ConnectAsync(ws);
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.search",
+            "repoctx_search",
             new Dictionary<string, object?> { ["query"] = "login", ["top"] = 3 });
 
         Assert.Equal(cli, Normalize(TextOf(result)));
@@ -427,7 +430,7 @@ public class McpServerTests
 
         await using McpClient client = await ConnectAsync(ws);
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.search",
+            "repoctx_search",
             new Dictionary<string, object?> { ["query"] = "login" });
 
         Assert.True(result.IsError);
@@ -441,7 +444,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.search",
+            "repoctx_search",
             new Dictionary<string, object?> { ["query"] = "login", ["top"] = 0 });
 
         Assert.True(result.IsError);
@@ -455,7 +458,7 @@ public class McpServerTests
         await using McpClient client = await ConnectAsync(ws);
 
         CallToolResult result = await client.CallToolAsync(
-            "repoctx.get_related_files",
+            "repoctx_get_related_files",
             new Dictionary<string, object?> { ["file"] = "../outside.ts" });
 
         Assert.True(result.IsError);

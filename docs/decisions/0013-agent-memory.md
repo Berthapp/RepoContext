@@ -87,7 +87,7 @@ describes.
    output.
 
 7. **CLI ↔ MCP parity, with one deliberate exception.** `memory add/search`
-   exist as `repoctx.memory_add` / `repoctx.memory_search` returning the
+   exist as `repoctx_memory_add` / `repoctx_memory_search` returning the
    exact `--format json` bytes (ADR 0008). `memory rm` stays CLI-only:
    deletion of team knowledge is curation and belongs under human
    supervision.
