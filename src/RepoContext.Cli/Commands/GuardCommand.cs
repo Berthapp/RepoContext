@@ -241,7 +241,18 @@ public static class GuardCommand
         RepoctxConfig config = ConfigStore.Load(layout.ConfigPath);
         // Read-only, and without the schema pass Open() performs: the guard sits
         // in front of a tool call somebody is waiting on.
-        using IndexStore store = IndexStore.OpenReadOnly(layout.DatabasePath);
+        IndexStore store;
+        try
+        {
+            store = IndexStore.OpenReadOnly(layout.DatabasePath);
+        }
+        catch (ForeignIndexException)
+        {
+            // Sizes from an index this machine did not build describe nothing.
+            return GuardDecision.Permit(GuardOutcome.Unsupported, "index needs rebuilding");
+        }
+
+        using IndexStore _ = store;
         if (!store.IsSchemaCurrent || !store.IsProducerCurrent
             || store.GetMeta(MetaKeys.ConfigHash) != ConfigStore.ComputeIndexHash(config))
         {

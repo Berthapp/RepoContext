@@ -32,6 +32,12 @@ internal static class CommandSupport
     /// </summary>
     public static bool EnsureSchemaCurrent(IndexStore store)
     {
+        if (store.DiscardedForeignIndex)
+        {
+            Console.Error.WriteLine(IndexStore.ForeignIndexMessage);
+            return false;
+        }
+
         if (store.IsSchemaCurrent)
         {
             return true;

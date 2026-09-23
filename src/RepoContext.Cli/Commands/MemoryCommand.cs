@@ -26,6 +26,7 @@ public static class MemoryCommand
         command.Subcommands.Add(BuildAdd());
         command.Subcommands.Add(BuildSearch());
         command.Subcommands.Add(BuildRemove());
+        command.Subcommands.Add(BuildAdopt());
         return command;
     }
 
@@ -276,6 +277,7 @@ public static class MemoryCommand
 
             string rendered = MemoryOutput.RenderSearch(result, outputFormat);
             CommandSupport.WriteRendered(rendered);
+            ReportUnverified(layout);
             UsageRecorder.Record(
                 layout, "memory", UsageSources.Cli, CommandSupport.CliSurfaceText(rendered),
                 scale: TokenScale.From(config));
@@ -336,6 +338,101 @@ public static class MemoryCommand
         });
 
         return rm;
+    }
+
+    private static Command BuildAdopt()
+    {
+        var adopt = new Command("adopt",
+            "Review memory entries this machine did not sign (written before 0.15.1, or arrived "
+            + "with the checkout) and sign them so they are recalled again. Interactive only.");
+
+        adopt.SetAction(_ =>
+        {
+            // A person has to read what they are vouching for. An agent runs
+            // commands without a terminal, and an entry that came with a hostile
+            // checkout must not become trusted because an agent was told to ask.
+            if (Console.IsInputRedirected || Console.IsOutputRedirected)
+            {
+                Console.Error.WriteLine(
+                    "'repoctx memory adopt' needs an interactive terminal: it signs entries a person "
+                    + "has reviewed, and must not be run by an agent or a script.");
+                return ExitCode.Error;
+            }
+
+            RepoLayout? layout = RepoLayout.Discover(Directory.GetCurrentDirectory());
+            if (layout is null)
+            {
+                return NoIndex();
+            }
+
+            if (!Core.Identity.MachineKey.IsAvailable)
+            {
+                Console.Error.WriteLine(
+                    "No machine key is available, so memories are not signed and nothing needs adopting.");
+                return ExitCode.Error;
+            }
+
+            IReadOnlyList<UnverifiedMemory> pending = MemoryStore.Unverified(layout);
+            if (pending.Count == 0)
+            {
+                Console.Out.WriteLine("Every memory entry is signed by this machine. Nothing to adopt.");
+                return ExitCode.Success;
+            }
+
+            Console.Out.WriteLine(
+                $"{pending.Count} memory line(s) in {MemoryStore.PathFor(layout)} are not signed by this machine:");
+            foreach (UnverifiedMemory entry in pending)
+            {
+                string body = entry.Deleted
+                    ? "(removal)"
+                    : $"[{entry.Kind ?? "?"}] {entry.Text ?? string.Empty}";
+                Console.Out.WriteLine(TerminalText.Neutralize($"  {entry.Id}  {body}"));
+            }
+
+            Console.Out.WriteLine(
+                "Adopt only entries you or your own agents wrote. Anything that came with a checkout "
+                + "would be shown to every agent as your team's knowledge.");
+            Console.Out.Write("Sign all of them as written on this machine? [y/N] ");
+            string answer = (Console.In.ReadLine() ?? string.Empty).Trim();
+            if (!answer.Equals("y", StringComparison.OrdinalIgnoreCase)
+                && !answer.Equals("yes", StringComparison.OrdinalIgnoreCase))
+            {
+                Console.Out.WriteLine("Nothing was changed.");
+                return ExitCode.Success;
+            }
+
+            int adopted;
+            try
+            {
+                adopted = MemoryStore.Adopt(layout);
+            }
+            catch (Exception e) when (
+                e is IOException or UnauthorizedAccessException or TimeoutException)
+            {
+                Console.Error.WriteLine(e.Message);
+                return ExitCode.Error;
+            }
+
+            Console.Out.WriteLine($"Adopted {adopted} line(s).");
+            return ExitCode.Success;
+        });
+
+        return adopt;
+    }
+
+    /// <summary>
+    /// Tells a person, on stderr, that unsigned entries exist and were ignored.
+    /// Standard output stays the deterministic answer.
+    /// </summary>
+    internal static void ReportUnverified(RepoLayout layout)
+    {
+        int count = MemoryStore.Unverified(layout).Count;
+        if (count > 0)
+        {
+            Console.Error.WriteLine(
+                $"Note: {count} memory line(s) are not signed by this machine and were ignored. "
+                + "Review them with 'repoctx memory adopt' at a terminal.");
+        }
     }
 
     /// <summary>Tags are recall keys: lowercase them and keep them boring.</summary>

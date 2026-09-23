@@ -62,3 +62,7 @@ Short records of decisions left open by the build prompt. Numbered sequentially;
   stay inside the repository, nothing is read or written through a link that
   leaves it, `.repoctx/` holds no links, credentials are never indexed, ignore
   and key patterns match in linear time, and terminal output is neutralized.
+- `0025-machine-bound-provenance.md` — a per-user machine key signs what
+  RepoContext later trusts: an index without this machine's origin stamp is
+  discarded before it is read, unsigned memory lines and session files are
+  ignored, and pre-existing memories are adopted only by a person at a terminal.

@@ -22,6 +22,7 @@ public static class SessionStore
 {
     private const int MaxNameLength = 64;
     private const int StoreLockTimeoutMilliseconds = 3_000;
+    private const string SignaturePurpose = "repoctx.session.v1";
 
     /// <summary>Session names are file names; keep them boring and portable.</summary>
     public static bool IsValidName(string? name)
@@ -71,10 +72,10 @@ public static class SessionStore
                 // Replacement is atomic, so a lock-free read still observes
                 // either the complete prior state or the complete next state.
                 // Prefer that safe snapshot over discarding useful context.
-                return LoadStateUnlocked(path);
+                return LoadStateUnlocked(path, name);
             }
 
-            return LoadStateUnlocked(path);
+            return LoadStateUnlocked(path, name);
         }
         catch (Exception e) when (
             e is IOException or JsonException or UnauthorizedAccessException
@@ -126,7 +127,7 @@ public static class SessionStore
             // The read and replacement are one transaction. Otherwise two
             // agents can both merge from the same snapshot and the later
             // replacement silently drops the first agent's evidence.
-            SessionState existing = LoadStateUnlocked(sessionPath);
+            SessionState existing = LoadStateUnlocked(sessionPath, name);
             var known = new SortedDictionary<string, string>(StringComparer.Ordinal);
             foreach ((string path, string hash) in existing.Known)
             {
@@ -150,13 +151,15 @@ public static class SessionStore
             }
 
             layout.PrepareIndexFile(sessionPath);
+            var file = new SessionFile
+            {
+                V = SessionFile.CurrentVersion,
+                Known = known,
+                Seen = seen.ToList(),
+            };
             string serialized = JsonSerializer.Serialize(
-                new SessionFile
-                {
-                    V = SessionFile.CurrentVersion,
-                    Known = known,
-                    Seen = seen.ToList(),
-                }, SerializerOptions);
+                file with { Mac = MachineKey.Sign(SignaturePurpose, Signed(name, file)) },
+                SerializerOptions);
             SafePaths.WriteAllTextAtomic(sessionPath, serialized);
         }
         catch (Exception e) when (
@@ -167,7 +170,7 @@ public static class SessionStore
         }
     }
 
-    private static SessionState LoadStateUnlocked(string path)
+    private static SessionState LoadStateUnlocked(string path, string name)
     {
         if (!File.Exists(path))
         {
@@ -194,6 +197,16 @@ public static class SessionStore
             return SessionState.Empty;
         }
 
+        // A session file this machine did not write claims possession on
+        // someone else's word: a planted one would suppress evidence the agent
+        // never received (ADR 0025). Unsigned files - including ones written
+        // before signing existed - read as empty, so the caller re-pays once.
+        if (file.Known is null || file.Seen is null
+            || !MachineKey.Verify(file.Mac, SignaturePurpose, Signed(name, file)))
+        {
+            return SessionState.Empty;
+        }
+
         return new SessionState
         {
             Known = new Dictionary<string, string>(
@@ -205,6 +218,21 @@ public static class SessionStore
                 .ToList(),
         };
     }
+
+    /// <summary>
+    /// The canonical fields a session signature covers, bound to the session
+    /// name. Null values - which RepoContext never writes, but a planted file
+    /// can hold - encode as empty rather than failing the read.
+    /// </summary>
+    private static string[] Signed(string name, SessionFile file) =>
+    [
+        name,
+        file.V.ToString(System.Globalization.CultureInfo.InvariantCulture),
+        Canonical.JoinRecords(file.Known
+            .OrderBy(pair => pair.Key, StringComparer.Ordinal)
+            .SelectMany(pair => new[] { pair.Key, pair.Value ?? string.Empty })),
+        Canonical.JoinRecords(file.Seen.Select(receipt => receipt ?? string.Empty)),
+    ];
 
     private static void AddWellFormed(ISet<string> target, IEnumerable<string>? receipts)
     {
@@ -263,6 +291,9 @@ public static class SessionStore
             new Dictionary<string, string>(StringComparer.Ordinal);
 
         public IReadOnlyList<string> Seen { get; init; } = [];
+
+        /// <summary>HMAC under the machine key, bound to the session name (ADR 0025).</summary>
+        public string? Mac { get; init; }
     }
 }
 

@@ -75,6 +75,12 @@ public sealed record IndexStats
 
     /// <summary>Wall-clock duration, reported separately from deterministic goldens.</summary>
     public long ElapsedMilliseconds { get; init; }
+
+    /// <summary>
+    /// Whether an index this machine did not build was found and discarded
+    /// before this run rebuilt it from the repository (ADR 0025).
+    /// </summary>
+    public bool DiscardedForeignIndex { get; init; }
 }
 
 /// <summary>
@@ -274,6 +280,7 @@ public sealed class Indexer
 
         return new IndexStats
         {
+            DiscardedForeignIndex = store.DiscardedForeignIndex,
             Added = added,
             Changed = changed,
             Deleted = deleted,

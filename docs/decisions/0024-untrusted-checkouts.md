@@ -71,6 +71,9 @@ and let the query answer, exactly as for any other I/O failure.
   `repoctx index`.
 - The configuration hash and every stored analysis are unchanged, so no index
   rebuild is forced and the evaluation goldens do not move.
+- A `.repoctx/` that arrives with the checkout — a fabricated index, planted
+  memories or sessions — is the subject of
+  [ADR 0025](0025-machine-bound-provenance.md).
 - Not addressed here: content that is hostile *as text* (prompt injection in a
   README or a comment) reaches the agent as evidence, as it would through any
   file read. RepoContext does not interpret repository text, and flagging it is
