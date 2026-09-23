@@ -545,7 +545,7 @@ actual promotions. Existing source-span packing, reuse and hard budgets still
 apply. A linked test is a suggested companion, not proof of test coverage.
 `--intent explain` selects a purpose; `--explain` requests diagnostics. They can
 be combined. MCP exposes the same options as `intent` and `explain` on
-`repoctx.get_context`. See the [contract and evaluation](docs/decisions/0022-context-selection-intent.md).
+`repoctx_get_context`. See the [contract and evaluation](docs/decisions/0022-context-selection-intent.md).
 
 ### The token-savings dashboard
 
@@ -893,14 +893,14 @@ server over stdio and exposes eight non-destructive tools:
 
 | Tool | Wraps | Arguments |
 | --- | --- | --- |
-| `repoctx.search` | `search` | `query`, `top`, `symbols`, `path` |
-| `repoctx.get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path`, `ensureFresh`, `compact`, `intent`, `explain` |
-| `repoctx.trace` | `trace` | `reference`, `top`, `path` |
-| `repoctx.get_related_files` | `related` | `file` |
-| `repoctx.get_outline` | `outline` | `file` |
-| `repoctx.get_changes` | `changed` | `patch` |
-| `repoctx.memory_add` | `memory add` | `text`, `kind`, `files`, `tags`, `session` |
-| `repoctx.memory_search` | `memory search` | `query`, `top`, `kind`, `file`, `session`, `stale` |
+| `repoctx_search` | `search` | `query`, `top`, `symbols`, `path` |
+| `repoctx_get_context` | `context` | `task`, `top`, `budgetTokens`, `responseBudgetTokens`, `projectedReadBudgetTokens`, `detail`, `known`, `seen`, `session`, `stripComments`, `includeMemory`, `path`, `ensureFresh`, `compact`, `intent`, `explain` |
+| `repoctx_trace` | `trace` | `reference`, `top`, `path` |
+| `repoctx_get_related_files` | `related` | `file` |
+| `repoctx_get_outline` | `outline` | `file` |
+| `repoctx_get_changes` | `changed` | `patch` |
+| `repoctx_memory_add` | `memory add` | `text`, `kind`, `files`, `tags`, `session` |
+| `repoctx_memory_search` | `memory search` | `query`, `top`, `kind`, `file`, `session`, `stale` |
 
 (`memory rm` is deliberately CLI-only: deleting team knowledge is curation and
 stays under human supervision.)

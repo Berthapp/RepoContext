@@ -5,16 +5,16 @@ namespace RepoContext.Cli.Commands;
 
 /// <summary>
 /// The <c>repoctx mcp</c> command (M5): serves the query engine to AI agents as
-/// an MCP server over stdio. Exposes <c>repoctx.search</c>,
-/// <c>repoctx.get_context</c> and <c>repoctx.get_related_files</c>.
+/// an MCP server over stdio. Exposes <c>repoctx_search</c>,
+/// <c>repoctx_get_context</c> and <c>repoctx_get_related_files</c>.
 /// </summary>
 public static class McpCommand
 {
     public static Command Build()
     {
         var command = new Command("mcp",
-            "Run the MCP server over stdio (tools: repoctx.search, repoctx.get_context, "
-            + "repoctx.get_related_files). The server reads/writes JSON-RPC on stdin/stdout.");
+            "Run the MCP server over stdio (tools: repoctx_search, repoctx_get_context, "
+            + "repoctx_get_related_files). The server reads/writes JSON-RPC on stdin/stdout.");
 
         command.SetAction(parseResult =>
         {

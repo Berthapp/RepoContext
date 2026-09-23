@@ -17,7 +17,7 @@ public static class McpServerRunner
     /// substitute that can drift.
     /// </summary>
     public const string Instructions =
-        "Start with repoctx.get_context(detail='auto', responseBudgetTokens=2000, ensureFresh=true); auto returns "
+        "Start with repoctx_get_context(detail='auto', responseBudgetTokens=2000, ensureFresh=true); auto returns "
         + "source spans for change tasks and outlines for survey questions. Override with "
         + "slices, outline for breadth, or paths for locations. Escalate only on a gap: search "
         + "for missing files/symbols, get_outline for a missing symbol in a known file, "

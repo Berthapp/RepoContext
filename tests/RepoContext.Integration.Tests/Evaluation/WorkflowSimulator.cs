@@ -132,7 +132,7 @@ public sealed class WorkflowSimulator
         ContextResult mcpResult = new ContextEngine(_repo.Store, _repo.Config)
             .Run(task.Query, options, ContextCostModel.ForMcpText());
 
-        Account(result, mcpResult, arguments, "repoctx.get_context");
+        Account(result, mcpResult, arguments, "repoctx_get_context");
 
         // Step 2: symbol search only when a must-find file is still absent.
         var found = new HashSet<string>(result.Items.Select(i => i.Path), StringComparer.Ordinal);
@@ -144,7 +144,7 @@ public sealed class WorkflowSimulator
             if (FtsQuery.Build(term) is { } match)
             {
                 IReadOnlyList<SearchHit> hits = _repo.Store.Search(match, 10, symbolsOnly: true);
-                AccountRendered(SearchOutput.Render(term, hits, OutputFormat.Json), searchArgs, "repoctx.search");
+                AccountRendered(SearchOutput.Render(term, hits, OutputFormat.Json), searchArgs, "repoctx_search");
                 found.UnionWith(hits.Select(h => h.Path));
             }
         }
@@ -160,7 +160,7 @@ public sealed class WorkflowSimulator
                 AccountRendered(
                     OutlineOutput.Render(outline, OutputFormat.Json),
                     McpSessionFixture.Arguments(("file", path)),
-                    "repoctx.get_outline");
+                    "repoctx_get_outline");
                 symbolRecall = task.MustFindSymbols.Count == 0
                     ? 1.0
                     : (double)task.MustFindSymbols.Count(s => outline.Symbols.Any(o => o.Name == s))
@@ -177,7 +177,7 @@ public sealed class WorkflowSimulator
                 AccountRendered(
                     RelatedOutput.Render(related, OutputFormat.Json),
                     McpSessionFixture.Arguments(("file", path)),
-                    "repoctx.get_related_files");
+                    "repoctx_get_related_files");
                 found.UnionWith(related.Entries.Select(entry => entry.Path));
             }
         }

@@ -254,9 +254,9 @@ repoctx architecture
 **MCP server** — direct tool access for agents, a thin wrapper over the same query engine:
 
 ```
-repoctx.search
-repoctx.get_context
-repoctx.get_related_files
+repoctx_search
+repoctx_get_context
+repoctx_get_related_files
 (later: get_architecture, get_tests, get_pr_context)
 ```
 

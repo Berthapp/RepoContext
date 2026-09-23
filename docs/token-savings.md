@@ -103,7 +103,7 @@ includes all emitted evidence and metadata.
 ## Index freshness
 
 `repoctx context "<task>" --ensure-fresh` refreshes the index before querying.
-MCP callers can pass `ensureFresh: true` to `repoctx.get_context`. An initialized
+MCP callers can pass `ensureFresh: true` to `repoctx_get_context`. An initialized
 repository does not need a pre-existing index for these calls. Refresh failures
 caused by unreadable source files or ignore rules stop the query. Without this
 option, queries intentionally use the last committed index; call `index` after

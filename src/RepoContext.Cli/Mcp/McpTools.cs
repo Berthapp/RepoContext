@@ -41,13 +41,13 @@ public static class McpTools
         {
             McpServerTool.Create(
                 (Func<string, int, bool, string[]?, CallToolResult>)Search,
-                Describe("repoctx.search",
+                Describe("repoctx_search",
                     "Find indexed files or symbols by term; returns ranked paths, lines, "
                     + "scores, kinds, and reasons; path narrows the scope.")),
             McpServerTool.Create(
                 (Func<string, int, int?, int?, int?, string, string[]?, string[]?, string?, bool, bool,
                     string[]?, bool, bool, string?, bool, CallToolResult>)GetContext,
-                Describe("repoctx.get_context",
+                Describe("repoctx_get_context",
                     "Primary context tool. Ranks task-relevant files under response/read budgets. "
                     + "detail: auto=pick per task, paths=locations, outline=symbols, slices=source "
                     + "spans. Reuse evidence via seen receipts or session; known=path@hash requires "
@@ -55,31 +55,31 @@ public static class McpTools
                     + "default; path narrows the scope. ensureFresh refreshes the index first.")),
             McpServerTool.Create(
                 (Func<string, int, string[]?, CallToolResult>)TraceRef,
-                Describe("repoctx.trace",
+                Describe("repoctx_trace",
                     "Resolve an exact key (ABC-123), link, symbol or path to every file "
                     + "declaring or mentioning it, with lines and read cost.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetRelatedFiles,
-                Describe("repoctx.get_related_files",
+                Describe("repoctx_get_related_files",
                     "Return imports, dependents, and linked tests for a file, with reasons.")),
             McpServerTool.Create(
                 (Func<string, CallToolResult>)GetOutline,
-                Describe("repoctx.get_outline",
+                Describe("repoctx_get_outline",
                     "Return a file's symbols, signatures, lines, docs, hash, and full-read "
                     + "token cost.")),
             McpServerTool.Create(
                 (Func<bool, CallToolResult>)GetChanges,
-                Describe("repoctx.get_changes",
+                Describe("repoctx_get_changes",
                     "Return added/modified/deleted files and affected importers/tests. patch=true "
                     + "includes delta hunks. Use after edits; re-index if stale.")),
             McpServerTool.Create(
                 (Func<string, string, string[]?, string[]?, string?, CallToolResult>)MemoryAdd,
-                Describe("repoctx.memory_add",
+                Describe("repoctx_memory_add",
                     "Store a durable 1-2 sentence insight. Link affected files so changed hashes "
                     + "mark it stale; kinds: note, decision, constraint.")),
             McpServerTool.Create(
                 (Func<string?, int, string?, string?, string?, bool, CallToolResult>)MemorySearch,
-                Describe("repoctx.memory_search",
+                Describe("repoctx_memory_search",
                     "Search local memories by term/tag/path with reasons and stale flags; omit "
                     + "query to list. get_context already includes matches.")),
         };

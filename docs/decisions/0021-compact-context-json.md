@@ -14,7 +14,7 @@ Removing it from the default response would break clients still using v4.
 ## Decision
 
 `repoctx context --format json --compact` and MCP
-`repoctx.get_context(compact: true)` opt into context schema v5.
+`repoctx_get_context(compact: true)` opt into context schema v5.
 
 The compact document omits these compatibility fields:
 

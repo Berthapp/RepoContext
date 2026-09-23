@@ -28,7 +28,7 @@ stale.
    and MCP tools refuse an index written by another schema version with
    "Index schema is outdated. Run 'repoctx index'." and exit code 2 — the
    index is not usable, which is what F7's "no index" means.
-3. **`outline <file>` + `repoctx.get_outline`** — a file's skeleton from the
+3. **`outline <file>` + `repoctx_get_outline`** — a file's skeleton from the
    symbols table: signatures, line ranges, one-line doc summaries (capped at
    140 chars), content `hash`, and the exact full-read token cost. Measured:
    the `ContextEngine.cs` outline costs 1,111 tokens vs 3,256 for the file —
@@ -55,7 +55,7 @@ stale.
    `unchanged: true` at zero token charge — and the freed budget pulls in
    files that did not fit before. Determinism is preserved because the known
    set is caller input: identical inputs ⇒ identical output.
-7. **`changed` + `repoctx.get_changes`** — the incremental indexer's
+7. **`changed` + `repoctx_get_changes`** — the incremental indexer's
    scan-and-hash diff without the write: added/modified/deleted vs the index,
    `stale` flag, current `state`, and impacted dependents (files that import
    or test a changed file, graph-reason capped per ADR 0009). 154 tokens on a

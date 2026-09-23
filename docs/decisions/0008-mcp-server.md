@@ -53,8 +53,12 @@ still apply: no network at runtime, determinism, one JSON contract with
 
 ## Notes
 
-- Tool names keep the product doc's dotted form (`repoctx.search`); the SDK
-  accepts it. The server is named `repoctx` with `ServerInstructions` describing
+- Tool names originally kept the product doc's dotted form (`repoctx.search`).
+  The SDK accepts it, but clients that forward MCP tools to the Anthropic
+  Messages API (e.g. GitHub Copilot in Visual Studio) fail with HTTP 400
+  because tool names must match `^[a-zA-Z0-9_-]{1,128}$`. The tools are
+  therefore named with an underscore (`repoctx_search`, `repoctx_get_context`,
+  ...); `McpServerTests` guards the pattern. The server is named `repoctx` with `ServerInstructions` describing
   the deterministic, explainable, local-first contract.
 - Tested end-to-end with the SDK's own `McpClient` spawning the real `repoctx`
   binary over stdio (`McpServerTests`): tool discovery, each tool's JSON,
