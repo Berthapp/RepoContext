@@ -287,6 +287,10 @@ public static class AgentIntegrations
             return AgentFileChange.Skipped;
         }
 
+        // File.Exists is false for a dangling link, and writing through one
+        // creates its target - possibly outside the repository.
+        SafePaths.EnsureContained(root, path);
+
         string? directory = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(directory))
         {

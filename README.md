@@ -31,6 +31,20 @@ references are extracted, so the whole repository is cross-linked. Binary files
 are the only category that cannot be described — and `index` reports how many
 there were. See [Working with artifacts](#working-with-artifacts-tickets-specs-requirements).
 
+## What changes in 0.15.1
+
+A security release. Running RepoContext inside a hostile checkout can no longer
+index files outside the repository, write through committed symbolic links,
+stall indexing with a crafted ignore pattern, index private keys and credential
+files, or serve an index, memories or sessions that came with the checkout
+instead of being built on your machine. Two configurations that used to work
+are now refused: an `include` entry that is absolute or uses `..`, and a
+`.repoctx/` that is a symbolic link.
+
+**After upgrading:** run `repoctx index` once (the first query asks for it), and
+run `repoctx memory adopt` at a terminal to keep memories you recorded before.
+See [Working in an untrusted repository](#working-in-an-untrusted-repository).
+
 ## What changes in 0.15.0, in plain language
 
 The goal is **the same quality at a lower total cost per completed task**.
@@ -408,6 +422,7 @@ via `repoctx related`).
 | `memory add <text>` | Store one agent-authored insight: a `note`, `decision` or `constraint`, optionally linked to files (hash-recorded) and scoped to a session. | `--kind`, `--file`, `--tag`, `--session`, `--format` |
 | `memory search [query]` | Deterministic recall with reasons and hash-based `stale` flags; omit the query to list. | `--top`, `--kind`, `--file`, `--session`, `--stale`, `--format` |
 | `memory rm <id>` | Remove one memory entry (curation). | `--format` |
+| `memory adopt` | Review memory lines this machine did not sign (recorded before 0.15.1, or from a checkout) and sign them. Interactive terminal only. | — |
 | `architecture` | Structure (LOC tree), language distribution, centrality, entrypoints. | `--depth`, `--format` |
 | `stats` | Token-savings dashboard aggregated from your local usage; opens in your browser when run in a terminal (see below). | `--format` (incl. `html`), `--open`, `--no-open` |
 | `guard` | The opt-in read-cost guard: `hook` answers one client hook event, `check` explains one read, `status` prints the local counters (see below). | `--mode`, `--max-read-tokens`, `--client`, `--timeout-ms` |
@@ -990,10 +1005,10 @@ generated file and rerun `RepoCtxMcpConfig`, or replace it with the
 
 | Key | Meaning |
 | --- | --- |
-| `include` | Directories to scan, each recursively. **Empty (the default) scans the whole repository**, so every project and subfolder below the root is indexed. Set it only to deliberately narrow the scope. |
+| `include` | Directories to scan, each recursively. **Empty (the default) scans the whole repository**, so every project and subfolder below the root is indexed. Set it only to deliberately narrow the scope. Entries must be relative and stay inside the repository: absolute paths and `..` are rejected, and a root that is a link leaving the repository is skipped. |
 | `exclude` | Directory/file globs to skip (gitignore syntax). A bare name like `dist` matches at any depth, so it also covers nested projects. |
 | `respectGitignore` | Also honor `.gitignore` — the root one and any in subdirectories. |
-| `sensitiveFiles` | Never indexed — neither content nor path. |
+| `sensitiveFiles` | Never indexed — neither content nor path. Private keys and credential stores (`*.pem`, `*.key`, `*.p12`, `*.pfx`, `*.jks`, `*.keystore`, `id_rsa`/`id_ed25519`/…, `.npmrc`, `.pypirc`, `.netrc`, `.git-credentials`, `.pgpass`, `*.tfstate`) are excluded in addition, and cannot be re-included. |
 | `indexing.maxFileSizeKb` | Skip files larger than this. |
 | `indexing.includeTests` / `includeDocs` | Include test / documentation files. |
 | `artifacts.keyPatterns` | Extra regular expressions for work-item keys, in addition to the built-in `ABC-123` shape. Invalid patterns are ignored. |
@@ -1050,6 +1065,42 @@ downstream agent from forwarding the excerpts it returns to an LLM provider —
 for maximum privacy use a local/self-hosted agent and model, and list sensitive
 files in `sensitiveFiles` / `.repoctxignore`.
 
+## Working in an untrusted repository
+
+Agents are often pointed at code nobody on the team wrote, and everything in
+that checkout — including `repoctx.config.json`, ignore files and symbolic
+links, which git checks out verbatim — is chosen by its author. RepoContext
+treats it accordingly ([ADR 0024](docs/decisions/0024-untrusted-checkouts.md)):
+
+- **Nothing outside the repository is indexed.** `include` cannot name an
+  absolute path or `..`, and links — as an include root or anywhere below it —
+  are never followed.
+- **Nothing outside the repository is written.** `.repoctx/` and everything in
+  it must be real directories and files; instruction files, rules, MCP
+  registrations and `.claude/settings.json` are written only when they resolve
+  inside the repository (`CLAUDE.md -> AGENTS.md` keeps working). A refused
+  write is one line on stderr and exit code `1`.
+- **Credentials stay out of the index** even when the repository's own
+  configuration clears `sensitiveFiles` (see [Configuration](#configuration)).
+- **Hostile patterns cannot stall indexing.** Ignore globs and configured key
+  patterns match in linear time.
+- **Terminal output is text.** At an interactive terminal, control characters
+  in repository content are shown as visible symbols (`␛`) instead of being
+  executed by the terminal; piped output is byte-identical.
+- **Only what this machine wrote is trusted** ([ADR 0025](docs/decisions/0025-machine-bound-provenance.md)).
+  A committed `.repoctx/` could otherwise carry an index whose "source" exists
+  in no file, or memories presented to every agent as your team's knowledge.
+  RepoContext signs its index, memory lines and session files with a per-user
+  key (`RepoContext/machine.key` in your local data directory, mode `0600`, or
+  `REPOCTX_KEY_FILE`); anything without a valid signature is discarded or
+  ignored. Memories recorded before 0.15.1 become live again once you review
+  them with `repoctx memory adopt`, which runs only at an interactive terminal
+  so an agent cannot vouch for them. An index is a cache and cannot be copied
+  between machines — the next `repoctx index` rebuilds it.
+
+What RepoContext does not do is judge repository *text*: a prompt injection in
+a README reaches the agent as evidence, exactly as a direct file read would.
+
 ## Troubleshooting
 
 | Symptom | Fix |
@@ -1065,6 +1116,11 @@ files in `sensitiveFiles` / `.repoctxignore`.
 | `trace` finds nothing for a ticket key | Keys are matched uppercase in the `ABC-123` shape. Add your project's shape to `artifacts.keyPatterns` and re-run `repoctx index`. `trace` lists the keys sharing your prefix when it finds none. |
 | Fetched tickets/pages are missing from the index | They are probably git-ignored, and `respectGitignore` is on. Add a `.repoctxignore` with `!<dir>/` to re-include the directory for RepoContext only, then re-run `repoctx index`. |
 | A document is not linked to the code it describes | Linking needs the document to name the repository path or a symbol declared in exactly one file. Check `artifacts.linkPaths` / `artifacts.linkSymbols` and re-index. |
+| `Refusing to use '…/.repoctx/…': it is a symbolic link` or `Refusing to write '…': a symbolic link resolves it outside the repository` | Something in the checkout is a link where RepoContext writes. `.repoctx/` must be a real directory, and managed files must resolve inside the repository. Replace the link (for a relocated index, use a real directory) and retry. |
+| `The index was not built by RepoContext on this machine … Run 'repoctx index'` | The index came with the checkout, predates 0.15.1, or your machine key changed. It was discarded; `repoctx index` rebuilds it from the repository. |
+| `N memory line(s) are not signed by this machine and were ignored` | Memories recorded before 0.15.1, or planted by a checkout. Run `repoctx memory adopt` at a terminal, read the list, and answer `y` only if you wrote them. |
+| `Warning: no machine key could be read or created at …` | RepoContext cannot tell its own index and memories from a checkout's. Set `REPOCTX_KEY_FILE` to a writable path outside the repository; a file of the wrong size at that path is never overwritten. |
+| `include entries must be relative paths inside the repository` | An `include` entry is absolute or uses `..`. Initialize RepoContext at the directory that contains everything you want indexed instead. |
 | Exit code 3 | Invalid arguments — check option spelling and values (e.g. `--top` must be > 0, `--format` must be `text`, `json` or `md`). |
 
 ## Development

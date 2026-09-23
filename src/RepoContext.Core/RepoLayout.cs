@@ -33,6 +33,24 @@ public sealed class RepoLayout
     public static RepoLayout For(string root) => new(Path.GetFullPath(root));
 
     /// <summary>
+    /// Makes <paramref name="path"/> ready to be written: it must lie in the
+    /// index directory with no symbolic link from <c>.repoctx/</c> down to it,
+    /// and its parent directory is created.
+    /// </summary>
+    /// <exception cref="UnsafePathException">A link is on the way.</exception>
+    /// <remarks>
+    /// Every store under <c>.repoctx/</c> goes through here before it writes.
+    /// The directory is normally git-ignored, but a hostile checkout can commit
+    /// one - and a link in it would otherwise redirect index, ledger, session or
+    /// dashboard writes anywhere on the machine.
+    /// </remarks>
+    public void PrepareIndexFile(string path)
+    {
+        SafePaths.EnsureNoLinks(IndexDirectory, path);
+        Directory.CreateDirectory(Path.GetDirectoryName(Path.GetFullPath(path))!);
+    }
+
+    /// <summary>
     /// Converts a user-supplied path (absolute, or relative to
     /// <paramref name="currentDirectory"/>) into a repo-relative path with
     /// <c>/</c> separators. Returns null if it falls outside the repository.
@@ -61,7 +79,10 @@ public sealed class RepoLayout
     private static string? Relative(string root, string full)
     {
         string relative = Path.GetRelativePath(root, full).Replace('\\', '/');
+        // A path on another Windows drive has no relative form at all and comes
+        // back absolute - outside, not a strangely spelled repository path.
         return relative.StartsWith("../", StringComparison.Ordinal) || relative == ".."
+            || Path.IsPathRooted(relative)
             ? null
             : relative;
     }

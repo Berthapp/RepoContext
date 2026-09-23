@@ -1,6 +1,7 @@
 using System.CommandLine;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Scanning;
 
@@ -34,6 +35,16 @@ public static class IndexCommand
             var indexer = new Indexer(layout, config, CliInfo.Version);
             IndexStats stats = indexer.Run(parseResult.GetValue(full));
 
+            if (stats.DiscardedForeignIndex)
+            {
+                Console.Error.WriteLine(
+                    "Note: the existing index was not built by RepoContext on this machine (it came "
+                    + "with the checkout, or predates 0.15.1). It was discarded and rebuilt from the "
+                    + "repository.");
+            }
+
+            WarnAboutMachineKey();
+            MemoryCommand.ReportUnverified(layout);
             WarnAboutMissingIncludeRoots(layout, config, stats);
             WarnAboutOversizedFiles(config, stats);
             WarnAboutUnreadableIgnoreFiles(stats);
@@ -67,6 +78,25 @@ public static class IndexCommand
         });
 
         return command;
+    }
+
+    /// <summary>
+    /// Warns when no machine key is available. Without one RepoContext cannot
+    /// tell an index or memory it produced from one that arrived with the
+    /// checkout, and trusts both (ADR 0025).
+    /// </summary>
+    private static void WarnAboutMachineKey()
+    {
+        if (MachineKey.IsAvailable)
+        {
+            return;
+        }
+
+        Console.Error.WriteLine(
+            $"Warning: no machine key could be read or created at {MachineKey.FilePath ?? "(no per-user data directory)"}, "
+            + "so an index or memory that came with a checkout cannot be told apart from one built here.");
+        Console.Error.WriteLine(
+            $"  Set {MachineKey.FileVariable} to a writable location outside the repository.");
     }
 
     /// <summary>

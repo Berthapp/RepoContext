@@ -100,6 +100,7 @@ public static class AgentInstructions
         string root, string relativePath, string block, string? preamble)
     {
         string path = Combine(root, relativePath);
+        SafePaths.EnsureContained(root, path);
 
         if (!File.Exists(path))
         {
@@ -185,6 +186,7 @@ public static class AgentInstructions
         }
 
         string remaining = existing[..from] + existing[to..];
+        SafePaths.EnsureContained(root, path);
         if (remaining.Trim().Length == 0 || IsOnlyFrontMatter(remaining))
         {
             File.Delete(path);

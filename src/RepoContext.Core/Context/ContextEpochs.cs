@@ -139,7 +139,7 @@ public static class ContextEpochs
         var started = new ContextEpoch(agentKey, 1, reason, DateTimeOffset.UtcNow, generation);
         try
         {
-            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            layout.PrepareIndexFile(path);
             using PathScopedMutex? lease = PathScopedMutex.TryAcquire(
                 "Epochs", path, StoreLockTimeoutMilliseconds);
             if (lease is null)
@@ -160,7 +160,7 @@ public static class ContextEpochs
                 Updated = started.UpdatedUtc,
             };
 
-            Write(path, file);
+            Write(layout, path, file);
         }
         catch (Exception e) when (
             e is IOException or UnauthorizedAccessException or JsonException
@@ -169,6 +169,13 @@ public static class ContextEpochs
             // A lifecycle store that cannot be written must not break the agent.
             // Discard the ledger if replacement failed (for example a damaged
             // temporary path). No prior receipt may remain current on failure.
+            // A refused link is left alone: deleting through it would touch a
+            // file outside the repository.
+            if (e is UnsafePathException)
+            {
+                return started;
+            }
+
             try
             {
                 File.Delete(path);
@@ -203,7 +210,7 @@ public static class ContextEpochs
             EpochFile file = Read(path);
             if (file.Sessions.Remove(agentKey))
             {
-                Write(path, file);
+                Write(layout, path, file);
             }
         }
         catch (Exception e) when (
@@ -274,7 +281,7 @@ public static class ContextEpochs
         }
     }
 
-    private static void Write(string path, EpochFile file)
+    private static void Write(RepoLayout layout, string path, EpochFile file)
     {
         foreach (string stale in file.Sessions
             .OrderByDescending(pair => pair.Value.Updated)
@@ -285,9 +292,8 @@ public static class ContextEpochs
             file.Sessions.Remove(stale);
         }
 
-        string temporary = path + ".tmp";
-        File.WriteAllText(temporary, JsonSerializer.Serialize(file, SerializerOptions));
-        File.Move(temporary, path, overwrite: true);
+        layout.PrepareIndexFile(path);
+        SafePaths.WriteAllTextAtomic(path, JsonSerializer.Serialize(file, SerializerOptions));
     }
 
     private static readonly JsonSerializerOptions SerializerOptions = new()

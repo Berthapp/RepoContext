@@ -57,4 +57,23 @@ public class GitignoreMatcherTests
         Assert.True(matcher.IsIgnored("docs/a/b/tmp", isDirectory: true));
         Assert.True(matcher.IsIgnored("docs/tmp", isDirectory: true));
     }
+
+    /// <summary>
+    /// Ignore files are repository content. With a backtracking engine this one
+    /// line kept an index run busy indefinitely on a single 60-character name.
+    /// </summary>
+    [Fact]
+    public void AHostilePattern_MatchesInLinearTime()
+    {
+        var matcher = GitignoreMatcher.Parse(["**a**a**a**a**a**a**a**a**a**a**a**b"]);
+        var watch = System.Diagnostics.Stopwatch.StartNew();
+
+        for (int i = 0; i < 100; i++)
+        {
+            Assert.False(matcher.IsIgnored("d/" + new string('a', 60 + i), isDirectory: false));
+        }
+
+        Assert.True(matcher.IsIgnored("d/aaaaaaaaaaab", isDirectory: false));
+        Assert.True(watch.Elapsed < TimeSpan.FromSeconds(5), $"took {watch.Elapsed}");
+    }
 }

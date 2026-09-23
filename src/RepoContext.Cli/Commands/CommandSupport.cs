@@ -1,4 +1,5 @@
 using System.CommandLine;
+using RepoContext.Cli.Output;
 using RepoContext.Core;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Indexing;
@@ -31,6 +32,12 @@ internal static class CommandSupport
     /// </summary>
     public static bool EnsureSchemaCurrent(IndexStore store)
     {
+        if (store.DiscardedForeignIndex)
+        {
+            Console.Error.WriteLine(IndexStore.ForeignIndexMessage);
+            return false;
+        }
+
         if (store.IsSchemaCurrent)
         {
             return true;
@@ -78,9 +85,17 @@ internal static class CommandSupport
         return false;
     }
 
-    /// <summary>Writes rendered output with exactly one trailing newline.</summary>
-    public static void WriteRendered(string rendered) =>
-        Console.Out.Write(CliSurfaceText(rendered));
+    /// <summary>
+    /// Writes rendered output with exactly one trailing newline. On an
+    /// interactive terminal, control characters from repository content are
+    /// neutralized first (see <see cref="TerminalText"/>); redirected output is
+    /// written byte for byte.
+    /// </summary>
+    public static void WriteRendered(string rendered)
+    {
+        string surface = CliSurfaceText(rendered);
+        Console.Out.Write(Console.IsOutputRedirected ? surface : TerminalText.Neutralize(surface));
+    }
 
     /// <summary>The exact stdout surface recorded and tokenized for CLI queries.</summary>
     public static string CliSurfaceText(string rendered)

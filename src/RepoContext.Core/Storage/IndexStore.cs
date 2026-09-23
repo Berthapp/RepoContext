@@ -1,6 +1,8 @@
+using System.Security.Cryptography;
 using Microsoft.Data.Sqlite;
 using RepoContext.Core.Configuration;
 using RepoContext.Core.Graph;
+using RepoContext.Core.Identity;
 using RepoContext.Core.Indexing;
 using RepoContext.Core.Parsing;
 using RepoContext.Core.Query;
@@ -36,7 +38,23 @@ public static class MetaKeys
     /// same way an outdated on-disk schema is rejected.
     /// </summary>
     public const string AnalysisProducerVersion = "analysis_producer_version";
+
+    /// <summary>
+    /// A random identifier stamped when this machine creates the database, and
+    /// its HMAC under the machine key (ADR 0025). Together they prove the index
+    /// was built here rather than shipped with a checkout.
+    /// </summary>
+    public const string OriginId = "origin_id";
+
+    /// <summary>The signature over <see cref="OriginId"/>.</summary>
+    public const string OriginMac = "origin_mac";
 }
+
+/// <summary>
+/// Raised when an index database was not built by RepoContext on this machine
+/// and a caller that must not repair it (a read-only guard lookup) opened it.
+/// </summary>
+public sealed class ForeignIndexException(string message) : IOException(message);
 
 /// <summary>Existing file identity used for incremental diffing.</summary>
 public readonly record struct FileRecord(long Id, string ContentHash);
@@ -46,29 +64,73 @@ public readonly record struct FileRecord(long Id, string ContentHash);
 /// </summary>
 public sealed class IndexStore : IDisposable
 {
+    private const string OriginPurpose = "repoctx.index-origin.v1";
+    private const int OpenLockTimeoutMilliseconds = 10_000;
+
+    /// <summary>What a caller tells the user about an index that was not built here.</summary>
+    public const string ForeignIndexMessage =
+        "The index was not built by RepoContext on this machine (it came with the checkout, "
+        + "or predates 0.15.1), so it was not used. Run 'repoctx index' to rebuild it.";
+
     private readonly SqliteConnection _connection;
 
     private IndexStore(SqliteConnection connection) => _connection = connection;
 
+    /// <summary>
+    /// Whether <see cref="Open"/> found a database this machine did not build
+    /// and replaced it with an empty one. Commands report it, because the
+    /// following "index is outdated" would otherwise be a mystery.
+    /// </summary>
+    public bool DiscardedForeignIndex { get; private init; }
+
     /// <summary>Opens (creating if needed) the index database and ensures the schema.</summary>
+    /// <remarks>
+    /// A database that carries no valid origin stamp for this machine is deleted
+    /// before a single row of it is read (ADR 0025): its "source" may exist in
+    /// no file, and an incremental index keeps it because its recorded hashes
+    /// match the real files. The decision and the fresh stamp are one step under
+    /// a cross-process lock, so two processes can never delete each other's new
+    /// database.
+    /// </remarks>
     public static IndexStore Open(string databasePath)
     {
+        RejectLinkedDatabase(databasePath);
         string? dir = Path.GetDirectoryName(databasePath);
         if (!string.IsNullOrEmpty(dir))
         {
             Directory.CreateDirectory(dir);
         }
 
-        var connection = new SqliteConnection(new SqliteConnectionStringBuilder
-        {
-            DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadWriteCreate,
-            Pooling = false,
-        }.ToString());
-        connection.Open();
+        using PathScopedMutex lease = PathScopedMutex.TryAcquire(
+                "IndexOpen", databasePath, OpenLockTimeoutMilliseconds)
+            ?? throw new IOException("Timed out waiting for another RepoContext process to open the index.");
 
-        var store = new IndexStore(connection);
-        store.Execute(IndexSchema.Ddl);
+        bool existed = File.Exists(databasePath);
+        SqliteConnection connection = Connect(databasePath, SqliteOpenMode.ReadWriteCreate);
+        bool discarded = false;
+        if (existed && !HasLocalOrigin(connection))
+        {
+            connection.Dispose();
+            Discard(databasePath);
+            connection = Connect(databasePath, SqliteOpenMode.ReadWriteCreate);
+            discarded = true;
+        }
+
+        var store = new IndexStore(connection) { DiscardedForeignIndex = discarded };
+        try
+        {
+            store.Execute(IndexSchema.Ddl);
+            if (store.GetMeta(MetaKeys.OriginId) is null)
+            {
+                store.StampOrigin();
+            }
+        }
+        catch
+        {
+            store.Dispose();
+            throw;
+        }
+
         return store;
     }
 
@@ -88,14 +150,138 @@ public sealed class IndexStore : IDisposable
     /// </remarks>
     public static IndexStore OpenReadOnly(string databasePath)
     {
+        // Even a read-only WAL reader writes the shared-memory side file.
+        RejectLinkedDatabase(databasePath);
+        SqliteConnection connection = Connect(databasePath, SqliteOpenMode.ReadOnly);
+        if (!HasLocalOrigin(connection))
+        {
+            // A reader must not repair; the next `index` (or any Open) does.
+            connection.Dispose();
+            throw new ForeignIndexException(ForeignIndexMessage);
+        }
+
+        return new IndexStore(connection);
+    }
+
+    private static SqliteConnection Connect(string databasePath, SqliteOpenMode mode)
+    {
         var connection = new SqliteConnection(new SqliteConnectionStringBuilder
         {
             DataSource = databasePath,
-            Mode = SqliteOpenMode.ReadOnly,
+            Mode = mode,
             Pooling = false,
         }.ToString());
         connection.Open();
-        return new IndexStore(connection);
+        try
+        {
+            // Functions in a schema's views, triggers and generated columns run
+            // only if they are side-effect free. RepoContext's own schema uses
+            // none; it matters for a database that came from somewhere else.
+            using SqliteCommand pragma = connection.CreateCommand();
+            pragma.CommandText = "PRAGMA trusted_schema = OFF;";
+            pragma.ExecuteNonQuery();
+        }
+        catch
+        {
+            connection.Dispose();
+            throw;
+        }
+
+        return connection;
+    }
+
+    /// <summary>
+    /// Whether the database carries this machine's origin stamp. Reads nothing
+    /// but the two stamp rows, and only from a plain table: a view named
+    /// <c>meta</c> could run arbitrary - and endless - SQL. Always true when no
+    /// machine key is available (the documented degraded mode).
+    /// </summary>
+    private static bool HasLocalOrigin(SqliteConnection connection)
+    {
+        if (!MachineKey.IsAvailable)
+        {
+            return true;
+        }
+
+        try
+        {
+            using SqliteCommand probe = connection.CreateCommand();
+            probe.CommandText = "SELECT type FROM sqlite_master WHERE name = 'meta'";
+            if (probe.ExecuteScalar() as string != "table")
+            {
+                return false;
+            }
+
+            probe.CommandText = "SELECT key, value FROM meta WHERE key = $id OR key = $mac";
+            probe.Parameters.AddWithValue("$id", MetaKeys.OriginId);
+            probe.Parameters.AddWithValue("$mac", MetaKeys.OriginMac);
+            string? id = null;
+            string? mac = null;
+            using (SqliteDataReader reader = probe.ExecuteReader())
+            {
+                while (reader.Read())
+                {
+                    string? value = reader.IsDBNull(1) ? null : reader.GetValue(1) as string;
+                    if (reader.GetValue(0) as string == MetaKeys.OriginId)
+                    {
+                        id = value;
+                    }
+                    else
+                    {
+                        mac = value;
+                    }
+                }
+            }
+
+            return id is { Length: > 0 } && MachineKey.Verify(mac, OriginPurpose, id);
+        }
+        catch (SqliteException)
+        {
+            // Not a database, or a malformed one: it cannot be this machine's.
+            return false;
+        }
+    }
+
+    /// <summary>Deletes a database that was not built here, with its side files.</summary>
+    private static void Discard(string databasePath)
+    {
+        foreach (string suffix in (string[])["", "-wal", "-shm", "-journal"])
+        {
+            File.Delete(databasePath + suffix);
+        }
+    }
+
+    /// <summary>Marks a database this machine created as its own.</summary>
+    private void StampOrigin()
+    {
+        string id = Convert.ToHexStringLower(RandomNumberGenerator.GetBytes(16));
+        if (MachineKey.Sign(OriginPurpose, id) is { } mac)
+        {
+            SetMeta(MetaKeys.OriginId, id);
+            SetMeta(MetaKeys.OriginMac, mac);
+        }
+    }
+
+    /// <summary>
+    /// Refuses a database, a side file or an index directory that is a
+    /// symbolic link.
+    /// </summary>
+    /// <remarks>
+    /// SQLite follows links for the database and creates or rewrites its
+    /// <c>-wal</c>, <c>-shm</c> and <c>-journal</c> files beside it. A hostile
+    /// checkout that commits <c>.repoctx/index.db-wal -&gt; ~/somewhere</c>
+    /// would otherwise have page data written into an arbitrary file, and one
+    /// linking <c>index.db</c> to another application's database would have the
+    /// schema applied to it.
+    /// </remarks>
+    private static void RejectLinkedDatabase(string databasePath)
+    {
+        string full = Path.GetFullPath(databasePath);
+        string directory = Path.GetDirectoryName(full) ?? full;
+        foreach (string suffix in (string[])["", "-wal", "-shm", "-journal"])
+        {
+            SafePaths.EnsureNoLinks(directory, full + suffix);
+        }
     }
 
     public string? GetMeta(string key)

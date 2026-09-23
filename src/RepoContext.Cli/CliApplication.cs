@@ -1,6 +1,7 @@
 using System.CommandLine;
 using System.Text;
 using RepoContext.Cli.Commands;
+using RepoContext.Core;
 
 namespace RepoContext.Cli;
 
@@ -37,7 +38,27 @@ public static class CliApplication
             return ExitCode.InvalidArguments;
         }
 
-        return parseResult.Invoke();
+        try
+        {
+            return parseResult.Invoke(new InvocationConfiguration { EnableDefaultExceptionHandler = false });
+        }
+        catch (UnsafePathException e)
+        {
+            // A refused write is the expected answer to a hostile checkout, not
+            // a crash: say what was refused and why, without a stack trace.
+            Console.Error.WriteLine(e.Message);
+            return ExitCode.Error;
+        }
+        catch (Exception e) when (e is not OperationCanceledException)
+        {
+            // Everything else keeps the library's default report.
+            Console.Error.WriteLine("Unhandled exception: " + e);
+            return ExitCode.Error;
+        }
+        catch (OperationCanceledException)
+        {
+            return ExitCode.Error;
+        }
     }
 
     /// <summary>

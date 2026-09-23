@@ -633,9 +633,11 @@ public static class McpTools
     }
 
     private static CallToolResult? OutdatedSchema(IndexStore store) =>
-        store.IsSchemaCurrent
-            ? null
-            : Fail("Index schema is outdated. Run 'repoctx index' to rebuild it.");
+        store.DiscardedForeignIndex
+            ? Fail(IndexStore.ForeignIndexMessage)
+            : store.IsSchemaCurrent
+                ? null
+                : Fail("Index schema is outdated. Run 'repoctx index' to rebuild it.");
 
     /// <summary>
     /// Rejects both an outdated on-disk schema and an index produced by different

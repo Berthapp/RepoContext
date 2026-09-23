@@ -168,7 +168,7 @@ public static class GuardInstallation
 
         if (write)
         {
-            Write(path, settings);
+            Write(root, path, settings);
         }
 
         return new GuardInstallResult(
@@ -247,7 +247,7 @@ public static class GuardInstallation
 
         if (write)
         {
-            Write(path, settings);
+            Write(root, path, settings);
         }
 
         return new GuardInstallResult(AgentFileChange.Removed, SettingsPath);
@@ -401,8 +401,11 @@ public static class GuardInstallation
         }
     }
 
-    private static void Write(string path, JsonObject settings)
+    private static void Write(string root, string path, JsonObject settings)
     {
+        // A `.claude` committed as a link into the user's home would otherwise
+        // install hooks into their global settings.
+        SafePaths.EnsureContained(root, path);
         Directory.CreateDirectory(Path.GetDirectoryName(path)!);
         File.WriteAllText(path, settings.ToJsonString(Writer) + "\n");
     }

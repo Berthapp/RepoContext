@@ -8,6 +8,15 @@ namespace RepoContext.Core.Scanning;
 /// expression. Supports <c>*</c> (not crossing <c>/</c>), <c>?</c>, and
 /// <c>**</c> (crossing directories).
 /// </summary>
+/// <remarks>
+/// The patterns come from <c>.gitignore</c> and <c>.repoctxignore</c> files -
+/// repository content, and therefore untrusted. A backtracking engine takes
+/// time exponential in the number of wildcards on a path that almost matches:
+/// one committed line like <c>**a**a**a**a**a**a**a**a**a**a**b</c> kept
+/// <c>repoctx index</c> (and every build running it) busy indefinitely. The
+/// non-backtracking engine matches in time linear in the path, whatever the
+/// pattern; everything a glob translates to is within what it supports.
+/// </remarks>
 internal static class GlobPattern
 {
     public static Regex ToRegex(string glob)
@@ -50,6 +59,6 @@ internal static class GlobPattern
         }
 
         sb.Append('$');
-        return new Regex(sb.ToString(), RegexOptions.CultureInvariant);
+        return new Regex(sb.ToString(), RegexOptions.CultureInvariant | RegexOptions.NonBacktracking);
     }
 }

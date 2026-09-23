@@ -32,7 +32,11 @@ public static class UsageLog
             throw new ArgumentException("The usage record contains invalid values.", nameof(record));
         }
 
-        Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+        // The ledger lives directly in the index directory; neither may be a
+        // link, or an append would land wherever a hostile checkout points it.
+        string directory = Path.GetDirectoryName(Path.GetFullPath(path))!;
+        SafePaths.EnsureNoLinks(directory, path);
+        Directory.CreateDirectory(directory);
         byte[] line = Encoding.UTF8.GetBytes(
             JsonSerializer.Serialize(record, UsageRecord.SerializerOptions) + "\n");
 
